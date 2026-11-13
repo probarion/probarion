@@ -576,7 +576,7 @@ test("the Day 4 gate lets only the Base transaction hash stay pending", () => {
   );
 });
 
-test("the 2026-11 demo run: protocol 88, node.exe, and the Base steps marked as not run", () => {
+test("the 2026-11 demo run: protocol 88, node.exe, and the Base steps marked as not run in it", () => {
   const runbook = read("docs/runbooks/mainnet-v0.md");
   const blocks = codeBlocks(runbook);
   // Mainnet moved to protocol 88 (testnet's) by 2026-11-11; 86 would stop the run at its first gate.
@@ -589,8 +589,8 @@ test("the 2026-11 demo run: protocol 88, node.exe, and the Base steps marked as 
   for (const line of blocks.join("\n").split("\n")) {
     assert.ok(!/(?:^|[^\w.-])node(?= )/.test(line), `a command calls bare node: ${line}`);
   }
-  // Steps 6 and 10 and mandate 2 stay in the runbook for a later run, each marked as not run now.
-  const marker = "**Not in the 2026-11 demo run; S1 unproven.**";
+  // Steps 6 and 10 and mandate 2 stay in the runbook for a later run, each marked as not run in the 2026-11 demo run.
+  const marker = "**Not in the 2026-11 demo run.**";
   assert.equal(runbook.split(marker).length - 1, 2, "steps 6 and 10 both need the marker");
   const step6 = runbook.indexOf("## 6. Top up Base POA USDC");
   const step7 = runbook.indexOf("## 7. Agent key");
@@ -600,21 +600,24 @@ test("the 2026-11 demo run: protocol 88, node.exe, and the Base steps marked as 
   assert.ok(runbook.indexOf(marker, step6) < step7);
   assert.ok(step10 > 0 && runbook.indexOf(marker, step10) < runbook.indexOf("check_spend", step10));
   assert.ok(runbook.indexOf(marker, step10) < step11);
-  const mandateTwo = runbook.indexOf("**Mandate 2 is not in the 2026-11 demo run; S1 unproven.**");
+  const mandateTwo = runbook.indexOf("**Mandate 2 is not in the 2026-11 demo run.**");
   assert.ok(mandateTwo > 0 && mandateTwo < runbook.indexOf('\\"type\\":\\"intents\\"'));
   assert.ok(mandateTwo > runbook.indexOf("get_mandate json-args '{\"mandate_id\":1}'"));
-  // S1 is called unproven, never proved or a precondition of this run.
-  assert.match(runbook, /S1 is unproven on 2026-11-11/);
+  // S1 was unproven on 2026-11-11, so that run skipped it; it ran on 2026-11-13, not as one of these steps.
+  assert.match(runbook, /S1 was unproven on 2026-11-11/);
+  assert.match(runbook, /It ran on 2026-11-13/);
+  assert.ok(!runbook.includes("S1 unproven"), "a marker still calls S1 unproven");
   assert.ok(!runbook.includes("Spike S1 proved"), "the runbook still says S1 proved something");
-  const demoGate = runbook.split("\n").find((line) => line.startsWith("- 2026-11 demo gate:"));
+  const demoGate = runbook
+    .split("\n")
+    .find((line) => line.startsWith("- 2026-11 demo gate (2026-11-11):"));
   assert.ok(demoGate, "no 2026-11 demo gate line");
   for (const part of [
     "first_near_payment_tx",
     "first_no_mandate_refusal_tx",
     "first_base_payout_tx",
     "first_base_payout_base_tx",
-    "stay `null`",
-    "S1 unproven",
+    "stayed `null` until S1 ran",
   ]) {
     assert.ok(demoGate.includes(part), `the demo gate lacks: ${part}`);
   }
@@ -690,4 +693,64 @@ test("the 2026-11 demo run: owner probarion.near, Meteor as approver and payee, 
     '\\"account_id\\":\\"$OWNER_ID\\",\\"registration_only\\":true',
   );
   assert.ok(register > 0 && register < recovery.indexOf('as-transaction "$VAULT" withdraw '));
+});
+
+test("S1 of 2026-11-13: the deployment record, the proof file, the committed ledger and the S1 gate agree", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const record = JSON.parse(read("contracts/deployments/mainnet.json"));
+  const proof = JSON.parse(read("docs/mainnet-proof.json"));
+  const payout = proof.txs.first_base_payout;
+  // The NEAR spend and the Base transfer are the same in both records.
+  assert.equal(record.proof.first_base_payout_tx, payout.hash);
+  assert.equal(record.proof.first_base_payout_base_tx, payout.base_tx);
+  assert.equal(payout.kind, "base_payout");
+  assert.equal(payout.spend_id, 2);
+  assert.equal(
+    proof.links.first_base_payout_base,
+    `https://basescan.org/tx/${record.proof.first_base_payout_base_tx}`,
+  );
+  // The top-up went through 1Click: a NEAR transfer to the deposit address, no Base-side deposit.
+  assert.deepEqual(record.funding.intents_topup, {
+    method: "oneclick_swap",
+    near_tx: proof.txs.v0_intents_topup.hash,
+    base_tx: null,
+  });
+  assert.equal(record.setup.base_mandate_tx, proof.txs.v0_mandate_base.hash);
+  // The committed ledger holds the payment entry of spend 2, with the same transaction.
+  const dir = "docs/evidence/mainnet-v0/s1-2026-11-13";
+  const entries = read(`${dir}/ledger-2026-11-13.jsonl`)
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line).body);
+  const payment = entries.find((b) => b.kind === "payment");
+  assert.equal(payment.contract.spend_id, 2);
+  assert.equal(payment.contract.status, "burned");
+  assert.equal(payment.contract.tx_hash, payout.hash);
+  // Both attested decisions were refused by the same code rule, and the payment's decision is rules-only.
+  const decisions = entries.filter((b) => b.kind === "decision");
+  assert.deepEqual(
+    decisions.map((b) => [b.seq, b.verdict, b.decided_by]),
+    [
+      [0, "refuse", "model+rules"],
+      [1, "refuse", "model+rules"],
+      [2, "allow", "rules-only"],
+    ],
+  );
+  for (const b of decisions.slice(0, 2)) {
+    assert.ok(b.rules.some((r) => r.id === "mandate.payee_mismatch" && r.outcome === "refuse"));
+  }
+  // The burn memo is WITHDRAW_TO: plus the Base address of mandate 2.
+  const burn = JSON.parse(read(`${dir}/burn.json`));
+  assert.equal(burn.memo, "WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27");
+  const gate = runbook.split("\n").find((line) => line.startsWith("- S1 gate (2026-11-13):"));
+  assert.ok(gate, "no S1 gate line");
+  for (const part of [
+    "first_base_payout_tx",
+    "first_base_payout_base_tx",
+    "WITHDRAW_TO:",
+    `--ledger ${dir}/ledger-2026-11-13.jsonl`,
+    "decided by code rules alone",
+  ]) {
+    assert.ok(gate.includes(part), `the S1 gate lacks: ${part}`);
+  }
 });

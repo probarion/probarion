@@ -32,7 +32,7 @@ export const STATUS_PAGE = {
 } as const;
 
 /** /terms and /privacy each carry their own date, so a change to one page's text does not move the other's. */
-export const TERMS_UPDATED = "2026-11-10";
+export const TERMS_UPDATED = "2026-11-13";
 export const PRIVACY_UPDATED = "2026-11-12";
 
 /** The lede of /terms and /privacy (spec §13, Legal row). */
@@ -166,7 +166,7 @@ export const TERMS_PAGE = {
     { title: "Unaudited beta.", body: "No third party has audited this code. Use small amounts." },
     {
       title: "Testnet today.",
-      body: "The vault runs on NEAR testnet with test tokens. One small mainnet vault, made by no factory, has run since 2026-11-11, and no Base payout has run on mainnet.",
+      body: "The vault runs on NEAR testnet with test tokens. One small mainnet vault, made by no factory, has run since 2026-11-11, and on 2026-11-13 it paid a test of 1.00 USDC to the owner's own Base address, decided by code rules alone.",
     },
     {
       title: "At your own risk.",

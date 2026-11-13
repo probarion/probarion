@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { slug } from "github-slugger";
 import type { Code, List, Root, RootContent } from "mdast";
 import { describe, expect, it } from "vitest";
+import { AGENT_RULES } from "@/lib/docs/agents";
 import { changelogTree } from "@/lib/docs/changelog";
 import { headingsOf } from "@/lib/docs/headings";
 import { MDX_COMPONENT_NAMES } from "@/lib/docs/markdown";
@@ -230,6 +231,56 @@ describe("copy rules", () => {
         if (m) found.push(`${fileOf(p.path)}: ${m[0]}`);
       }
     }
+    expect(found).toEqual([]);
+  });
+
+  it("call no Base payout unrun once contracts/deployments/mainnet.json records one", () => {
+    const record = JSON.parse(
+      readFileSync(join(ROOT, "contracts", "deployments", "mainnet.json"), "utf8"),
+    ) as { proof?: { first_base_payout_tx?: string | null } };
+    // Before spike S1 ran on 2026-11-13 these words were true.
+    if (!record.proof?.first_base_payout_tx) return;
+    const stale =
+      /no Base payout|no such payout has run|no mainnet payout|S1,? [^.]*is unproven|S1 is unproven|none has run through NEAR Intents|waits for spike S1|no mandate to a Base payee/i;
+    const found: string[] = [];
+    for (const p of PAGES) {
+      const fields = [p.title, p.nav, p.description, p.lede, readMdx(p.path)];
+      for (const field of fields) {
+        const m = field ? stale.exec(field) : null;
+        if (m) found.push(`${fileOf(p.path)}: ${m[0]}`);
+      }
+    }
+    for (const rule of AGENT_RULES) {
+      const m = stale.exec(rule);
+      if (m) found.push(`apps/web/src/lib/docs/agents.ts: ${m[0]}`);
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("label the mainnet Base payout wherever a page or an agent rule tells it", () => {
+    // The S1 gate of docs/runbooks/mainnet-v0.md: the one Base payout of 2026-11-13 was a test to the owner's own
+    // Base address, decided by code rules alone, and each paragraph that tells it says both.
+    const tells =
+      /one Base payout|Base payout of|One such payout has run|One Base payout has run|paid 1\.00 USDC|burned 1\.00 USDC|payout through NEAR Intents has run/;
+    const labels = [/owner's own/, /rules alone|rules-only/];
+    const found: string[] = [];
+    const check = (where: string, text: string | undefined) => {
+      for (const para of (text ?? "").split("\n")) {
+        if (tells.test(para) && !labels.every((re) => re.test(para))) {
+          found.push(`${where}: ${para.slice(0, 100)}`);
+        }
+      }
+    };
+    for (const p of PAGES) {
+      for (const field of [p.title, p.nav, p.description, p.lede, readMdx(p.path)]) {
+        check(fileOf(p.path), field);
+      }
+    }
+    for (const [i, rule] of AGENT_RULES.entries()) {
+      check(`apps/web/src/lib/docs/agents.ts, rule ${i + 1}`, rule);
+    }
+    // The guard reads the pages that tell the payout.
+    expect(PAGES.filter((p) => tells.test(readMdx(p.path))).length).toBeGreaterThanOrEqual(10);
     expect(found).toEqual([]);
   });
 });

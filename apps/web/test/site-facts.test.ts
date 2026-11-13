@@ -839,7 +839,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Mainnet vault",
-      pill: "On mainnet: 1 payment, 1 refusal, no Base payout yet",
+      pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
       readme: [
         {
           start: "Mainnet vault",
@@ -847,7 +847,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
             "**Live on NEAR mainnet**",
             "2026-11-11",
             "`PROBARION:NoMandate`",
-            "no Base payout has run on mainnet",
+            "the POA bridge released 0.9976 USDC on Base",
           ],
         },
       ],
@@ -1055,7 +1055,7 @@ describe("the status list", () => {
       {
         id: "mainnet-vault",
         row: "Mainnet vault",
-        pill: "On mainnet: 1 payment, 1 refusal, no Base payout yet",
+        pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
         tone: "live",
       },
     ]);
@@ -1624,7 +1624,7 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(w.status).toBe("MCP server");
   });
 
-  it("tells the cross-chain use as the smoke run had it, and says what testnet and mainnet have not done", () => {
+  it("tells the cross-chain use as the smoke run had it, and says what testnet and mainnet have done", () => {
     const w = INTEGRATE.who[2];
     expect(w.evidence.url).toBe(TX.baseBurn.url);
     expect(w.evidence.label).toBe(`The testnet burn for a Base address, tx ${TX.baseBurn.label}`);
@@ -1634,19 +1634,20 @@ describe("the problem, the comparison and the integrate section", () => {
     );
     expect(w.outcome).toContain("`WITHDRAW_TO:0x1111…1111`");
     expect(w.outcome).toContain("burned 1 test USDC");
-    // The caveat: a stand-in on testnet, and no payout on mainnet.
+    // The caveat: a stand-in on testnet, and on mainnet one payout, to a Base address.
     expect(w.body).toContain(
       "On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR.",
     );
     expect(prose).toContain(
       "On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR.",
     );
-    expect(w.body).toContain("No payout through NEAR Intents has run on mainnet yet.");
-    expect(prose).toContain("so no Base payout has run on mainnet");
-    expect(prose).toContain("No mainnet payout has run");
-    expect(prose).toContain(
-      "the mainnet vault's run of 2026-11-11 moved nothing through NEAR Intents",
+    expect(w.body).toContain(
+      "On mainnet one payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
     );
+    expect(prose).toContain(
+      "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to the owner's own Base address this way, a test decided by code rules alone",
+    );
+    expect(prose).toContain("the POA bridge released 0.9976 USDC on Base, keeping a fee of 0.0024");
     expect(prose).toContain("a Base or Solana address paid out through NEAR Intents");
     expect(w.status).toBe("Vault contract");
   });

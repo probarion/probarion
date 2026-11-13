@@ -5,9 +5,11 @@ The full runbook (planned for Day 4, 2026-11-04) aims at three mainnet transacti
 - the first Base payout (2 USDC);
 - the first `NoMandate` refusal.
 
-**The 2026-11 demo run is smaller.** It runs steps 0 to 5, 7, mandate 1 of step 8, 9 and 11: one vault funded with 3 native USDC, one payment of 1 USDC to the owner's own Meteor wallet under mandate 1, and one spend the contract refuses with `PROBARION:NoMandate`. Step 6 (the Intents top-up), mandate 2 of step 8 and step 10 (the Base payout) are **not in the 2026-11 demo run; S1 unproven**: no spike has shown a contract withdrawing Base POA USDC to Base on mainnet, so this run moves nothing through NEAR Intents and claims no Base payout. There is no factory, no global contract and no change to the web app in this run: probarion.xyz keeps serving testnet.
+**The 2026-11 demo run is smaller.** It runs steps 0 to 5, 7, mandate 1 of step 8, 9 and 11: one vault funded with 3 native USDC, one payment of 1 USDC to the owner's own Meteor wallet under mandate 1, and one spend the contract refuses with `PROBARION:NoMandate`. Step 6 (the Intents top-up), mandate 2 of step 8 and step 10 (the Base payout) are **not in the 2026-11 demo run**: on 2026-11-11 no spike had shown a contract withdrawing Base POA USDC to Base on mainnet, so that run moved nothing through NEAR Intents and claimed no Base payout. There is no factory, no global contract and no change to the web app in this run: probarion.xyz keeps serving testnet.
 
-**The 2026-11 demo run ran on 2026-11-11**, from 12:51 to 13:00 UTC (block times). The owner signed every step in their own terminal and in Meteor, and Claude signed nothing. Spend 1 paid 1 USDC to the owner's own Meteor wallet, and the spend against mandate 999 was refused on chain with `PROBARION:NoMandate`. Its vault's transactions are in `contracts/deployments/mainnet.json`, the ones the README cites are also in `docs/mainnet-proof.json`, and its record, with the verifier's output, is `docs/evidence/mainnet-v0/README.md`. Steps 6 and 10 and mandate 2 did not run, so no Base payout has run on mainnet.
+**The 2026-11 demo run ran on 2026-11-11**, from 12:51 to 13:00 UTC (block times). The owner signed every step in their own terminal and in Meteor, and Claude signed nothing. Spend 1 paid 1 USDC to the owner's own Meteor wallet, and the spend against mandate 999 was refused on chain with `PROBARION:NoMandate`. Its vault's transactions are in `contracts/deployments/mainnet.json`, the ones the README cites are also in `docs/mainnet-proof.json`, and its record, with the verifier's output, is `docs/evidence/mainnet-v0/README.md`. Steps 6 and 10 and mandate 2 did not run in it, so that run made no Base payout.
+
+**S1 ran on 2026-11-13**, from 07:11 to 07:25 UTC (block times), with a kit kept outside this repository that runs the SDK, in place of step 6, mandate 2 of step 8 and step 10. A 1Click swap topped the vault's Base USDC up inside `intents.near`, a third method beside step 6's two (`funding.intents_topup.method` is `"oneclick_swap"`). Mandate 2 pays 1.00 USDC once to the owner's own Base address, under its own purpose document `PO-M002`. The SDK paid INV-M002, a labeled test of the cross-chain path, as spend 2, decided by code rules alone after code refused two attested model proposals. The vault burned 1.00 USDC with `WITHDRAW_TO:` and mandate 2's address, and the POA bridge released 0.9976 USDC on Base. The owner signed every owner step, and Claude signed nothing. Its record is `docs/evidence/mainnet-v0/s1-2026-11-13/README.md`. Step 6, mandate 2 of step 8 and step 10 as written below (6 USDC, 5 USDC a payment, a 2 USDC payout) have not run.
 
 **Every step marked OWNER SIGNS is signed by the human owner, in their own wallet or near-cli-rs. Claude never signs.** The amounts are small on purpose, because the contract is unaudited. The vault is locked for good after step 3: the USDC in it can be taken back only with the owner's `withdraw` and `withdraw_intents` (see the end of this page), and the NEAR in it (3 NEAR) can never be taken back. Nothing else can be fixed after step 3 either: the vault has no method to change its `owner` or `approvers`, so check everything before the lock.
 
@@ -24,7 +26,7 @@ Both files are committed together in step 12, in the same commit as the work.
 ## 0. Preconditions
 
 - [ ] Day 3 gate passed: CI is green and the testnet smoke passed on 2026-11-01 (`docs/runbooks/testnet.md` §6). Its transaction ids are in `contracts/deployments/testnet.json`, under `smoke`.
-- [ ] Spike S1 (a contract account on mainnet calls `ft_withdraw` for Base POA USDC with a `WITHDRAW_TO:` memo, and the USDC arrives on Base) is needed only for steps 6 and 10. **It has not run: S1 is unproven on 2026-11-11.** The 2026-11 demo run skips those steps. Before any later Base payout, run S1 with the OWNER signing; if it fails, use the fallback in report §8 (i).
+- [ ] Spike S1 (a contract account on mainnet calls `ft_withdraw` for Base POA USDC with a `WITHDRAW_TO:` memo, and the USDC arrives on Base) is needed only for steps 6 and 10. **S1 was unproven on 2026-11-11, so the 2026-11 demo run skipped those steps. It ran on 2026-11-13**, with the OWNER signing: spend 2 of `v0.probarion.near` burned 1.00 Base POA USDC with a `WITHDRAW_TO:` memo, and 0.9976 USDC arrived on Base (`docs/evidence/mainnet-v0/s1-2026-11-13/README.md`).
 - [ ] `pnpm proof show` runs. Plan 05 Task 1 provides it and creates `docs/mainnet-proof.json`. Do not start step 1 without it.
 - [ ] The checkout guard and the artifact guard in section 0.3 print `OK: HEAD is origin/dev` and `OK: artifact is the recorded build`.
 - [ ] Budget:
@@ -300,9 +302,9 @@ In the 2026-11 run Claude ran this line after the run, on 2026-11-11.
 
 ## 6. Top up Base POA USDC inside the vault's `intents.near` account
 
-**Not in the 2026-11 demo run; S1 unproven.** Skip to step 7. The rest of this step is for a later run, after spike S1 has passed.
+**Not in the 2026-11 demo run.** S1 on 2026-11-13 topped the vault up with a 1Click swap instead of either option below, and recorded the method `"oneclick_swap"`. Skip to step 7. The rest of this step is for a later run.
 
-Use the path spike S0/S1 proved, and do only one of the two options. Record the method (`"mt_transfer"` or `"poa_deposit"`) at `funding.intents_topup.method`. Testnet cannot exercise this step (the stub has no `mt_transfer` and there is no POA bridge there), so the `mt_balance_of` check below is the proof: if it shows less than you sent, stop.
+Use the path spike S0/S1 proved, and do only one of the two options. Record the method (`"mt_transfer"` or `"poa_deposit"`) at `funding.intents_topup.method` (S1 recorded `"oneclick_swap"` there). Testnet cannot exercise this step (the stub has no `mt_transfer` and there is no POA bridge there), so the `mt_balance_of` check below is the proof: if it shows less than you sent, stop.
 
 **Option A.** The owner already holds Base POA USDC inside their own `intents.near` account.
 
@@ -411,7 +413,7 @@ near contract call-function as-read-only "$VAULT" get_mandate json-args '{"manda
 
 Expected: the payee `account_id` is `$PAYEE_ID`, `"status": "active"`, `"purpose_hash"` is `$PURPOSE`, `"approval_above": "1000000"`, and `"agent_pk"` is `$AGENT_PK`. The owner confirms that they control that account: it is the account Meteor shows. **If the payee is not an account the owner controls, do not run step 9.** Send the `revoke_mandate` command from "If anything looks wrong" with `{"mandate_id":1}`, then stop and tell Claude: the evidence files name mandate 1.
 
-**Mandate 2 is not in the 2026-11 demo run; S1 unproven.** Skip to step 9. The rest of this step is for a later run, after spike S1 has passed. Its purpose document is the original `docs/evidence/v0-po.txt`, which covers the Base payee:
+**Mandate 2 is not in the 2026-11 demo run.** S1 on 2026-11-13 created mandate 2 with its own terms (1.00 USDC once, to the owner's own Base address, purpose `PO-M002`); the command below has not run, and in a later run it creates the next free mandate id, not `2`. Skip to step 9. The rest of this step is for a later run. Its purpose document is the original `docs/evidence/v0-po.txt`, which covers the Base payee:
 
 ```bash
 export PURPOSE_V0="$(sha256sum docs/evidence/v0-po.txt | cut -d' ' -f1)"
@@ -504,7 +506,7 @@ pnpm proof add-tx --id first_near_payment --hash "$H" --signer "$VAULT" --receiv
 
 ## 10. First Base payout (2 USDC)
 
-**Not in the 2026-11 demo run; S1 unproven.** Skip to step 11. The rest of this step is for a later run, after spike S1 has passed and mandate 2 exists; that run tops the vault's USDC up first, so the payout below is spend 2.
+**Not in the 2026-11 demo run.** S1 on 2026-11-13 made the first Base payout, spend 2 (1.00 USDC), with the SDK instead of the commands below, which have not run. Skip to step 11. The rest of this step is for a later run, after the Base mandate of step 8 exists; that run tops the vault's USDC up first, uses the mandate id and spend id it gets instead of `2`, and records its payout under a new id, since `first_base_payout` is S1's spend 2.
 
 ```bash
 export INVOICE2="$(sha256sum docs/evidence/v0-invoice-2.txt | cut -d' ' -f1)"
@@ -540,7 +542,7 @@ near contract call-function as-read-only "$VAULT" list_spends json-args '{"from_
 
 Expected: spend 1 `paid`; spend 2 `burned` with `"memo": "WITHDRAW_TO:"` followed by `$BASE_PAYEE_ADDRESS`.
 
-Record the NEAR tx at `proof.first_base_payout_tx`. Within minutes, Base USDC arrives at `$BASE_PAYEE_ADDRESS`. Expect 2 USDC minus the POA withdrawal fee, which was 0.0024 USDC on 2026-10-20 (confirm the fee in spike S0). Find the transfer on https://basescan.org and record its hash at `proof.first_base_payout_base_tx`. Then record both in the evidence file, with `BASE_H` set to the Base hash:
+Record the NEAR tx at `proof.first_base_payout_tx`. Within minutes, Base USDC arrives at `$BASE_PAYEE_ADDRESS`. Expect 2 USDC minus the POA withdrawal fee, which was 0.0024 USDC on 2026-10-20 (confirm the fee in spike S0) and again on 2026-11-13, when S1 paid it. Find the transfer on https://basescan.org and record its hash at `proof.first_base_payout_base_tx`. Then record both in the evidence file, with `BASE_H` set to the Base hash:
 
 ```bash
 pnpm proof add-tx --id first_base_payout --hash "$H" --signer "$VAULT" --receiver "$VAULT" \
@@ -608,10 +610,12 @@ pnpm proof add-tx --id refused_no_mandate --hash "$H" --signer "$VAULT" --receiv
 
 ## 12. After the run
 
-- Done for the 2026-11 run on 2026-11-11. Claude fills `contracts/deployments/mainnet.json`, checks `pnpm proof show` lists every id above (in the 2026-11 run: the ids of steps 2, 3, 5, 7, mandate 1 of step 8, 9 and 11; `v0_intents_topup`, `v0_mandate_base` and `first_base_payout` are not created), adds the mainnet rows to `AGENTS.md`, and commits everything in one commit: `git add contracts/deployments/mainnet.json docs/mainnet-proof.json AGENTS.md`.
+- Done for the 2026-11 run on 2026-11-11. Claude fills `contracts/deployments/mainnet.json`, checks `pnpm proof show` lists every id above (in the 2026-11 run: the ids of steps 2, 3, 5, 7, mandate 1 of step 8, 9 and 11; `v0_intents_topup`, `v0_mandate_base` and `first_base_payout` were not created then), adds the mainnet rows to `AGENTS.md`, and commits everything in one commit: `git add contracts/deployments/mainnet.json docs/mainnet-proof.json AGENTS.md`.
 - The v0 spends carry pre-ledger decision hashes: the sha256 of `docs/evidence/v0-decision-*.json` (in the 2026-11 run, `v0-decision-m001.json` for spend 1). Plan 03's verifier lists them in `Snapshot.pre_ledger_decision_hashes`, and check (d) reports them as "pre-ledger (documented)".
 - Day 4 gate: `proof.first_near_payment_tx`, `proof.first_base_payout_tx` and `proof.first_no_mandate_refusal_tx` in `contracts/deployments/mainnet.json` are non-null, and so is `proof.first_base_payout_base_tx`, with one exception: if step 10 ended as "burned, awaiting bridge", that one field (`first_base_payout_base_tx`) may be pending and is filled when the Base transfer lands. The Base payout's `ft_burn` memo equals `WITHDRAW_TO:` plus the mandate's address.
-- 2026-11 demo gate: `proof.first_near_payment_tx` and `proof.first_no_mandate_refusal_tx` are non-null; `proof.first_base_payout_tx` and `proof.first_base_payout_base_tx` stay `null`, and every page that mentions the Base payout keeps saying it has not run on mainnet (spike S1 unproven).
+- Done for S1 on 2026-11-13. `contracts/deployments/mainnet.json` has `funding.intents_topup` (method `"oneclick_swap"` and its `near_tx`), `setup.base_mandate_tx`, `proof.first_base_payout_tx` and `proof.first_base_payout_base_tx`. `pnpm proof show` adds `v0_oneclick_storage`, `v0_intents_topup`, `v0_ledger_key`, `v0_mandate_base`, `v0_anchor_1` to `v0_anchor_3` and `first_base_payout`, and `links.first_base_payout_base`. The vault's signed ledger is committed as `docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl`.
+- 2026-11 demo gate (2026-11-11): `proof.first_near_payment_tx` and `proof.first_no_mandate_refusal_tx` are non-null; `proof.first_base_payout_tx` and `proof.first_base_payout_base_tx` stayed `null` until S1 ran, and every page that mentioned the Base payout said it had not run on mainnet.
+- S1 gate (2026-11-13): `proof.first_base_payout_tx` and `proof.first_base_payout_base_tx` are non-null, spend 2 is `burned` with an `ft_burn` memo of `WITHDRAW_TO:` plus mandate 2's address, and `verify --network mainnet` with `--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl` passes checks a to h (i skips). Every page that tells the Base payout says it ran once, a test to the owner's own Base address, decided by code rules alone: for the docs pages and the rules for agents, a test in `apps/web/test/docs-content.test.ts` holds each paragraph that tells it to the last two; the README, `JUDGES.md`, `SECURITY.md` and the site copy were read for it by hand on 2026-11-13.
 - **OWNER:** publish the build-in-public post with the nearblocks links.
 
 ## If anything looks wrong

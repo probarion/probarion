@@ -47,7 +47,7 @@ AP2 terms: AP2 v0.2 (2026-04-28) has a Checkout Mandate and a Payment Mandate, e
 - No relayer for gas. The owner and each approver pay the gas of what they sign. The agent key and the ledger key spend the vault's own NEAR on gas.
 - No x402 or AP2 support. The pay-per-call example in the repo uses its own 402 format, not x402.
 - No pinned TEE measurement, so no proof of which model image ran (note 6).
-- Testnet, plus one small mainnet vault. Since 2026-11-11 `v0.probarion.near` holds a little real USDC and has made one NEAR payment and one refusal. The mainnet factory is not deployed, and no Base payout has run on mainnet.
+- Testnet, plus one small mainnet vault. Since 2026-11-11 `v0.probarion.near` holds a little real USDC and has made one NEAR payment and one refusal, and on 2026-11-13 one Base payout through NEAR Intents, a 1.00 USDC test to the owner's own address, decided by code rules alone. The mainnet factory is not deployed.
 - No third-party audit. The code is an unaudited beta.
 
 ## They can work together

@@ -115,3 +115,24 @@ the vault, from its creation to the refusal. [`docs/mainnet-proof.json`](../../m
 mainnet ones the root README cites (its other entries are testnet): the deploy, the lock, the USDC float, the agent
 key, mandate 1, spend 1 and the refusal. The two transactions of the runbook's section 0.4, the funder and
 `probarion.near`, are recorded only in this README.
+
+## 2026-11-13: S1, a Base payout
+
+The sections above record the run of 2026-11-11 and stay true for it. On 2026-11-13, from 07:11 to 07:25 UTC, the
+owner ran spike S1 on this vault: a 1Click swap put 1.499823 Base USDC in the vault's `intents.near` balance, the owner
+set a ledger key and signed mandate 2 (1.00 USDC once to the owner's own Base address), and the SDK paid INV-M002, a
+labeled test of the cross-chain path, as spend 2. The vault burned 1.00 Base USDC with
+`WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`
+([`BdN7oB76…`](https://nearblocks.io/txns/BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9)), and the POA bridge released
+0.9976 USDC on Base
+([`0xc2df8f87…`](https://basescan.org/tx/0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71)). The
+payment was decided by the code rules alone, after code refused two attested model proposals. Since then the vault has
+a signed ledger with 4 entries and 3 anchors. The run's record, its ledger and how to check it:
+[`s1-2026-11-13/README.md`](s1-2026-11-13/README.md).
+
+Since the vault was anchored on 2026-11-13, the live command under "Check it" above fails checks c and d without the
+ledger: it prints `6 passed, 2 failed, 0 unproven, 1 skipped` and `RESULT: FAIL (first broken seq 0)`.
+`--snapshot docs/evidence/mainnet-v0/snapshot-2026-11-11.json` also refuses the existing file. To check the vault live
+now, add `--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl` and
+`--invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt`, and leave out `--snapshot`
+([the command](s1-2026-11-13/README.md#check-it)). The offline command on `snapshot-2026-11-11.json` still passes.

@@ -819,7 +819,7 @@ export const STATUS = {
     {
       id: "mainnet-vault",
       row: "Mainnet vault",
-      pill: "On mainnet: 1 payment, 1 refusal, no Base payout yet",
+      pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
       tone: "live",
     },
   ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
@@ -900,9 +900,9 @@ export const BUILT_ON = {
       checks: [
         "The vault and the factory run on NEAR testnet",
         "One small vault on mainnet since 2026-11-11, `v0.probarion.near`",
-        "On mainnet: 1 payment and 1 refusal, both on chain",
+        "On mainnet: a NEAR payment, a Base payout and a refusal, all on chain",
       ],
-      note: "No Base payout has run yet.",
+      note: "The 2026-11-13 Base payout, 1.00 USDC, was a rules-only test to the owner's own address.",
       links: [
         { label: "Testnet proof page", href: DEMO_PROOF },
         { label: "The mainnet vault", href: "/docs/start/testnet-and-mainnet#the-mainnet-vault" },
@@ -964,7 +964,7 @@ export const BUILT_ON = {
       link: { label: "The Chrome Web Store listing", href: LINKS.chromeWebStore },
     },
   ] satisfies readonly ShipCard[],
-  also: "Also used: Intel TDX and NVIDIA NRAS attestation, which `verify --online` checks (O1 and O2). NEAR Intents payouts are built and tested against a testnet stand-in; none has run through NEAR Intents yet.",
+  also: "Also used: Intel TDX and NVIDIA NRAS attestation, which `verify --online` checks (O1 and O2). NEAR Intents payouts are built and tested against a testnet stand-in, and one has run on mainnet: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
   trademark:
     "NEAR, NEAR Intents, NEAR AI Cloud, USDC, Base and Solana are trademarks of their respective owners. They are named to say what Probarion is built on or is designed to pay through, not to imply an endorsement. npm is a registered trademark of npm, Inc. Model Context Protocol and MCP are trademarks of LF Projects, LLC. GitHub and the Invertocat logo are trademarks of GitHub, Inc. Chrome and Chrome Web Store are trademarks of Google LLC. Intel is a trademark of Intel Corporation or its subsidiaries. NVIDIA is a trademark of NVIDIA Corporation.",
 } as const;
@@ -1145,7 +1145,7 @@ export const INTEGRATE = {
     },
     {
       title: "Cross-chain payouts",
-      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate. On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR. No payout through NEAR Intents has run on mainnet yet.",
+      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate. On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR. On mainnet one payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
       control: "Address fixed by the mandate",
       outcome:
         "On testnet the vault built the memo `WITHDRAW_TO:0x1111…1111` from the mandate and burned 1 test USDC.",

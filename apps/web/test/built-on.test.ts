@@ -232,7 +232,7 @@ describe("the built-on section", () => {
 describe("the built-on facts", () => {
   const prose = README.replace(/\s+/g, " ");
 
-  it("NEAR: the vault and the factory on testnet, one small vault on mainnet with 1 payment, 1 refusal and no Base payout", () => {
+  it("NEAR: the vault and the factory on testnet, one small vault on mainnet with a NEAR payment, a Base payout and a refusal", () => {
     const [near] = BUILT_ON.rows;
     expect(near.body).toBe(
       "Each vault is a NEAR contract that holds its USDC and checks every payment against the owner's mandate.",
@@ -243,7 +243,7 @@ describe("the built-on facts", () => {
     expect(near.checks).toEqual([
       "The vault and the factory run on NEAR testnet",
       "One small vault on mainnet since 2026-11-11, `v0.probarion.near`",
-      "On mainnet: 1 payment and 1 refusal, both on chain",
+      "On mainnet: a NEAR payment, a Base payout and a refusal, all on chain",
     ]);
     expect(readmeRow("Vault contract")).toContain("**Shipped on NEAR testnet**");
     expect(readmeRow("Factory contract")).toContain("**Shipped on NEAR testnet**");
@@ -253,11 +253,15 @@ describe("the built-on facts", () => {
     );
     expect(mainnet).toContain("spend 1 paid 1 USDC");
     expect(mainnet).toContain("was refused on chain with `PROBARION:NoMandate`");
-    expect(mainnet).toContain("no Base payout has run on mainnet");
-    expect(near.note).toBe("No Base payout has run yet.");
+    expect(mainnet).toContain("the POA bridge released 0.9976 USDC on Base");
+    expect(mainnet).toContain("1.00 USDC once, to the owner's own Base address");
+    expect(mainnet).toContain("a labeled test of the cross-chain path");
+    expect(near.note).toBe(
+      "The 2026-11-13 Base payout, 1.00 USDC, was a rules-only test to the owner's own address.",
+    );
     // The same words as the status list's row, which is held to the README in site-facts.test.ts.
     expect(statusOf("Mainnet vault").pill).toBe(
-      "On mainnet: 1 payment, 1 refusal, no Base payout yet",
+      "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
     );
     const record = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
       vault_v0: { account_id: string };
@@ -390,9 +394,9 @@ describe("the built-on facts", () => {
     );
   });
 
-  it("the also line: attestation checks that exist, and no payout through NEAR Intents yet", () => {
+  it("the also line: attestation checks that exist, and one mainnet payout through NEAR Intents", () => {
     expect(BUILT_ON.also).toBe(
-      "Also used: Intel TDX and NVIDIA NRAS attestation, which `verify --online` checks (O1 and O2). NEAR Intents payouts are built and tested against a testnet stand-in; none has run through NEAR Intents yet.",
+      "Also used: Intel TDX and NVIDIA NRAS attestation, which `verify --online` checks (O1 and O2). NEAR Intents payouts are built and tested against a testnet stand-in, and one has run on mainnet: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
     );
     expect(prose).toContain(
       "`verify --online` loads the optional `@nearai/inference-sdk` to check the TDX quote (O1) and the GPU evidence (O2)",
@@ -400,9 +404,8 @@ describe("the built-on facts", () => {
     expect(prose).toContain(
       "On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`",
     );
-    expect(prose).toContain("No mainnet payout has run");
     expect(prose).toContain(
-      "the mainnet vault's run of 2026-11-11 moved nothing through NEAR Intents",
+      "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to the owner's own Base address this way, a test decided by code rules alone",
     );
   });
 });
@@ -462,7 +465,7 @@ describe("the built-on copy", () => {
     ]) {
       expect(BUILT_ON.trademark).toContain(notice);
     }
-    // It says Probarion is designed to pay through Base and Solana, since no payout has run there yet.
+    // It says Probarion is designed to pay through Base and Solana: one Base payout and no Solana payout has run on mainnet.
     expect(BUILT_ON.trademark).toContain("built on or is designed to pay through");
   });
 

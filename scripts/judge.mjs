@@ -602,6 +602,22 @@ export const SNAPSHOTS = [
     },
     expect: { exit: 0, checks: { ...ALL_PASS, i: "skip" } },
   },
+  {
+    id: "verify-mainnet-v0-snapshot-1113",
+    file: "docs/evidence/mainnet-v0/s1-2026-11-13/snapshot-2026-11-13.json",
+    committed: "docs/evidence/mainnet-v0/s1-2026-11-13/verify-2026-11-13.txt",
+    title:
+      "verify --offline: mainnet v0 snapshot after the Base payout (S1) passes a to h, i skips (no factory)",
+    ref: {
+      file: "docs/evidence/mainnet-v0/s1-2026-11-13/README.md",
+      quote: "Checks a to h pass, and check i skips, because no factory made this vault",
+    },
+    expect: {
+      exit: 0,
+      checks: { ...ALL_PASS, i: "skip" },
+      why: { h: "1 burned spend has a matched burn pair" },
+    },
+  },
 ];
 
 /** The vaults read live, read-only, each with its verdict. */
@@ -621,13 +637,37 @@ export const LIVE_VAULTS = {
       "run without the ledger: c fails on an empty ledger, and d passing shows no spend was ever created",
   },
   demo: { exit: 0, checks: ALL_PASS },
-  // The mainnet vault has no ledger: its one spend's decision is pre-ledger, so d passes on the documented
-  // hash, and i skips because no factory made it.
-  mainnetV0: { exit: 0, checks: { ...ALL_PASS, i: "skip" } },
+  // The mainnet vault, with its committed ledger: spend 1's decision is pre-ledger, so d exempts it on the
+  // documented hash, and spend 2's is entry 2 of the ledger; with the invoice text, A8 runs on the two attested
+  // decisions; h finds spend 2's burn pair; and i skips because no factory made the vault.
+  mainnetV0: {
+    exit: 0,
+    checks: { ...ALL_PASS, i: "skip" },
+    why: {
+      c: "3 anchors match the ledger",
+      d: "1 spend has a decision_hash listed as pre-ledger",
+      e: "A8 (request binding and mandate match) passes for 2 of 2 attested decisions (seq 0, 1)",
+      h: "1 burned spend has a matched burn pair",
+    },
+  },
 };
 
-/** The repository's evidence for the mainnet vault: its pre-ledger decisions and its recorded transactions. */
-const MAINNET_V0_EVIDENCE = ["--evidence", "docs/evidence", "--proof", "docs/mainnet-proof.json"];
+/** The mainnet vault's signed ledger, committed after S1 (2026-11-13), and the invoice its attested decisions read. */
+export const MAINNET_V0_LEDGER = "docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl";
+export const MAINNET_V0_INVOICE = "docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt";
+
+/**
+ * The repository's evidence for the mainnet vault: the invoice text for A8 (one file, so no other `.txt` of the
+ * folder is read and warned about), the pre-ledger decisions and the recorded transactions.
+ */
+const MAINNET_V0_EVIDENCE = [
+  "--invoice",
+  MAINNET_V0_INVOICE,
+  "--evidence",
+  "docs/evidence",
+  "--proof",
+  "docs/mainnet-proof.json",
+];
 
 const statusCounts = (checks) => {
   const counts = new Map();
@@ -772,17 +812,20 @@ export function matchA8(run, seqs) {
   };
 }
 
-/** The committed snapshots under docs/evidence (snapshot-*.json), as repository paths. */
+/**
+ * The committed snapshots in the folders under docs/evidence and their subfolders (snapshot-*.json), as
+ * repository paths.
+ */
 export function evidenceSnapshots(root) {
-  const base = join(root, "docs", "evidence");
   const out = [];
-  if (!existsSync(base)) return out;
-  for (const dir of readdirSync(base, { withFileTypes: true })) {
-    if (!dir.isDirectory()) continue;
-    for (const f of readdirSync(join(base, dir.name)).sort()) {
-      if (/^snapshot-.*\.json$/.test(f)) out.push(`docs/evidence/${dir.name}/${f}`);
+  const walk = (rel) => {
+    for (const e of readdirSync(join(root, rel), { withFileTypes: true })) {
+      if (e.isDirectory()) walk(`${rel}/${e.name}`);
+      else if (rel !== "docs/evidence" && /^snapshot-.*\.json$/.test(e.name))
+        out.push(`${rel}/${e.name}`);
     }
-  }
+  };
+  if (existsSync(join(root, "docs", "evidence"))) walk("docs/evidence");
   return out.sort();
 }
 
@@ -792,7 +835,7 @@ export function snapshotPlan(root) {
   const extra = evidenceSnapshots(root)
     .filter((f) => !listed.has(f))
     .map((file) => {
-      const dir = file.split("/").slice(0, 3).join("/");
+      const dir = file.slice(0, file.lastIndexOf("/"));
       const date = /snapshot-(.*)\.json$/.exec(file)?.[1];
       const committed = `${dir}/verify-${date}.txt`;
       return {
@@ -1256,23 +1299,21 @@ export function planSteps(root = ROOT) {
     {
       id: "live-verify-mainnet-v0",
       kind: "live",
+      network: "mainnet",
       needs: "build",
       title:
-        "live verify of the mainnet vault v0.probarion.near passes a to h, i skips (no factory)",
+        "live verify of the mainnet vault v0.probarion.near with its committed ledger passes a to h, i skips (no factory)",
       ref: {
         file: "README.md",
         quote: "node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near",
       },
       expected: "PASS",
-      command: `node ${CLI} verify --network mainnet --vault v0.probarion.near --ledger <tmp>/no-ledger.jsonl ${MAINNET_V0_EVIDENCE.join(" ")} --json`,
+      command: `node ${CLI} verify --network mainnet --vault v0.probarion.near --ledger ${MAINNET_V0_LEDGER} ${MAINNET_V0_EVIDENCE.join(" ")} --json`,
       run: (ctx) =>
-        liveVerify(
-          ctx,
-          "v0.probarion.near",
-          join(ctx.tmp, "no-ledger.jsonl"),
-          LIVE_VAULTS.mainnetV0,
-          { network: "mainnet", extra: MAINNET_V0_EVIDENCE },
-        ),
+        liveVerify(ctx, "v0.probarion.near", MAINNET_V0_LEDGER, LIVE_VAULTS.mainnetV0, {
+          network: "mainnet",
+          extra: MAINNET_V0_EVIDENCE,
+        }),
     },
     {
       id: "mcp-demo",
@@ -1491,7 +1532,10 @@ async function gate(step, flags, failed, network) {
   }
   if (step.kind === "live") {
     if (flags.offline)
-      return { result: "SKIPPED", detail: "--offline: this step reads NEAR testnet" };
+      return {
+        result: "SKIPPED",
+        detail: `--offline: this step reads NEAR ${step.network ?? "testnet"}`,
+      };
     const net = await network();
     if (!net.ok) return { result: "SKIPPED", detail: `the network is down (${net.reason})` };
   }

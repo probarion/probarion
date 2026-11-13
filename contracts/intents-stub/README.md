@@ -24,4 +24,4 @@ A stand-in for `intents.near` (the NEAR Intents Verifier) for the near-workspace
 5. **Only NEP-141 deposits.** No NEP-245 `mt_transfer`, `mt_batch_transfer` or NEP-171 tokens; `msg` on `ft_withdraw` (the `ft_transfer_call` variant) is refused; `ft_on_transfer` accepts no JSON `DepositMessage`.
 6. **No DAO roles.** No `ft_force_withdraw`, `force_lock_account` or `force_enable_auth_by_predecessor_ids`.
 7. **No key removal.** There is no `remove_public_key`.
-8. **Different gas.** Gas use differs from the real contract. The vault's 100 Tgas budget for `ft_withdraw` is checked on mainnet in spike S1, not here.
+8. **Different gas.** Gas use differs from the real contract. The vault's 100 Tgas budget for `ft_withdraw` held on mainnet in spike S1 on 2026-11-13, where the whole spend burned 15.35 Tgas; it is not checked here.
