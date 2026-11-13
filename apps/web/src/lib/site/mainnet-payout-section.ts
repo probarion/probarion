@@ -4,9 +4,12 @@
 // lib/site/mainnet-payout-view.ts with the copy it is handed. Every count and amount comes from the data.
 import { baseTxFact, type CopyPart, MAINNET_PAYOUT, mainnetTxFact, type TxFact } from "./facts";
 import {
+  CHECKS,
   fill,
   nsToIso,
   type Payout,
+  type PayoutCheckId,
+  type ReadName,
   shortAddr,
   type TrailEntry,
   usdc,
@@ -119,6 +122,38 @@ export function stoneView(p: Payout): StoneView {
         ? fill(C.stone.sameMinute, { minute: burned, fee: usdc(p.fee) })
         : fill(C.stone.apart, { burned, arrived, fee: usdc(p.fee) }),
   };
+}
+
+// --- the checks' sources --------------------------------------------------------------------------
+
+/** The transaction a read fetches, on its explorer; null for a view. */
+function readTx(p: Payout, read: ReadName): TxFact | null {
+  if (read === "base") return baseTxFact(p.tx.base);
+  if (read === "mandate" || read === "spend" || read === "anchor") {
+    return mainnetTxFact(p.tx[read].hash);
+  }
+  return null;
+}
+
+/**
+ * The line under a check's title: what it reads, from the check's own `needs`. The transactions come first, each a link
+ * to its explorer, then the views by their method name.
+ */
+export function checkSources(p: Payout, id: PayoutCheckId): CopyPart[] {
+  const needs = CHECKS.find((c) => c.id === id)?.needs ?? [];
+  const ordered = [
+    ...needs.filter((r) => readTx(p, r) !== null),
+    ...needs.filter((r) => readTx(p, r) === null),
+  ];
+  const parts: CopyPart[] = [C.sourcesLead];
+  ordered.forEach((read, i) => {
+    if (i > 0) parts.push(i === ordered.length - 1 ? C.and : C.comma);
+    const tx = readTx(p, read);
+    parts.push(
+      tx === null ? `\`${C.reads.names[read]}\`` : { label: C.reads.names[read], href: tx.url },
+    );
+  });
+  return parts;
 }
 
 // --- the decision trail ---------------------------------------------------------------------------

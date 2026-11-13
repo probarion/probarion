@@ -209,14 +209,19 @@ export const HERO = {
   docs: { route: "/docs", label: "Explore the docs" },
   /** A light link after the buttons, to the demo vault's proof page (STORY.proof.href). */
   verify: "Verify it yourself",
-  /** One line under the buttons: who it is for, what runs where, and the mainnet vault's two transactions. */
+  /**
+   * One line under the buttons: who it is for, what runs where, the mainnet vault's two transactions of 2026-11-11, and
+   * its payout to Base, told in the #mainnet section below.
+   */
   fineprint: [
     "For teams whose AI agent pays supplier invoices, and for ",
     { label: "developers", href: "#integrate" },
     " who want to give an agent money without the keys. Testnet today, and one small vault, `v0.probarion.near`, with ",
     { label: "a payment on mainnet", href: MAINNET_TX.payment.url },
-    " and ",
+    ", ",
     { label: "a refusal on mainnet", href: MAINNET_TX.refusal.url },
+    " and ",
+    { label: "a payout to Base", href: "#mainnet" },
     ". You need no account to read the chain or run the verifier.",
   ] satisfies readonly CopyPart[],
   paid: {
@@ -708,7 +713,7 @@ export const MAINNET_PAYOUT = {
       "A node did not answer. Those rows keep their recorded values. Try again, or open the transaction links.",
     noScript:
       "With JavaScript off, the recorded results stay. Each row links its transaction on nearblocks or Basescan.",
-    foot: "The reads change nothing and need no key or account, and none of them goes through Probarion's server: NEAR from FastNEAR's public nodes, Base from mainnet.base.org. The views are read at the spend's own block, so they show the vault as it was at the spend. They re-read the chain; they are not the verifier. Whether the anchored ledger holds this spend's decision needs the ledger file: the verifier's checks c and d.",
+    foot: "The reads change nothing and need no key or account, and none of them goes through Probarion's server: NEAR from FastNEAR's public nodes, Base from mainnet.base.org. The views are read at the spend's own block, so they show the vault as it was at the spend. They re-read the chain; they are not the verifier, which needs the ledger file.",
   },
   rowState: {
     recorded: "Recorded",
@@ -783,6 +788,8 @@ export const MAINNET_PAYOUT = {
       ],
     },
   } satisfies Record<PayoutCheckId, { title: string; rows: readonly PayoutRowCopy[] }>,
+  /** Under each check's title, before what it reads (reads.names): each transaction links its explorer. */
+  sourcesLead: "Read from ",
   /** Why a check does not pass: one sentence per code in lib/site/mainnet-payout PROBLEM_CODES, the values it read filled in. */
   problems: {
     shape: "the answer did not have the shape of an RPC answer",

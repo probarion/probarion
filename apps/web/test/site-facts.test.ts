@@ -75,7 +75,13 @@ import {
   usdc,
 } from "@/lib/site/mainnet-payout";
 import { PAYOUTS, RECORDED, RECORDED_RUNS } from "@/lib/site/mainnet-payout-data";
-import { sectionHead, stoneView, trailView, verifyView } from "@/lib/site/mainnet-payout-section";
+import {
+  checkSources,
+  sectionHead,
+  stoneView,
+  trailView,
+  verifyView,
+} from "@/lib/site/mainnet-payout-section";
 import { draftPayouts, readSources } from "@/lib/site/mainnet-payout-sources";
 import {
   checkRows,
@@ -310,7 +316,7 @@ describe("what an offline run shows", () => {
 
   it("promises only what needs no account today", () => {
     expect(partsText(HERO.fineprint)).toContain(
-      "Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet and a refusal on mainnet. You need no account to read the chain or run the verifier.",
+      "Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a payout to Base. You need no account to read the chain or run the verifier.",
     );
   });
 
@@ -689,7 +695,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     );
     expect(HERO.note).toContain("test tokens");
     expect(partsText(HERO.fineprint)).toContain(
-      "one small vault, v0.probarion.near, with a payment on mainnet and a refusal on mainnet",
+      "one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a payout to Base",
     );
   });
 
@@ -711,6 +717,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       "#integrate",
       MAINNET_TX.payment.url,
       MAINNET_TX.refusal.url,
+      "#mainnet",
     ]);
     const html = landing();
     expect(html).toContain(`href="${MAINNET_TX.payment.url}"`);
@@ -1716,6 +1723,7 @@ describe("the rendered landing page", () => {
       "payment",
       "integrate",
       "payee",
+      "mainnet",
       "verify",
       "chain",
       "status",
@@ -2324,9 +2332,10 @@ describe("colours", () => {
     }
   });
 
-  it("are read from tokens: site.module.css and docs.module.css hold no literal colour", () => {
+  it("are read from tokens: site.module.css, mainnet.module.css and docs.module.css hold no literal colour", () => {
     for (const parts of [
       ["src", "components", "site", "site.module.css"],
+      ["src", "components", "site", "mainnet.module.css"],
       ["src", "components", "docs", "docs.module.css"],
     ]) {
       const module = text(WEB, ...parts);
@@ -2411,7 +2420,7 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
 
   it("says who it is for and what runs where in one line under the buttons", () => {
     expect(partsText(HERO.fineprint)).toBe(
-      "For teams whose AI agent pays supplier invoices, and for developers who want to give an agent money without the keys. Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet and a refusal on mainnet. You need no account to read the chain or run the verifier.",
+      "For teams whose AI agent pays supplier invoices, and for developers who want to give an agent money without the keys. Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a payout to Base. You need no account to read the chain or run the verifier.",
     );
     const html = renderToStaticMarkup(createElement(Home));
     const lines = [...html.matchAll(/<p class="[^"]*fineprint[^"]*">([\s\S]*?)<\/p>/g)];
@@ -2776,5 +2785,120 @@ describe("the mainnet payout (#mainnet)", () => {
     ]);
     const said = strings.map((s) => s.replace(/\bproposed (pay|\{action\})\b/g, "proposed"));
     expect(said.filter((s) => /\b(paid|pays?)\b/i.test(s) && !allowed.has(s))).toEqual([]);
+  });
+});
+
+describe("the mainnet payout section on the page (#mainnet)", () => {
+  const P = PAYOUTS[0] as Payout;
+  const html = renderToStaticMarkup(createElement(Home));
+  const start = html.indexOf('id="mainnet"');
+  const section = html.slice(start, html.indexOf('id="console"'));
+  const words = visibleText(section);
+  const C = MAINNET_PAYOUT;
+  const isView = (p: unknown): p is string => typeof p === "string" && p.startsWith("`");
+
+  it("sits between the ink band and the console screenshots, with its two-line headline", () => {
+    expect(start).toBeGreaterThan(html.indexOf('id="payee"'));
+    expect(section).toContain('aria-labelledby="mainnet-title"');
+    expect(words).toContain(`${C.line1} ${C.line2}`);
+    expect(words).toContain(sectionHead(PAYOUTS).lede.replace(/`/g, ""));
+  });
+
+  it("says inside the stone that it was a test, and that code rules alone decided it after two refusals", () => {
+    const stone = stoneView(P);
+    expect(stone.label).toBe("A test, not a customer payment");
+    expect(stone.decided).toBe(
+      "Decided by the code rules alone, after code refused two attested model proposals.",
+    );
+    const article = section.slice(section.indexOf("<article"), section.indexOf("</article>"));
+    expect(visibleText(article)).toContain(`${stone.label} ${stone.test} ${stone.decided}`);
+  });
+
+  it("draws one stone per recorded payout, and no empty slot", () => {
+    expect(section.match(/<article\b/g)?.length).toBe(RECORDED_RUNS.length);
+    expect(words).not.toMatch(/coming soon|placeholder|\bTBD\b/i);
+  });
+
+  it("shows the seven checks at rest, the button for scripts and a line for no script", () => {
+    const rows = [...section.matchAll(/<li class="[^"]*_check_[^"]*" data-state="([a-z]+)"/g)];
+    expect(rows.map((m) => m[1])).toEqual(CHECKS.map(() => "recorded"));
+    expect(section).toMatch(/<ol class="[^"]*_checks_[^"]*" aria-busy="false" role="list"/);
+    // The button is in the markup, hidden until the script runs; the noscript line stands in for it.
+    expect(section).toMatch(
+      /<button type="button" class="[^"]*_run_[^"]*" hidden="">Read the chain now<\/button>/,
+    );
+    expect(section).toContain("<noscript><p class=");
+    expect(section).toMatch(/aria-live="polite" data-tone="ok"/);
+    const run = RECORDED_RUNS[0];
+    expect(run).toBeDefined();
+    if (run) expect(words).toContain(restVerdict(C, run.tally, run.recordedAt).title);
+    // Nothing moves before the button: no trace on the stone at rest.
+    expect(section).not.toContain("data-trace");
+  });
+
+  it("calls the burn neutral and the arrival ok", () => {
+    expect(section).toMatch(/<span class="[^"]*_pill_[^"]*_toneNeutral_[^"]*">USDC burned<\/span>/);
+    expect(section).toMatch(/<span class="[^"]*_pill_[^"]*_toneOk_[^"]*">USDC arrived<\/span>/);
+  });
+
+  it("links what each check reads: its transactions on their explorer, then its views by name", () => {
+    for (const check of CHECKS) {
+      const parts = checkSources(P, check.id);
+      expect(parts[0]).toBe(C.sourcesLead);
+      const links = parts.filter((p) => typeof p !== "string");
+      const views = parts.filter(isView);
+      expect(links.length + views.length, check.id).toBe(check.needs.length);
+      for (const l of links) expect(section, check.id).toContain(`href="${l.href}"`);
+      for (const v of views) expect(words, check.id).toContain(v.replace(/`/g, ""));
+      // The transactions come before the views.
+      const firstView = parts.findIndex(isView);
+      const lastLink = parts.map((p) => typeof p !== "string").lastIndexOf(true);
+      if (firstView > 0 && lastLink > 0) expect(lastLink, check.id).toBeLessThan(firstView);
+    }
+  });
+
+  it("shows the trail with its refused spur and one coin seal per anchor, and the verifier as one verdict line", () => {
+    const trail = trailView(P);
+    expect(trail.items.filter((i) => i.spur).length).toBe(refusedProposals(P).length);
+    expect(words).toContain(trail.spur);
+    expect(words).toContain(trail.spurEnd);
+    expect(section.match(/class="[^"]*_sealCoin_/g)?.length).toBe(P.seals.length);
+    for (const seal of trail.seals) expect(section).toContain(`href="${seal.tx.url}"`);
+    const v = verifyView(P);
+    expect(words).toContain(v.result);
+    expect(words).toContain(v.counts);
+    expect(section).toMatch(/href="#verify"[^>]*>Run the verifier on a sample ledger/);
+    for (const row of C.earlier.rows) expect(section).toContain(`href="${row.tx.url}"`);
+  });
+
+  it("keeps the client component to react and the payout readers", () => {
+    const entry = join(SRC, "components", "site", "MainnetPayoutClient.tsx");
+    expect(directives(readFileSync(entry, "utf8"))).toContain("use client");
+    expect(firstLoadOf(entry).sort()).toEqual([
+      "components/site/mainnet.module.css",
+      "lib/site/mainnet-payout-view.ts",
+      "lib/site/mainnet-payout.ts",
+      "react",
+    ]);
+  });
+
+  it("moves only after the button, under no-preference, once", () => {
+    const css = text(SRC, "components", "site", "mainnet.module.css").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const motion = css.indexOf("@media (prefers-reduced-motion: no-preference)");
+    expect(motion).toBeGreaterThan(0);
+    const frames = css.indexOf("@keyframes", motion);
+    expect(css.slice(0, motion) + css.slice(frames)).not.toMatch(/\b(animation|transition)\s*:/);
+    const rules = css
+      .slice(motion, frames)
+      .match(/[^{}]+\{[^{}]*\b(animation|transition)\b[^{}]*\}/g);
+    expect(rules?.length).toBeGreaterThan(0);
+    for (const rule of rules ?? []) {
+      expect(rule, rule).toMatch(/\[data-trace/);
+      expect(rule, rule).not.toMatch(/infinite|alternate/);
+    }
+    expect(css).not.toMatch(/scroll-timeline|view-timeline|animation-timeline/);
   });
 });
