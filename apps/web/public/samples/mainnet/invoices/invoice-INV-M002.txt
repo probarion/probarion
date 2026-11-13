@@ -1,0 +1,6 @@
+Invoice INV-M002
+Labeled sample: a test of the cross-chain path. The payee is the vault owner's own Base address. Not a customer payment.
+Payee: the vault owner's own Base wallet, the Base address in the mandate for this purchase order.
+Purchase order: PO-M002
+Paid in: USDC on Base
+Total due: 1.00 USDC

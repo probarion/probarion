@@ -15,6 +15,18 @@ The software is an unaudited beta.
 
 ### Added
 
+- A no-clone check of the mainnet vault. The site serves `v0.probarion.near`'s signed ledger after S2, the recorded
+  transactions, spend 1's pre-ledger decision and the two invoice texts under `/samples/mainnet/`, each a byte copy
+  of its source in `docs/` (`apps/web/test/samples-mainnet.test.ts` compares them). In an empty folder, one `curl`
+  that fetches three of them and `npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near
+  --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json` print checks a to h PASS, i SKIP and
+  `RESULT: PASS`. Verify reads the chain with read-only RPC requests (views, and `tx` lookups of the burns) and
+  signs nothing. 0.1.1 has no `--invoice`, so A8 does not run. Without `--online`, check e does not verify the TEE
+  quotes (O1 and O2), and the TEE measurement is not pinned. On 2026-11-13 UTC this ran on Node 24.12.0 in Git Bash
+  and Windows PowerShell 5.1, against local copies and raw.githubusercontent.com
+  (`docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt`). `.github/workflows/no-clone-verify.yml` is set to
+  run the same block on Node 24, which 0.1.1 declares, and on Node 22 to learn whether 0.1.1 also works there, with
+  no checkout and no secret. It had not run on GitHub when this entry was written.
 - The online check of the mainnet vault's attested decisions, kept as evidence. On 2026-11-13, from 17:51:48 to
   17:52:19 UTC, after the computer's clock was synced, a read-only `verify --online` of `v0.probarion.near` on
   mainnet ran with S2's ledger of 6 entries, the two committed invoice texts, `--evidence docs/evidence`,
