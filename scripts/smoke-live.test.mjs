@@ -129,10 +129,17 @@ function makeWorld() {
     health: { ok: true, service: "probarion-web", network: "testnet", commit: MAIN.slice(0, 12) },
     main: MAIN,
     samples: true,
+    /** Whether the deployed commit holds the samples on GitHub, or the HTTP status GitHub answers. */
     rawHasSamples: true,
     canary: '<main><textarea maxLength="4000"></textarea></main>',
     tee: null,
+    nearaiOk: true,
     rpcBusy: new Set(),
+    /** An RPC error cause per account, answered by every host. */
+    rpcErrors: {},
+    /** What the fake exec answers for the verify and the MCP demo, in place of a pass. */
+    verifyAnswer: null,
+    demoAnswer: null,
     siteRpcUp: [true],
     calls: [],
     execs: [],
@@ -156,6 +163,14 @@ function makeWorld() {
       if (world.rpcBusy.has(u.host)) return new Response("busy", { status: 429 });
       const req = JSON.parse(init.body);
       const p = req.params;
+      const cause = world.rpcErrors[p.account_id];
+      if (cause) {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: req.id,
+          error: { name: "HANDLER_ERROR", cause: { name: cause } },
+        });
+      }
       if (p.request_type === "view_access_key_list") {
         return Response.json({
           jsonrpc: "2.0",
@@ -173,15 +188,20 @@ function makeWorld() {
     }
     if (u.host === "api.github.com")
       return new Response(world.main ?? "", { status: world.main ? 200 : 403 });
-    if (u.host === "raw.githubusercontent.com")
-      return new Response("", { status: world.rawHasSamples ? 200 : 404 });
+    if (u.host === "raw.githubusercontent.com") {
+      const raw = world.rawHasSamples;
+      return new Response("", { status: typeof raw === "number" ? raw : raw ? 200 : 404 });
+    }
     if (u.pathname === "/api/health") return Response.json(world.health);
     if (u.pathname === "/api/health/nearai") {
-      return Response.json({
-        name: "NEAR AI Cloud",
-        ok: true,
-        detail: "12 model(s) listed, 3 with attestation",
-      });
+      return Response.json(
+        {
+          name: "NEAR AI Cloud",
+          ok: world.nearaiOk,
+          detail: world.nearaiOk ? "12 model(s) listed, 3 with attestation" : "HTTP 503",
+        },
+        { status: world.nearaiOk ? 200 : 503 },
+      );
     }
     if (u.pathname === "/api/health/rpc") {
       const n = Number(u.searchParams.get("provider"));
@@ -216,6 +236,7 @@ function makeWorld() {
       return { code: 0, stdout: `${MAIN}\trefs/heads/main\n`, stderr: "", all: "" };
     if (args.includes("verify")) {
       for (const f of SAMPLES) assert.equal(readFileSync(join(opts.cwd, f), "utf8"), SERVED[f]);
+      if (world.verifyAnswer) return world.verifyAnswer;
       const checks = Object.entries(world.verifyChecks).map(([id, status]) => ({
         id,
         status,
@@ -228,6 +249,7 @@ function makeWorld() {
         all: "",
       };
     }
+    if (world.demoAnswer) return world.demoAnswer;
     const stdout =
       "  result: as expected\n  result: note. Mandate 1 has no uses left\nDone: 6 steps, 5 as expected, 1 note. Nothing was signed or sent.\n";
     return { code: 0, stdout, stderr: "", all: stdout };
@@ -354,12 +376,27 @@ describe("the rules", () => {
     const low = allowanceVerdict(vault, [key("ed25519:S", "spend", NEAR(0.1999))]);
     assert.equal(low.result, "WARN");
     assert.match(low.detail, /the spend key has 0\.1999 NEAR, under 0\.2000/);
-    const canaryLow = allowanceVerdict(canary, [
+    const canaryKeys = (ledger) => [
       key("ed25519:S", "spend", NEAR(2)),
-      key("ed25519:L", "anchor", NEAR(0.45)),
-    ]);
-    assert.equal(canaryLow.result, "WARN");
-    assert.match(canaryLow.detail, /anchor key has 0\.4500 NEAR, under 0\.5000/);
+      key("ed25519:L", "anchor", NEAR(ledger)),
+    ];
+    // Under 0.5 NEAR the Canary has stopped: a FAIL, not a WARN.
+    const stopped = allowanceVerdict(canary, canaryKeys(0.45));
+    assert.equal(stopped.result, "FAIL");
+    assert.match(
+      stopped.detail,
+      /anchor key has 0\.4500 NEAR, under 0\.5000: the Canary does not run/,
+    );
+    // Under twice that level it still runs: a WARN, so the key is replaced with a margin.
+    const margin = allowanceVerdict(canary, canaryKeys(0.9));
+    assert.equal(margin.result, "WARN");
+    assert.match(
+      margin.detail,
+      /anchor key has 0\.9000 NEAR, under 1\.0000 \(2 times its 0\.5000 NEAR stop\)/,
+    );
+    assert.equal(allowanceVerdict(canary, canaryKeys(1)).result, "PASS");
+    // Another vault's ledger key has the 0.2 NEAR line only.
+    assert.equal(allowanceVerdict(vault, canaryKeys(0.45)).result, "PASS");
     assert.equal(allowanceVerdict(vault, [key("ed25519:L", "anchor", NEAR(1))]).result, "WARN");
     const full = allowanceVerdict(vault, [
       { public_key: "ed25519:F", access_key: { permission: "FullAccess" } },
@@ -382,7 +419,10 @@ describe("the rules", () => {
     const soon = [{ vault, mandates: [mandate(1, { expires_at_ns: ns("2026-11-19") })] }];
     const v = expiryVerdict(soon, DEFAULT_UNTIL, NOW);
     assert.equal(v.result, "WARN");
-    assert.match(v.detail, /mandate 1 expires 2026-11-19/);
+    assert.match(
+      v.detail,
+      /mandate 1 expires 2026-11-19: before 2026-11-20\. After its expiry, a spend on it is refused with MandateExpired/,
+    );
     const gone = [{ vault, mandates: [mandate(1, { expires_at_ns: ns("2026-11-10") })] }];
     assert.match(expiryVerdict(gone, DEFAULT_UNTIL, NOW).detail, /mandate 1 expired 2026-11-10/);
     assert.equal(expiryVerdict([{ vault, mandates: [] }], DEFAULT_UNTIL, NOW).result, "WARN");
@@ -470,7 +510,7 @@ describe("a whole run against fakes", () => {
     assert.match(rows["check-spend-testnet"].detail, /2 USDC ok; 50 USDC OverPerPayment/);
     assert.ok(
       !world.calls.some((c) => c.url.includes("/api/tee/check")),
-      "the TEE check spends credit: not without --tee",
+      "the TEE check takes from the rate limit all visitors share: not without --tee",
     );
   });
 
@@ -543,15 +583,68 @@ describe("a whole run against fakes", () => {
     assert.equal(rows["samples-verify"].result, "FAIL");
   });
 
-  test("a verify that fails check c says the served ledger may be stale", async () => {
+  test("samples not served and /api/health names no commit: FAIL, nothing to compare with", async () => {
     const world = makeWorld();
-    world.verifyChecks.c = "fail";
+    world.samples = false;
+    world.health = { ...world.health, commit: null };
     const { code, rows } = await rowsOf(world);
     assert.equal(code, 1);
+    assert.equal(rows["samples-verify"].result, "FAIL");
+    assert.match(rows["samples-verify"].detail, /named no deployed commit to compare with/);
+    assert.ok(!world.calls.some((c) => c.url.includes("raw.githubusercontent.com")));
+  });
+
+  test("samples not served and GitHub answers 503 for the deployed commit's copy: WARN, re-run", async () => {
+    const world = makeWorld();
+    world.samples = false;
+    world.rawHasSamples = 503;
+    const { code, rows } = await rowsOf(world);
+    assert.equal(code, 0);
+    assert.equal(rows["samples-verify"].result, "WARN");
     assert.match(
       rows["samples-verify"].detail,
-      /check c is fail, expected pass.*refresh apps\/web\/public\/samples\/mainnet/,
+      /GitHub answered 503 .* could not tell .* re-run it/,
     );
+  });
+
+  test("a verify that fails check c or d says the served ledger may be stale", async () => {
+    for (const check of ["c", "d"]) {
+      const world = makeWorld();
+      world.verifyChecks[check] = "fail";
+      const { code, rows } = await rowsOf(world);
+      assert.equal(code, 1);
+      assert.match(
+        rows["samples-verify"].detail,
+        new RegExp(
+          `check ${check} is fail, expected pass.*refresh apps/web/public/samples/mainnet`,
+        ),
+      );
+    }
+    const world = makeWorld();
+    world.verifyChecks.f = "fail";
+    const { rows } = await rowsOf(world);
+    assert.equal(rows["samples-verify"].result, "FAIL");
+    assert.doesNotMatch(rows["samples-verify"].detail, /refresh/);
+  });
+
+  test("the verify and the MCP demo fail on the network: WARN, re-run, not FAIL", async () => {
+    const failed = {
+      code: 1,
+      stdout: "",
+      stderr: "TypeError: fetch failed",
+      all: "TypeError: fetch failed",
+    };
+    for (const over of [failed, { ...failed, stderr: "", all: "", timedOut: true }]) {
+      const world = makeWorld();
+      world.verifyAnswer = over;
+      world.demoAnswer = over;
+      const { code, rows } = await rowsOf(world);
+      assert.equal(code, 0);
+      assert.equal(rows["samples-verify"].result, "WARN", rows["samples-verify"].detail);
+      assert.match(rows["samples-verify"].detail, /the network failed, so re-run it/);
+      assert.equal(rows["mcp-demo"].result, "WARN", rows["mcp-demo"].detail);
+      assert.match(rows["mcp-demo"].detail, /the network failed.*re-run it/);
+    }
   });
 
   test("a deploy behind main fails the health row and the run", async () => {
@@ -595,7 +688,50 @@ describe("a whole run against fakes", () => {
     world.chain.frozen = true;
     const { rows } = await rowsOf(world, ["--quick"]);
     assert.equal(rows["canary-page"].result, "WARN");
+    assert.match(rows["canary-page"].detail, /a CANARY_MODE setting/);
     assert.equal(rows["mainnet-mandate-1"].result, "WARN");
+  });
+
+  test("a Canary that stopped itself, or shows no form, fails", async () => {
+    for (const page of [
+      "<p>The live Canary is not open yet.</p>",
+      "<p>The live Canary is closed: its ledger is full.</p>",
+      "<main><p>Recorded attacks</p></main>",
+    ]) {
+      const world = makeWorld();
+      world.canary = page;
+      const { code, rows } = await rowsOf(world, ["--quick"]);
+      assert.equal(code, 1, page);
+      assert.equal(rows["canary-page"].result, "FAIL", page);
+    }
+  });
+
+  test("/api/health/nearai not ok: FAIL", async () => {
+    const world = makeWorld();
+    world.nearaiOk = false;
+    const { code, rows } = await rowsOf(world, ["--quick"]);
+    assert.equal(code, 1);
+    assert.equal(rows.nearai.result, "FAIL");
+    assert.match(rows.nearai.detail, /answered 503 HTTP 503: the Canary and Payables fail/);
+  });
+
+  test("the chain's own answer about an account fails the row; a host's error warns", async () => {
+    const world = makeWorld();
+    world.rpcErrors["percall.vaults.probarion.testnet"] = "UNKNOWN_ACCOUNT";
+    const { code, rows } = await rowsOf(world, ["--quick"]);
+    assert.equal(code, 1);
+    assert.equal(rows["allowance-percall.vaults.probarion.testnet"].result, "FAIL");
+    assert.match(rows["allowance-percall.vaults.probarion.testnet"].detail, /UNKNOWN_ACCOUNT/);
+    assert.equal(rows["mandate-expiry"].result, "FAIL");
+    const busy = makeWorld();
+    busy.rpcErrors["percall.vaults.probarion.testnet"] = "TIMEOUT_ERROR";
+    const again = await rowsOf(busy, ["--quick"]);
+    assert.equal(again.code, 0);
+    assert.equal(again.rows["allowance-percall.vaults.probarion.testnet"].result, "WARN");
+    assert.match(
+      again.rows["allowance-percall.vaults.probarion.testnet"].detail,
+      /could not be read/,
+    );
   });
 
   test("--tee asks once, with a fresh 64-hex nonce", async () => {

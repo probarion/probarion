@@ -11,7 +11,7 @@
 //   SKIP   not run, with the flag that runs it
 //
 //   node scripts/smoke-live.mjs                  every row but the TEE check
-//   node scripts/smoke-live.mjs --tee            also asks /api/tee/check once, which spends NEAR AI credit
+//   node scripts/smoke-live.mjs --tee            also asks /api/tee/check once, from the rate limit all visitors share
 //   node scripts/smoke-live.mjs --quick          without the two npx rows (no npm download)
 //   node scripts/smoke-live.mjs --site <origin>  another address of the same deployment
 //   node scripts/smoke-live.mjs --until <day>    warn on an active mandate that expires before this UTC day
@@ -61,6 +61,8 @@ const NEAR = 10n ** 24n;
 export const MIN_ALLOWANCE = 2n * 10n ** 23n;
 /** Below this the Canary does not run at all: its ledger key's level (apps/web/src/lib/canary/limits.ts). */
 export const CANARY_MIN_LEDGER_ALLOWANCE = 5n * 10n ** 23n;
+/** A key with an `anchorMin` warns under this many times that level: the RUNBOOK keeps a margin above it. */
+export const ANCHOR_MARGIN = 2n;
 
 /** The vaults the site, the README and the demos lean on. `keys`: its agent and ledger keys pay gas for them. */
 export const VAULTS = [
@@ -101,8 +103,9 @@ export const MAINNET_MANDATE_1 = {
 const MAINNET_USDC = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
 
 /**
- * The dry runs the landing and the README show, asked of `check_spend` with the mandate's own agent key: an amount
- * the mandate allows, and one over its per-payment cap.
+ * Two dry runs per vault, asked of `check_spend` with the mandate's own agent key: an amount the mandate allows, and
+ * one over its per-payment cap. The testnet pair is the landing's live check (apps/web/src/lib/site/live-check.ts);
+ * the mainnet pair is mandate 1's 1 USDC cap (README.md's mainnet runs).
  */
 export const CHECK_SPEND = [
   {
@@ -130,7 +133,10 @@ export const CHECK_SPEND = [
 /** The served copies of the mainnet ledger and the files verify reads beside it (apps/web/public/samples/mainnet). */
 export const SAMPLES = ["ledger.jsonl", "mainnet-proof.json", "evidence/v0-decision-m001.json"];
 const SAMPLES_DIR = "apps/web/public/samples/mainnet";
-/** The README's no-clone mainnet verify, with --json added so the row can read each check. */
+/**
+ * The no-clone mainnet verify of .github/workflows/no-clone-verify.yml and its record
+ * (docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt), with --json added so the row can read each check.
+ */
 export const VERIFY_ARGS = [
   "-y",
   "probarion@0.1.1",
@@ -162,12 +168,16 @@ export const PAGES = [
   "/llms.txt",
 ];
 
-/** The banners /canary shows instead of its form (apps/web/src/lib/canary/copy.ts, `replay`). */
+/**
+ * The banners /canary shows instead of its form (apps/web/src/lib/canary/copy.ts, `replay`). Paused and replay are
+ * CANARY_MODE settings the OWNER chose (WARN). Not open and closed mean the Canary stopped itself: its settings, a
+ * failed read, its ledger key under 0.5 NEAR, or a full ledger (FAIL).
+ */
 export const CANARY_BANNERS = [
-  "The live Canary is paused.",
-  "This is a replay of recorded attacks.",
-  "The live Canary is not open yet.",
-  "The live Canary is closed",
+  { text: "The live Canary is paused.", result: "WARN" },
+  { text: "This is a replay of recorded attacks.", result: "WARN" },
+  { text: "The live Canary is not open yet.", result: "FAIL" },
+  { text: "The live Canary is closed", result: "FAIL" },
 ];
 
 export const USAGE = `Usage: node scripts/smoke-live.mjs [--tee] [--quick] [--site <origin>] [--until <YYYY-MM-DD>] [--json]
@@ -176,7 +186,8 @@ Reads the live site, GitHub, npm and both NEAR networks, and prints one row per 
 today, or re-run it), FAIL (a judge would see it broken) or SKIP. Read-only: it signs and sends nothing and
 needs no key. docs/ops/judging-days.md says when to run it and what to do with each row.
 
-  --tee            also ask the site's /api/tee/check once; each call spends NEAR AI credit
+  --tee            also ask the site's /api/tee/check once. The site sends NEAR AI no API key for it, so it
+                   spends no NEAR AI credit, but it takes one of the 30 checks a minute all visitors share
   --quick          skip the two npx rows (the no-clone mainnet verify and the MCP demo)
   --site <origin>  check another address of the deployment (default ${SITE})
   --until <day>    warn on an active mandate that expires before this UTC day (default ${DEFAULT_UNTIL})
@@ -419,8 +430,9 @@ export function checkSpendVerdict(spec, answers) {
 }
 
 /**
- * The gas allowance left on each function-call key of a vault. WARN when a key is under its level (0.2 NEAR, or
- * the vault's `anchorMin` for its ledger key) or the vault has no agent key; FAIL on a full-access key.
+ * The gas allowance left on each function-call key of a vault. WARN when a key is under 0.2 NEAR, or under
+ * ANCHOR_MARGIN times the vault's `anchorMin` for its ledger key, or the vault has no agent key. FAIL on a full-access
+ * key, and on a ledger key under `anchorMin`: the Canary has stopped.
  */
 export function allowanceVerdict(vault, keys) {
   const full = keys.filter((k) => k.access_key?.permission === "FullAccess");
@@ -428,23 +440,38 @@ export function allowanceVerdict(vault, keys) {
     return { result: "FAIL", detail: `${vault.id} has a full-access key: ${full[0].public_key}` };
   }
   const parts = [];
+  const stopped = [];
   const low = [];
   let agents = 0;
   for (const k of keys) {
     const fc = k.access_key?.permission?.FunctionCall;
     const method = fc?.method_names?.[0] ?? "?";
     if (method === "spend") agents += 1;
-    const level = method === "anchor" && vault.anchorMin ? vault.anchorMin : MIN_ALLOWANCE;
+    const stop = method === "anchor" ? vault.anchorMin : undefined;
+    const level = stop === undefined ? MIN_ALLOWANCE : stop * ANCHOR_MARGIN;
     if (fc?.allowance === null || fc?.allowance === undefined) {
       parts.push(`${method} key ${shortKey(k.public_key)} no limit`);
       continue;
     }
     const left = BigInt(fc.allowance);
     parts.push(`${method} key ${shortKey(k.public_key)} ${nearText(left)} NEAR`);
-    if (left < level)
-      low.push(`the ${method} key has ${nearText(left)} NEAR, under ${nearText(level)}`);
+    const has = `the ${method} key has ${nearText(left)} NEAR`;
+    if (stop !== undefined && left < stop) stopped.push(`${has}, under ${nearText(stop)}`);
+    else if (left < level) {
+      low.push(
+        stop === undefined
+          ? `${has}, under ${nearText(level)}`
+          : `${has}, under ${nearText(level)} (${ANCHOR_MARGIN} times its ${nearText(stop)} NEAR stop)`,
+      );
+    }
   }
   const what = `${vault.role}: ${parts.join("; ") || "no keys"}`;
+  if (stopped.length > 0) {
+    return {
+      result: "FAIL",
+      detail: `${what}. ${stopped.join("; ")}: the Canary does not run, and /canary says it is not open yet. Replace the key (docs/RUNBOOK.md, Canary levels)`,
+    };
+  }
   if (low.length > 0) {
     return {
       result: "WARN",
@@ -477,7 +504,7 @@ export function expiryVerdict(byVault, until, nowMs) {
     );
     return {
       result: "WARN",
-      detail: `${named.join("; ")}: before ${until}, spends on it are refused with MandateExpired`,
+      detail: `${named.join("; ")}: before ${until}. After its expiry, a spend on it is refused with MandateExpired`,
     };
   }
   active.sort((a, b) => (BigInt(a.m.expires_at_ns) < BigInt(b.m.expires_at_ns) ? -1 : 1));
@@ -701,6 +728,12 @@ async function notServedYet(ctx, file) {
       detail: `not deployed yet, as expected: ${url} answers 404 because the deployed commit ${ctx.deployed} has no ${SAMPLES_DIR}/${file}. Re-run after the promote that ships it deploys; then this row must PASS`,
     };
   }
+  if (raw.status !== 200) {
+    return {
+      result: "WARN",
+      detail: `${url} answers 404, and GitHub answered ${raw.status} for the deployed commit's copy, so it could not tell whether that commit ships it: re-run it`,
+    };
+  }
   return {
     result: "FAIL",
     detail: `${url} answers 404, yet the deployed commit ${ctx.deployed} holds ${SAMPLES_DIR}/${file} (GitHub answered ${raw.status})`,
@@ -729,7 +762,7 @@ async function teeRow(ctx) {
     return {
       result: "SKIP",
       detail:
-        "not run: each call asks NEAR AI Cloud for a fresh attestation and spends NEAR AI credit; run with --tee",
+        "not run: it takes a place in the TEE check's rate limit, which all visitors share; run with --tee",
     };
   }
   const nonce = randomBytes(32).toString("hex");
@@ -801,11 +834,15 @@ async function pagesRow(ctx) {
 async function canaryRow(ctx) {
   const r = await get(ctx, `${ctx.site}/canary`);
   if (r.status !== 200) return { result: "FAIL", detail: `/canary answered ${r.status}` };
-  const banner = CANARY_BANNERS.find((b) => r.text.includes(b));
+  const banner = CANARY_BANNERS.find((b) => r.text.includes(b.text));
   if (banner !== undefined) {
+    const why =
+      banner.result === "WARN"
+        ? "a CANARY_MODE setting"
+        : "the Canary stopped itself; a failed read shows it for one view, so re-run it once";
     return {
-      result: "WARN",
-      detail: `/canary shows "${banner}" in place of its form (docs/RUNBOOK.md, Canary levels)`,
+      result: banner.result,
+      detail: `/canary shows "${banner.text}" in place of its form: ${why} (docs/RUNBOOK.md, Canary levels)`,
     };
   }
   if (!r.text.includes("<textarea"))
@@ -824,7 +861,7 @@ async function nearaiRow(ctx) {
     return { result: "PASS", detail: `${body.detail}; ${note}` };
   return {
     result: "FAIL",
-    detail: `/api/health/nearai answered ${r.status} ${oneLine(body?.detail ?? r.text, 120)}: the Canary, Payables and the TEE card need NEAR AI Cloud`,
+    detail: `/api/health/nearai answered ${r.status} ${oneLine(body?.detail ?? r.text, 120)}: the Canary and Payables fail without NEAR AI Cloud, and the TEE card shows unavailable`,
   };
 }
 
