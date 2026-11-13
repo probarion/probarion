@@ -2670,19 +2670,24 @@ describe("the stylesheet", () => {
     expect(phone).toMatch(/\.rowNote {[^}]*display: inline-block;[^}]*width: 100%/);
   });
 
-  it("lets the left card of the ledger test end where its table ends, not at the verdict's height", () => {
-    expect(rule(".tamper > .sheet:first-child")).toContain("align-self: start");
-  });
-
-  it("keeps two lines free for the status line on phones, so the buttons below it hold still", () => {
-    const phone = site.slice(site.indexOf("@media (max-width: 620px)"));
-    expect(phone).toMatch(/\.sheetHead > span:last-child {[^}]*min-height: 3\.1em/);
-  });
-
-  it("stacks the status line under the title on the narrowest two-column cards, so a long one does not move the buttons", () => {
-    const block = "@media (min-width: 961px) and (max-width: 1100px)";
-    const narrow = site.slice(site.indexOf(block) + block.length);
-    expect(narrow).toMatch(/^[^@]*\.sheetHead {[^}]*flex-direction: column/);
+  it("lays the ledger test out on one grid of three columns, the edits and the ledger ending on one line", () => {
+    const tamper = text(WEB, "src", "components", "site", "tamper.module.css");
+    const of = (selector: string) => {
+      const at = tamper.indexOf(`\n${selector} {`);
+      expect(at, selector).toBeGreaterThanOrEqual(0);
+      return tamper.slice(at, tamper.indexOf("}", at));
+    };
+    expect(of(".grid")).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
+    expect(of(".bench")).toContain("align-items: stretch");
+    expect(of(".rail")).toContain("flex-direction: column");
+    expect(of(".ledger")).toContain("grid-column: 2 / -1");
+    // Restore and the two files sit at the foot of their columns.
+    expect(of(".restore")).toContain("margin-top: auto");
+    expect(of(".foot")).toContain("margin-top: auto");
+    // The buttons come before the status line now, so no rule holds lines free for it to keep them still.
+    expect(site).not.toContain(".sheetHead > span:last-child");
+    expect(site).not.toContain("@media (min-width: 961px) and (max-width: 1100px)");
+    expect(site).not.toMatch(/\.tamper\b/);
   });
 
   it("folds the header into the menu at 1100 px, and only the header", () => {
@@ -2764,11 +2769,12 @@ describe("colours", () => {
     }
   });
 
-  it("are read from tokens: site.module.css, head.module.css, journey.module.css and docs.module.css hold no literal colour", () => {
+  it("are read from tokens: site.module.css, head.module.css, journey.module.css, tamper.module.css and docs.module.css hold no literal colour", () => {
     for (const parts of [
       ["src", "components", "site", "site.module.css"],
       ["src", "components", "site", "head.module.css"],
       ["src", "components", "site", "journey.module.css"],
+      ["src", "components", "site", "tamper.module.css"],
       ["src", "components", "docs", "docs.module.css"],
     ]) {
       const module = text(WEB, ...parts);

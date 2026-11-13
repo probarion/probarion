@@ -990,15 +990,29 @@ export const RECORDED_RESULT: TamperResult = {
   checks: CHECK_IDS.map((id) => ({ id, status: "pass", detail: "" })),
 };
 
+/** The verifier the panel runs, as a file of the repository: it exports `runChecks` (test/site-tamper.test.ts). */
+export const VERIFIER_PATH = "packages/core/src/verify.ts";
+
+/** The two files under the ledger, each named by its role: the fixture the buttons edit, the verifier checking it. */
+export const TAMPER_EVIDENCE: readonly { label: string; path: string; href: string }[] = [
+  { label: "Fixture", path: FIXTURE_PATH, href: blob(FIXTURE_PATH) },
+  { label: "Verifier", path: VERIFIER_PATH, href: blob(VERIFIER_PATH) },
+];
+
 export const TAMPER_COPY = {
   eyebrow: "Verify a test ledger",
   title: "Change one field. Watch it break.",
   intro:
     "This is the real verifier from `@probarion/core`. It runs in your browser on a committed test fixture: five entries signed with test keys, not a live vault. It shows one thing: the verifier catches an edit that was not re-signed. Nothing leaves the page.",
+  /** Over the buttons. Each edit leaves the signatures as they were (applyTamper in lib/site/tamper.ts). */
+  editsTitle: "Try one edit",
+  editsNote: "Nothing is re-signed.",
   sheetTitle: "Signed ledger, test fixture",
   atRest: "As recorded",
   notRun: "Not run. The verifier did not finish",
   caption: "The five entries of the signed test ledger",
+  /** Over the verdict, the counts and the nine checks: the readout of the run the panel shows. */
+  resultTitle: "Verifier result",
   recorded: "Recorded result. Press a button to run the verifier yourself.",
   live: "Run in your browser just now.",
   restore: "Restore",

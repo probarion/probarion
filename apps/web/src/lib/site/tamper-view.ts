@@ -9,7 +9,10 @@ const STATUS_WORD: Readonly<Record<TamperCheck["status"], string>> = {
   unproven: "not proven",
 };
 
-/** One sentence, so that a live region reads it whole. */
+/**
+ * The counts, as one sentence: the line under PASS or FAIL whenever it says more than the plain verdict. The panel
+ * keeps "First broken entry: N" on one line when it renders it, so that a phone does not leave the number alone.
+ */
 export function resultSummary(result: Omit<TamperResult, "ok">, firstBroken: string): string {
   const counts = `${result.passed} passed, ${result.failed} failed, ${result.unproven} unproven`;
   return result.firstBroken === null ? counts : `${counts}. ${firstBroken} ${result.firstBroken}`;
@@ -24,7 +27,8 @@ const CUT = /covers (\d+) entries but the ledger has (\d+): entry \d+ and later 
  * The verdict in plain words, beside PASS or FAIL. It reads the verifier's result, not the button pressed, and names a
  * cause and an entry only when the verifier's own words name them: an entry whose body no longer gives the hash its
  * signature covers (check a or b), or one entry cut from the end that an anchor still counts (check c alone). Any other
- * result gets the counts. The verifier's own words go in the disclosure below the checks.
+ * result gets the counts, and the panel then shows them once. The verifier's own words go in the disclosure below the
+ * checks.
  */
 export function plainVerdict(result: Omit<TamperResult, "ok">, firstBroken: string): string {
   const failed = new Map(
@@ -56,18 +60,19 @@ export function offersNext(
   return shown.live && shown.result.failed > 0 && !notRun;
 }
 
-/** The disclosure that holds the counts and, for each check that did not pass, the verifier's own words. */
+/** The disclosure under the checks: for each check that did not pass, the verifier's own words. Counts are above. */
 export const VERIFIER_DETAIL = "Verifier detail";
 
 /**
- * The left card's status line. It carries the verdict word because on a phone the table sits between the buttons and
- * the verdict panel. Only that panel is a live region, so a screen reader hears the verdict once.
+ * The ledger's status line, in the head of the sheet after the buttons. It carries the verdict word because below
+ * 961px the table sits between the buttons and the verifier's result. Only that result is a live region, so a screen
+ * reader hears the verdict once.
  */
 export function statusLine(ok: boolean, what: string): string {
   return `${ok ? "PASS" : "FAIL"}. ${what}.`;
 }
 
-/** The same line when a press did not produce a result: the word beside the button must not be the old verdict. */
+/** The same line when a press did not produce a result: the word by the buttons must not be the old verdict. */
 export const notRunLine = (notRun: string): string => `${notRun}.`;
 
 /**

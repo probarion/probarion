@@ -1,0 +1,336 @@
+/*
+ * Change one field. Watch it break. (TamperTest.tsx, on the landing at #verify and on /proof). Two rows on one grid
+ * of three equal columns: the bench (the edits in column 1, the signed ledger they change across columns 2 and 3),
+ * then the readout (PASS or FAIL in column 1, its sentence across 2 and 3, then the nine checks a to i, three by
+ * three). The edit buttons, the verdict word and checks a, d and g share column 1. From 621 to 960px the bench stacks
+ * and the readout goes two by two; at 620px and under everything is one column, in the same order. The buttons, the
+ * sheet and the table are the page's own (site.module.css .act, .sheet, .table). One status system: a word in its
+ * tone colour (pass, fail, skipped, not proven, not run), no pills, no fills. Every colour is a token from
+ * app/globals.css. Nothing moves on scroll.
+ */
+
+.tamper {
+  --tamper-gap: clamp(24px, 2.6vw, 32px);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: var(--tamper-gap);
+}
+
+/* One small label for both parts: "Try one edit" and "Verifier result". */
+.kicker {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+
+/* The bench. The rail and the sheet end on one line: Restore sits at the rail's foot, as the files do in the sheet. */
+.bench {
+  align-items: stretch;
+}
+/* 17px down, so that the label sits on the line of the sheet's title (its 1px border and 16px of padding). */
+.rail {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-top: 17px;
+}
+.railNote {
+  margin-top: 2px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.edits {
+  display: grid;
+  gap: 16px;
+  margin: 20px 0;
+  padding: 0;
+  list-style: none;
+}
+/* A button, then what it does. The line is the button's description (aria-describedby). */
+.edit {
+  display: grid;
+  justify-items: start;
+  align-items: center;
+  gap: 6px 16px;
+  min-width: 0;
+}
+.editWhat {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.noScript {
+  margin-bottom: 20px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.restore {
+  margin-top: auto;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-line);
+}
+
+.ledger {
+  grid-column: 2 / -1;
+}
+.sheetTitle {
+  font-weight: 500;
+  color: var(--color-ink);
+}
+/* The evidence for the panel: two files, each a link with its role in words before it. */
+.foot {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin-top: auto;
+  padding: 14px 20px 16px;
+  border-top: 1px solid var(--color-line);
+  font-size: 14px;
+  line-height: 1.5;
+}
+/* Each pair spans both columns and shares them, so every link starts at the wider label. Without subgrid, it stacks. */
+.footRow {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  min-width: 0;
+}
+.foot dt {
+  color: var(--color-mute);
+}
+.foot dd {
+  min-width: 0;
+}
+.foot dd code {
+  font-size: 13px;
+}
+
+/* The readout: the only live region. */
+.readout {
+  margin-top: clamp(32px, 4vw, 48px);
+  padding-top: clamp(24px, 3vw, 32px);
+  border-top: 1px solid var(--color-line);
+}
+.verdict {
+  row-gap: 6px;
+  align-items: baseline;
+  margin-top: 10px;
+}
+.word {
+  grid-column: 1;
+  font-weight: 300;
+  font-size: clamp(36px, 3.6vw, 48px);
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+.plain {
+  grid-column: 2 / -1;
+  max-width: var(--container-measure);
+  font-size: clamp(19px, 1.7vw, 22px);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.counts {
+  grid-column: 1;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+  font-variant-numeric: tabular-nums;
+}
+/* "First broken entry: 2" stays on one line, so the number never sits alone. */
+.keep {
+  white-space: nowrap;
+}
+.note {
+  grid-column: 2 / -1;
+  max-width: var(--container-measure);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+/* Under the verdict, outside the block read whole: the next step after a caught edit, or a press that did not end. */
+.after {
+  row-gap: 6px;
+  margin-top: 6px;
+}
+.next {
+  grid-column: 2 / -1;
+  font-size: 16px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.runError {
+  grid-column: 2 / -1;
+  max-width: var(--container-measure);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-bad);
+}
+
+/* The nine checks, a to i across: a b c, d e f, g h i. A rule above each, no boxes. */
+.checks {
+  margin-top: 28px;
+  padding: 0;
+  list-style: none;
+}
+.check {
+  display: grid;
+  grid-template-columns: 1.3em minmax(0, 1fr) auto;
+  align-items: baseline;
+  align-content: start;
+  gap: 4px 8px;
+  min-width: 0;
+  padding: 14px 0 20px;
+  border-top: 1px solid var(--color-line);
+  font-size: 16px;
+  line-height: 1.5;
+}
+.checkId {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--color-mute);
+}
+.checkLabel {
+  min-width: 0;
+  font-weight: 500;
+}
+.checkWord {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ok);
+}
+/* What the check means, in one line, the same whether it passed or failed. */
+.checkHint {
+  grid-column: 2 / -1;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+/* What a passing check leaves undone, in the partial tone, so that it does not read as part of the hint. */
+.caveat {
+  grid-column: 2 / -1;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-wait);
+}
+/* A check that did not pass: a heavier red rule, and its id, name and word in red. The word says it without colour. */
+.checkBad {
+  padding-top: 13px;
+  border-top: 2px solid var(--color-bad);
+}
+.checkBad .checkId,
+.checkBad .checkLabel,
+.checkBad .checkWord {
+  color: var(--color-bad);
+}
+
+/* The verifier's own words, closed until asked for: the plain verdict above says what they mean. */
+.detail {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-line);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.detail summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--color-mute);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.detail ul {
+  display: grid;
+  gap: 8px;
+  max-width: 56em;
+  margin-top: 12px;
+  padding: 0;
+  list-style: none;
+}
+.detail li {
+  display: grid;
+  grid-template-columns: 1.3em minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.why {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--color-bad);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Where column 1 is narrower than the longest counts line (about 345px), the counts go under the sentence, so that a
+ * wrapped line does not push the run note and the next step apart.
+ */
+@media (max-width: 1200px) {
+  .counts {
+    grid-column: 2 / -1;
+  }
+}
+
+/*
+ * Tablet: the bench stacks, each edit on one row (the button, then what it does: the list holds the two columns, so
+ * every line starts at the widest button), and the readout goes two by two. Without subgrid, a button sits over its
+ * line, as on a phone.
+ */
+@media (max-width: 960px) {
+  .bench {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 24px;
+  }
+  .rail,
+  .ledger {
+    grid-column: 1;
+  }
+  .rail {
+    padding-top: 0;
+  }
+  .edits {
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 20px;
+  }
+  .edit {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
+  .verdict,
+  .after,
+  .checks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Phone: one column, in the same order as on a desktop. */
+@media (max-width: 620px) {
+  .edits,
+  .edit,
+  .verdict,
+  .after,
+  .checks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .word,
+  .plain,
+  .counts,
+  .note,
+  .next,
+  .runError {
+    grid-column: 1 / -1;
+  }
+  /* The label over its link; 8px between the two pairs. */
+  .foot {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px 0;
+  }
+}

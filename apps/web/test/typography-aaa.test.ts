@@ -28,6 +28,7 @@ const MODULES: Readonly<Record<string, string>> = {
   console: "src/components/site/console.module.css",
   hero: "src/components/site/hero.module.css",
   compare: "src/components/site/compare.module.css",
+  tamper: "src/components/site/tamper.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -464,7 +465,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["site", ".site"],
       ["site", ".lede"],
       ["site", ".proofIntro"],
-      ["site", ".checkHint"],
+      ["tamper", ".checkHint"],
+      ["tamper", ".plain"],
       ["canary", ".lede"],
       ["canary", ".tip"],
       ["docs", ".prose"],
@@ -564,6 +566,10 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["console", ".actionsText"],
       ["hero", ".cap"],
       ["hero", ".steps"],
+      // The ledger test: the verdict's sentence, the run note and a press that did not finish.
+      ["tamper", ".plain"],
+      ["tamper", ".note"],
+      ["tamper", ".runError"],
       ["site", ".proofIntro"],
       ["compare", ".moreLink"],
       ["compare", ".moreNote"],

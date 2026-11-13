@@ -878,16 +878,7 @@ a.netPill:hover {
   color: var(--color-band-mute);
 }
 
-/* The ledger test */
-.tamper {
-  display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-  gap: 14px;
-}
-/* Its height is its own, not the verdict's, so that its foot follows the table. */
-.tamper > .sheet:first-child {
-  align-self: start;
-}
+/* The ledger test (TamperTest.tsx): the sheet, its table and the buttons. The layout is in tamper.module.css. */
 .sheet {
   background: var(--color-surface);
   border: 1px solid var(--color-line);
@@ -900,9 +891,9 @@ a.netPill:hover {
 .sheetHead {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 8px 16px;
+  gap: 2px 16px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--color-line);
   font-size: 14px;
@@ -978,30 +969,6 @@ a.netPill:hover {
   color: var(--color-bad);
   text-decoration: none;
 }
-/* Above the table, so the buttons stay where they are when the verdict panel beside them grows. */
-.sheetActions {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--color-line);
-  display: grid;
-  gap: 12px;
-}
-.sheetFoot {
-  margin-top: auto;
-  padding: 16px 20px;
-  border-top: 1px solid var(--color-line);
-}
-.sheetFoot code {
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-.source {
-  color: var(--color-mute);
-}
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 .act {
   position: relative;
   font-size: 15px;
@@ -1038,132 +1005,11 @@ a.netPill:hover {
   background: transparent;
   color: var(--color-ink);
 }
-/* Dimmed, and still legible: about 6:1 for the ink pill's label (5.97:1 over a white card). */
+/* Dimmed, and still legible: about 6:1 for the ink pill's label, over the paper (6.07:1) as over a white card. */
 .act[aria-disabled="true"] {
   opacity: 0.65;
   cursor: not-allowed;
   transform: none;
-}
-.verdict {
-  padding: 18px 20px 6px;
-}
-.verdict b {
-  display: block;
-  font-weight: 300;
-  font-size: clamp(34px, 3.4vw, 46px);
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-}
-.verdict span {
-  display: block;
-  margin-top: 6px;
-  font-size: 14px;
-  color: var(--color-mute);
-}
-.checks {
-  margin: 0;
-  padding: 8px 20px 18px;
-  display: grid;
-  list-style: none;
-}
-.checks > li {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  gap: 2px 8px;
-  align-items: baseline;
-  padding-block: 6px;
-  font-size: 14.5px;
-  border-top: 1px solid var(--color-line);
-}
-.checks > li:first-child {
-  border-top: 0;
-}
-.checkId {
-  font-family: var(--font-mono);
-  color: var(--color-mute);
-}
-.checkWord {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-ok);
-}
-.checkBad {
-  color: var(--color-bad);
-}
-.checkBad .checkWord {
-  color: var(--color-bad);
-}
-/* What the check means, in one line, the same whether it passed or failed. */
-.checkHint {
-  grid-column: 2 / -1;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-mute);
-}
-.why {
-  grid-column: 2 / -1;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--color-bad);
-  overflow-wrap: anywhere;
-}
-.caveat {
-  grid-column: 2 / -1;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--color-mute);
-  overflow-wrap: anywhere;
-}
-/* The verifier's own words, closed until asked for: the plain verdict above says what they mean. */
-.detail {
-  margin: 0 20px 14px;
-  font-size: 14px;
-}
-.detail summary {
-  cursor: pointer;
-  width: fit-content;
-  color: var(--color-mute);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-thickness: 1px;
-}
-.detail p {
-  margin-top: 8px;
-  max-width: var(--container-measure);
-  color: var(--color-mute);
-}
-.detail ul {
-  margin: 6px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-  list-style: none;
-}
-.detail li {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  gap: 8px;
-  align-items: baseline;
-}
-.sheetNote {
-  max-width: var(--container-measure);
-  padding: 0 20px 18px;
-  font-size: 14px;
-  color: var(--color-mute);
-}
-/* After a run the verifier failed: where to go next. */
-.sheetNext {
-  margin-top: -6px;
-  padding: 0 20px 18px;
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-.sheetError {
-  padding: 0 20px 18px;
-  font-size: 14px;
-  color: var(--color-bad);
 }
 
 /* On chain */
@@ -1686,8 +1532,7 @@ a.netPill:hover {
   .vs {
     grid-template-columns: 1fr;
   }
-  .bandGrid,
-  .tamper {
+  .bandGrid {
     grid-template-columns: minmax(0, 1fr);
   }
   .numbers {
@@ -1728,14 +1573,6 @@ a.netPill:hover {
     font-size: 15px;
     text-align: right;
     text-wrap: balance;
-  }
-}
-/* The narrowest two-column cards: the longest status line would wrap below the title and move the buttons. */
-@media (min-width: 961px) and (max-width: 1100px) {
-  .sheetHead {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
   }
 }
 @media (max-width: 620px) {
@@ -1815,14 +1652,11 @@ a.netPill:hover {
     padding-inline: 14px;
     font-size: 14px;
   }
-  /* The longest summary takes two lines here. They are kept free, so that the buttons below do not move. */
+  /* The ledger test: the status line goes under the sheet's title. */
   .sheetHead {
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
-  }
-  .sheetHead > span:last-child {
-    min-height: 3.1em;
   }
   .table th,
   .table td {
