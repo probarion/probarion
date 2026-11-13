@@ -129,11 +129,11 @@ With no ledger, the vault has no ledger key or anchors yet. So `verify --vault v
 - **You build the agent.** The [developer quickstart](/docs/start/developer-quickstart) connects your agent to a testnet vault with the TypeScript SDK and runs one payment cycle with `process()`.
 - **You want to check the claims.** [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes) runs the verifier and reads the testnet vault with no wallet, key or account.
 
-The two quickstarts are Preview: their flows have not yet run end to end with real wallets.
+The two quickstarts are Preview: their own steps have not yet been run end to end as written.
 
 ## What this does not do
 
 - The model cannot widen a mandate, and the agent cannot pick a payee.
 - Code cannot pay past the contract: the vault refuses any payment outside its mandate.
-- The smoke run proves the contract path, not the SDK's ledger on a live vault, which is Preview.
+- The smoke run proves the contract path, not the SDK's ledger. The ledger has run on live vaults since: on the testnet demo vault, through Payables, and on the mainnet vault on 2026-11-13, through the owner's own kit ([the live verify](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)).
 - `verify --offline` checks a saved [snapshot](/docs/resources/glossary#snapshot), one file with a ledger and the vault's chain data, against itself: a snapshot you did not take proves nothing about the chain. `verify --vault` reads the chain itself.

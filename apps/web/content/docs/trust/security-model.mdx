@@ -43,11 +43,11 @@ This table follows the key table of [SECURITY.md](https://github.com/probarion/p
 
 **No owner or approver key.** The owner's and the approvers' full-access keys are never on Probarion's servers, so Probarion cannot change your vault, withdraw from it or approve its spends.
 
-**Sealed agent and ledger keys, for keys the console made.** When the console's Keys tab makes a vault's agent and ledger keys, Probarion's server generates them and stores each secret sealed with libsodium's secretbox, under a master key held outside the database. Payables, the console's reference agent, signs with them, and so does the Canary, Probarion's own public-challenge vault, which is Live on testnet. The owner adds each key to the vault with its public key only. The Keys tab is Preview, and Payables is Live on testnet. A key you make with `agent keygen` stays with you, and Probarion never sees it.
+**Sealed agent and ledger keys, for keys the console made.** When the console's Keys tab makes a vault's agent and ledger keys, Probarion's server generates them and stores each secret sealed with libsodium's secretbox, under a master key held outside the database. Payables, the console's reference agent, signs with them, and so does the Canary, Probarion's own public-challenge vault, which is Live on testnet. The owner adds each key to the vault with its public key only. The Keys tab and Payables are Live on testnet. A key you make with `agent keygen` stays with you, and Probarion never sees it.
 
 An invoice that Payables cannot pay on its own, because no attested model confirmed its amount, waits in the Payables tab for the owner's Confirm. Confirm is a NEP-413 signature from the owner's wallet, not a transaction, and the server checks that a full-access key of the vault's owner signed it before it pays.
 
-**A mint-only faucet key, testnet only.** The server signs the Top-up tab's test-USDC mint as `probarion.testnet`, with a function-call key that may call only `mint` on testnet USDC, and it refuses to sign when the key on chain allows anything more. That key cannot call a vault. The faucet is Preview.
+**A mint-only faucet key, testnet only.** The server signs the Top-up tab's test-USDC mint as `probarion.testnet`, with a function-call key that may call only `mint` on testnet USDC, and it refuses to sign when the key on chain allows anything more. That key cannot call a vault. The faucet is Live on testnet: on 2026-11-09 it minted 25 test USDC into the testnet demo vault.
 
 ## What the vault enforces
 
