@@ -249,7 +249,10 @@ function Verify({ view }: { view: VerifyView }) {
   );
 }
 
-/** The vault's two transactions of 2026-11-11, beside the newest payout: complementary to it, so an aside. */
+/**
+ * The vault's two transactions of 2026-11-11: beside a lone payout, or after the folds of the earlier ones, so the page
+ * goes back in time. Complementary to the payouts, so an aside.
+ */
 function Earlier() {
   const E = C.earlier;
   return (
@@ -328,7 +331,7 @@ function PayoutBlock({ run, many }: { run: RecordedRun; many: boolean }) {
       <h3 className={many ? m.payoutTitle : "sr-only"} id={titleId}>
         {stoneView(run.payout).aria}
       </h3>
-      <PayoutBody run={run} aside />
+      <PayoutBody run={run} aside={!many} />
     </article>
   );
 }
@@ -392,11 +395,16 @@ export function MainnetPayout() {
         <div className={m.payouts}>
           <PayoutBlock run={newest} many={earlier.length > 0} />
           {earlier.length > 0 ? (
-            <div className={m.folds}>
-              {earlier.map((run) => (
-                <FoldedPayout key={run.payout.id} run={run} />
-              ))}
-            </div>
+            <>
+              <div className={m.folds}>
+                {earlier.map((run) => (
+                  <FoldedPayout key={run.payout.id} run={run} />
+                ))}
+              </div>
+              <div className={m.earlierAfter}>
+                <Earlier />
+              </div>
+            </>
           ) : null}
         </div>
       </div>

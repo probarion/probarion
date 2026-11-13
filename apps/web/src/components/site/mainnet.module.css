@@ -58,6 +58,10 @@
 .fold {
   min-width: 0;
 }
+/* With earlier payouts, the transactions of 2026-11-11 come after their folds, at the width of the verdict column. */
+.earlierAfter {
+  max-width: 520px;
+}
 .foldSummary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

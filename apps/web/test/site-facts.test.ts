@@ -2978,6 +2978,19 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     expect(words).not.toMatch(/coming soon|placeholder|\bTBD\b/i);
   });
 
+  it("tells the transactions of 2026-11-11 once: beside a lone payout, or after the folds, so the page goes back in time", () => {
+    const aside =
+      section.match(/<aside class="[^"]*_earlier_[^"]*" aria-labelledby="mainnet-earlier">/g) ?? [];
+    expect(aside).toHaveLength(1);
+    const at = section.indexOf('aria-labelledby="mainnet-earlier"');
+    expect(visibleText(section.slice(at))).toContain(C.earlier.title);
+    if (RECORDED_RUNS.length > 1) {
+      // In no payout's article, and after the last fold.
+      for (const a of articles) expect(a.html, a.id).not.toContain("mainnet-earlier");
+      expect(at).toBeGreaterThan(section.lastIndexOf("</details>"));
+    }
+  });
+
   it("shows the seven checks at rest, the button for scripts and a line for no script, in every payout", () => {
     for (const run of RECORDED_RUNS) {
       const at = articleOf(run.payout);
@@ -3174,10 +3187,10 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     expect(section.match(/class="[^"]*_sealCoin_/g)?.length).toBe(
       PAYOUTS.reduce((n, p) => n + p.seals.length, 0),
     );
-    // The vault's transactions of 2026-11-11 sit once, beside the newest payout.
-    const newest = articleOf(ORDER[0] as Payout);
+    // The vault's transactions of 2026-11-11 sit once: beside a lone payout, or after the folds.
+    const earlierAt = section.indexOf('aria-labelledby="mainnet-earlier"');
     for (const row of C.earlier.rows) {
-      expect(newest).toContain(`href="${row.tx.url}"`);
+      expect(section.indexOf(`href="${row.tx.url}"`)).toBeGreaterThan(earlierAt);
       expect(section.split(`href="${row.tx.url}"`).length - 1).toBe(1);
     }
   });

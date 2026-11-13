@@ -87,7 +87,8 @@ The software is an unaudited beta.
   does not list, since the section calls it a test to the owner's own wallet. The section shows both Base payouts of
   2026-11-13, the newest at the top: spend 3, proposed by an attested model and allowed by the code rules, is open,
   and spend 2 follows folded in a closed `<details>` whose summary gives its amounts, how it was decided and a hint
-  to show its seven checks and its ledger. The fold opens with no JavaScript, and each payout's own **Read the chain
+  to show its seven checks and its ledger. The vault's two transactions of 2026-11-11 come after the fold, so the
+  section goes back in time. The fold opens with no JavaScript, and each payout's own **Read the chain
   now** reads its transactions again in the browser. The card's line on attested decisions counts the decisions in
   the ledger that payout's verifier run read, and its pronouns agree with the count. The trail's summary counts the
   entries of the ledger file it links and the anchors on chain, as that verifier run read them. Each payout's own
