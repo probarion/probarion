@@ -114,6 +114,14 @@ export function payeeHintContradiction(hint: PayeeHint | null, payee: Payee): st
   // also a valid Base or Solana address (an ETH-implicit 0x and 40 hex account, for example) names
   // that address too, so given as an address it still contradicts. A chain alone, with no account
   // or address, still contradicts.
+  //
+  // For a Base or Solana payee, a model may put the mandate's own asset account (payee.asset, the
+  // token's NEAR Intents id) in near_account next to the right address: two attested models did on
+  // NEAR mainnet on 2026-11-13 (ledger entries 0 and 1 of v0.probarion.near). That account is the
+  // token the mandate pays in, not a payee, so it names no other payee. The untrimmed value must
+  // equal payee.asset in every character; any other near_account, the asset in another case or
+  // with spaces included, still contradicts. The chain and address checks are unchanged, so the
+  // asset given as the address contradicts too.
   if (payee.type === "near") {
     if (near !== "" && near !== payee.account_id) {
       return `invoice names NEAR account ${near}; the mandate pays ${payee.account_id}`;
@@ -128,7 +136,7 @@ export function payeeHintContradiction(hint: PayeeHint | null, payee: Payee): st
     }
     return null;
   }
-  if (near !== "")
+  if (near !== "" && hint.near_account !== payee.asset)
     return `invoice names NEAR account ${near}; the mandate pays ${payee.chain}:${payee.address}`;
   if (chain !== undefined && chain !== payee.chain) {
     return `invoice names chain ${chain}; the mandate pays on ${payee.chain}`;

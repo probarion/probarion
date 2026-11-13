@@ -599,6 +599,38 @@ const cases: Case[] = [
     rule: ["mandate.payee_mismatch", "refuse"],
   },
   {
+    name: "Base mandate, the model names the mandate's own asset account next to its address",
+    input: () =>
+      intentsInput({
+        proposal: proposal({
+          mandate_id: 2,
+          payee_hint: {
+            near_account: "base-usdc.probarion.testnet",
+            chain: "base",
+            address: BASE_ADDRESS,
+          },
+        }),
+      }),
+    verdict: "allow",
+    rule: ["mandate.payee_mismatch", "pass"],
+  },
+  {
+    name: "Base mandate, the model names another asset account next to its address",
+    input: () =>
+      intentsInput({
+        proposal: proposal({
+          mandate_id: 2,
+          payee_hint: {
+            near_account: "sol-usdc.probarion.testnet",
+            chain: "base",
+            address: BASE_ADDRESS,
+          },
+        }),
+      }),
+    verdict: "refuse",
+    rule: ["mandate.payee_mismatch", "refuse"],
+  },
+  {
     name: "over per-payment cap",
     input: () =>
       input({
@@ -1533,6 +1565,132 @@ describe("helpers", () => {
     expect(
       payeeHintContradiction({ chain: "base", address: "vendor.testnet" }, BASE_MANDATE.payee),
     ).toBe(`invoice names address vendor.testnet; the mandate pays ${BASE_ADDRESS}`);
+  });
+
+  it("takes a Base or Solana mandate's own asset account in near_account, compared exactly", () => {
+    const base = BASE_MANDATE.payee;
+    if (base.type !== "intents") throw new Error("fixture: BASE_MANDATE pays through intents");
+    const asset = base.asset; // base-usdc.probarion.testnet
+    const pays = `the mandate pays base:${BASE_ADDRESS}`;
+    // The mandate's own asset names no other payee, with or without the rest of the hint.
+    expect(
+      payeeHintContradiction({ near_account: asset, chain: "base", address: BASE_ADDRESS }, base),
+    ).toBeNull();
+    expect(
+      payeeHintContradiction(
+        { near_account: asset, chain: "base", address: BASE_ADDRESS.toLowerCase(), name: "Vendor" },
+        base,
+      ),
+    ).toBeNull();
+    expect(payeeHintContradiction({ near_account: asset }, base)).toBeNull();
+    expect(payeeHintContradiction({ near_account: asset, chain: "base" }, base)).toBeNull();
+    // Another asset account, another NEAR account, or the asset in another case or with spaces:
+    // each is another value, so it still contradicts.
+    for (const other of [
+      "sol-usdc.probarion.testnet",
+      "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+      "vendor.testnet",
+      "probarion.testnet",
+      "Base-USDC.probarion.testnet",
+      "BASE-USDC.PROBARION.TESTNET",
+      ` ${asset}`,
+      `${asset} `,
+      ` ${asset} `,
+      `${asset}\n`,
+    ]) {
+      expect(
+        payeeHintContradiction({ near_account: other, chain: "base", address: BASE_ADDRESS }, base),
+        JSON.stringify(other),
+      ).toBe(`invoice names NEAR account ${other.trim()}; ${pays}`);
+    }
+    // The asset given as the address still names another address.
+    expect(payeeHintContradiction({ chain: "base", address: asset }, base)).toBe(
+      `invoice names address ${asset}; the mandate pays ${BASE_ADDRESS}`,
+    );
+    expect(
+      payeeHintContradiction({ near_account: asset, chain: "base", address: asset }, base),
+    ).toBe(`invoice names address ${asset}; the mandate pays ${BASE_ADDRESS}`);
+    // The chain and address checks stay as they were.
+    expect(
+      payeeHintContradiction({ near_account: asset, chain: "solana", address: BASE_ADDRESS }, base),
+    ).toBe("invoice names chain solana; the mandate pays on base");
+    expect(
+      payeeHintContradiction(
+        {
+          near_account: asset,
+          chain: "base",
+          address: "0x000000000000000000000000000000000000dEaD",
+        },
+        base,
+      ),
+    ).toBe(
+      `invoice names address 0x000000000000000000000000000000000000dEaD; the mandate pays ${BASE_ADDRESS}`,
+    );
+
+    // A Solana mandate takes its own asset account, and refuses the Base one.
+    const SOL = "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV";
+    const sol = {
+      type: "intents",
+      chain: "solana",
+      address: SOL,
+      asset: "sol-usdc.probarion.testnet",
+    } as const;
+    expect(
+      payeeHintContradiction(
+        { near_account: "sol-usdc.probarion.testnet", chain: "solana", address: SOL },
+        sol,
+      ),
+    ).toBeNull();
+    expect(
+      payeeHintContradiction({ near_account: asset, chain: "solana", address: SOL }, sol),
+    ).toBe(`invoice names NEAR account ${asset}; the mandate pays solana:${SOL}`);
+    expect(
+      payeeHintContradiction(
+        { near_account: "sol-usdc.probarion.testnet", chain: "base", address: SOL },
+        sol,
+      ),
+    ).toBe("invoice names chain base; the mandate pays on solana");
+
+    // A NEAR mandate is unchanged: an asset account in near_account is another NEAR account.
+    expect(payeeHintContradiction({ near_account: asset }, mandate().payee)).toBe(
+      `invoice names NEAR account ${asset}; the mandate pays vendor.testnet`,
+    );
+    expect(
+      payeeHintContradiction(
+        { near_account: asset, chain: "base", address: BASE_ADDRESS },
+        mandate().payee,
+      ),
+    ).toBe(`invoice names NEAR account ${asset}; the mandate pays vendor.testnet`);
+  });
+
+  it("takes the asset account from the invoice hint and the model hint alike in decide()", () => {
+    const own = { near_account: "base-usdc.probarion.testnet", chain: "base" as const };
+    for (const where of ["invoice", "model"] as const) {
+      const hint = { ...own, address: BASE_ADDRESS };
+      const i =
+        where === "invoice"
+          ? intentsInput({
+              invoice: baseInvoice({ purpose_hash: P2, po_ref: "PO-2002", payee_hint: hint }),
+            })
+          : intentsInput({ proposal: proposal({ mandate_id: 2, payee_hint: hint }) });
+      const decision = decide(i);
+      expect(decision.verdict, where).toBe("allow");
+      expect(rule(decision.rules, "mandate.payee_mismatch"), where).toEqual({
+        id: "mandate.payee_mismatch",
+        outcome: "pass",
+        detail: `destination is the mandate payee base:${BASE_ADDRESS} (base-usdc.probarion.testnet)`,
+      });
+      const other = { ...hint, near_account: "vendor.testnet" };
+      const refused = decide(
+        where === "invoice"
+          ? intentsInput({
+              invoice: baseInvoice({ purpose_hash: P2, po_ref: "PO-2002", payee_hint: other }),
+            })
+          : intentsInput({ proposal: proposal({ mandate_id: 2, payee_hint: other }) }),
+      );
+      expect(refused.verdict, where).toBe("refuse");
+      expect(rule(refused.rules, "mandate.payee_mismatch")?.outcome, where).toBe("refuse");
+    }
   });
 
   it("describes payees", () => {

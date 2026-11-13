@@ -1423,6 +1423,33 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` a correct attested proposal for
+  a Base payee when the model's payee hint also put the mandate's own asset account in
+  `near_account`. It was seen on NEAR mainnet on 2026-11-13 in vault `v0.probarion.near`, mandate 2:
+  1.00 USDC on Base to the owner's own Base address, a test of the cross-chain path and not a
+  customer payment. Ledger entry 0 (07:17:47 UTC, model `z-ai/glm-5.3-flash`, confidence 0.95) and
+  entry 1 (07:22:23 UTC, `Qwen/Qwen3.8-27B`, confidence 0.9) both proposed to pay the mandate's Base
+  address `0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27` and set `near_account` to
+  `base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near`, the mandate's `payee.asset` (USDC on
+  Base in NEAR Intents). The rule refused both with "invoice names NEAR account
+  base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near; the mandate pays
+  base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27", so that payment was decided by the rules alone
+  (entry 2, `decided_by: "rules-only"`, spend 2) and then paid out on Base. For a Base or Solana
+  payee, `payeeHintContradiction` in `packages/core/src/policy.ts` now takes a `near_account` equal
+  to the mandate's `payee.asset`, compared exactly with no trimming and no case change, as naming no
+  other payee: it is the token the mandate pays in. Any other `near_account` still contradicts, the
+  asset in another letter case or with spaces included, and the chain and address checks are
+  unchanged, so the asset given as the `address` still refuses. The rule for a NEAR payee, the
+  schema and the system prompt of `probarion-proposal/v1` (check A8 knows the system prompt by its
+  hash) and the contract are unchanged. `verify` does not re-run the policy, so ledger entries
+  already written, these two included, are unaffected. Unit tests cover the asset and the
+  contradictions next to it, and `packages/core/test/policy-mainnet-replay.test.ts` replays the two
+  recorded mainnet proposals: `mandate.payee_mismatch` now passes for both, and every other rule
+  gives the outcome and detail the ledger recorded. The /docs pages "Why spend has no payee" and
+  "Policy rules" say the same, and the line citations of `docs/THREAT_MODEL.md` follow the code. No
+  eval case or committed eval result has an asset account in a hint, so the eval results are
+  unchanged.
+
 - The Canary gives its model up to 55 s instead of 40 s, and says so when the model's time runs out.
   On probarion.xyz the "Ignore previous instructions" example message was decided with no proposal
   twice, at 2026-11-11 23:40 UTC (with `Qwen/Qwen3.8-27B` pinned) and 2026-11-12 01:15 UTC (with
