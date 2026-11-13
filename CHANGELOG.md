@@ -15,15 +15,22 @@ The software is an unaudited beta.
 
 ### Added
 
-- `JUDGES.md`, a two-minute page for judges and screeners: the mechanism in one sentence, three links to open (the
-  live TEE check, the demo vault's proof page and the mainnet transactions of 2026-11-11), `pnpm judge` with the line
-  its offline quick run printed on 2026-11-13, what is proven with its evidence and transactions, assume breach (a
-  fooled model, the software inside the TEE, the agent host and its keys) and why the TEE verdict is not enforced on
-  chain, the worst case with the agent key public, priced on `v0.probarion.near` by view calls on 2026-11-13, who it
-  is for as a labeled hypothesis with the unit costs the repository and the chain record, and what is not done yet. A
-  marked line waits for the mainnet Base payout, which has not run. The README gets a "For judges: start here" block
-  of 11 lines under its header and a link in its top row. `scripts/check-claims.mjs` checks `JUDGES.md` as it checks
-  the README and `AGENTS.md` (links, tx hashes, accounts, paths and commands, facts), and a test holds it to that.
+- `JUDGES.md`, a page for judges and screeners whose first part takes two minutes: the mechanism in one sentence
+  (the model proposes, code rules decide, the contract checks again), three links to open (the demo vault's proof
+  page with its live TEE check, the landing page's live `check_spend` and the mainnet transactions of 2026-11-11),
+  `pnpm judge` with the line its offline quick run printed at commit 6f7444b on 2026-11-13, what is proven with its
+  evidence and transactions, assume breach (a fooled model, the software inside the TEE, the agent key, the agent
+  host and its keys) and why the TEE verdict is not enforced on chain, the worst case with the agent key public,
+  priced on `v0.probarion.near` by view calls on 2026-11-13, who it is for as a labeled hypothesis with the unit
+  costs the repository and the chain record, and what is not done yet. A marked spot (an HTML comment) waits for the
+  mainnet Base payout, which has not run. The README gets a "For judges: start here" block of 11 lines under its
+  header and a link in its top row, and `AGENTS.md` links the page. `scripts/check-claims.mjs` checks `JUDGES.md` as
+  it checks the README and `AGENTS.md` (links, tx hashes, accounts, paths and commands, facts), and a test holds it
+  to that.
+- `docs/evidence/mainnet-v0/gas-2026-11-13.json`: the gas and NEAR burned by the two agent-key spends of
+  `v0.probarion.near` on 2026-11-11, per outcome and summed (8.3546 Tgas and 0.000769 NEAR for the paid spend, 1.8723
+  Tgas and 0.000165 NEAR for the `NoMandate` refusal), read with `EXPERIMENTAL_tx_status` from an archival node on
+  2026-11-13. `JUDGES.md` cites it for gas per spend.
 
 - `probarion verify --invoice <file>` (repeatable) and `--invoices <dir>` (every `.txt` file of a
   folder) run A8 with invoice texts the auditor holds, live or with `--offline`, in the CLI built from

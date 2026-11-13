@@ -2,6 +2,8 @@
 
 Probarion lets an AI agent pay people and services only inside mandates a human signed. This file is for AI agents and humans who build, verify or review this repository. It grows as the build progresses.
 
+For judges, [JUDGES.md](JUDGES.md) has the mechanism, what is proven with its evidence, assume breach, the worst case and what is not done yet.
+
 ## Judge or evaluate in one command
 
 With Node.js 24 and pnpm 10, from a clone, run this first. It is read-only: it signs and sends nothing, and no step gets a key.

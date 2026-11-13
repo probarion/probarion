@@ -23,11 +23,11 @@
 
 > [!TIP]
 > **For judges: start here.** The agent's NEAR key can call `spend` and nothing else, and `spend` takes no address, so
-> the vault contract pays the payee of a mandate the owner signed, within its caps; a private model in a TEE proposes
-> and does not decide; and every decision Probarion's code makes is signed into a hash-chained ledger, anchored on the
-> vault once it has a ledger key. Open the
-> [live TEE check](https://probarion.xyz/proof/demo.vaults.probarion.testnet#tee-check), the
-> [demo vault's proof page](https://probarion.xyz/proof/demo.vaults.probarion.testnet) and the mainnet transactions of
+> the vault contract pays the payee of a mandate the owner signed, within its caps; a private model in a TEE proposes,
+> code rules decide and the contract checks again; and every decision Probarion's code makes is signed into a
+> hash-chained ledger, anchored on the vault once it has a ledger key. Open the
+> [demo vault's proof page](https://probarion.xyz/proof/demo.vaults.probarion.testnet) (press **Check the TEE now**),
+> the landing page's [live `check_spend`](https://probarion.xyz/#try) and the mainnet transactions of
 > 2026-11-11: [1 USDC paid](https://nearblocks.io/txns/22oqhgruo7JqdpPg5Cb2ts25mLK2fto8y1YAxNA56ieE) and
 > [a spend refused with `PROBARION:NoMandate`](https://nearblocks.io/txns/2Dabq4uMh9VvttH3uj85samfYoX2wbQheADHS96AtwYh).
 > Then, in a clone, run `pnpm install --frozen-lockfile` and `pnpm judge --offline --quick`. What is proven and what
