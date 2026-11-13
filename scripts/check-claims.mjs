@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Checks that README.md (and AGENTS.md) claim only what this repository records.
+// Checks that README.md (and AGENTS.md and JUDGES.md) claim only what this repository records.
 //
 // It runs straight after `git clone`: Node 20 or newer, built-in modules only, no install, no build
 // and, unless --online is given, no network.
@@ -15,7 +15,7 @@
 // checker could not run, or with --online an endpoint did not answer, so the checks that needed it
 // stayed unchecked (each is listed; the others still ran).
 //
-// Offline checks, over README.md and AGENTS.md (links also over SECURITY.md, CONTRIBUTING.md and the
+// Offline checks, over README.md, AGENTS.md and JUDGES.md (links also over SECURITY.md, CONTRIBUTING.md and the
 // Markdown files under docs/evidence):
 //   links     each relative link or image resolves to a file of the repository (git's file list, so
 //             case matters as on GitHub), each #anchor to a heading (GitHub's slug) and each #Lnn to a
@@ -58,7 +58,7 @@ import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CLAIM_DOCS = ["README.md", "AGENTS.md"];
+const CLAIM_DOCS = ["README.md", "AGENTS.md", "JUDGES.md"];
 const LINK_ONLY_DOCS = ["SECURITY.md", "CONTRIBUTING.md"];
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

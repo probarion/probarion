@@ -677,6 +677,21 @@ describe("the real repository", () => {
   const withChange = async (overrides) =>
     problems(await checkClaims({ root: ROOT, overrides })).filter((p) => !isKnown(p));
 
+  test("checks JUDGES.md as it checks the README: an unrecorded tx and an unknown account fail", async () => {
+    const judges = readFileSync(join(ROOT, "JUDGES.md"), "utf8");
+    const got = await withChange({
+      "JUDGES.md": `${judges}\nPaid to \`nobody-recorded.near\` in [a tx](https://nearblocks.io/txns/${UNRECORDED}).\n`,
+    });
+    assert.ok(
+      got.some((p) => /^JUDGES\.md:\d+ \[hashes\] mainnet tx 4715d4nb/.test(p)),
+      got.join("\n"),
+    );
+    assert.ok(
+      got.some((p) => /^JUDGES\.md:\d+ \[accounts\] .*nobody-recorded\.near/.test(p)),
+      got.join("\n"),
+    );
+  });
+
   // Each case finds today's claim by a pattern, not by its exact words, so a correct README update
   // does not fail CI: when the README no longer makes the claim at all, the case is skipped.
   const statusSection = (() => {
