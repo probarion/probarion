@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { checkClaims } from "./check-claims.mjs";
+import { checkClaimsOnlineOutcome } from "./judge.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "check-claims.mjs");
 const START = "the first run on a fresh Windows clone can take a few minutes";
@@ -51,11 +52,21 @@ test("the script prints the start line first, on stderr, and stdout keeps only t
   const r = spawnSync(process.execPath, [SCRIPT, "--root", root], { encoding: "utf8" });
   const err = r.stderr.split("\n").filter(Boolean);
   const out = r.stdout.split("\n").filter(Boolean);
-  assert.equal(err[0], `check-claims: reading up to 1 files; ${START}`, r.stderr);
+  assert.equal(err[0], `check-claims (progress): reading up to 1 files; ${START}`, r.stderr);
   assert.equal(err.length, 1, r.stderr);
   // The fixture has no Status section, so the report is that one problem and the summary line.
   assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
   assert.match(out[0], /^README\.md:1 \[status\] /);
   assert.match(out.at(-1), /^check-claims: 1 claim\(s\) do not match /);
   assert.ok(!out.some((l) => l.includes(START)));
+});
+
+test("after the progress lines, pnpm judge still reports a crash by its own error line", () => {
+  // The start line as the script prints it, then a crash in a check as main() prints it.
+  const r = spawnSync(process.execPath, [SCRIPT, "--root", root], { encoding: "utf8" });
+  const stderr = `${r.stderr}check-claims (progress): 500 files read\ncheck-claims: TypeError: boom\n    at attempt (file:///scripts/check-claims.mjs:1:1)\n`;
+  const { result, detail } = checkClaimsOnlineOutcome({ code: 2, stdout: "", stderr });
+  assert.equal(result, "FAIL");
+  assert.match(detail, /not a network skip: check-claims: TypeError: boom/);
+  assert.doesNotMatch(detail, /reading up to/);
 });

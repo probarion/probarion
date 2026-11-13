@@ -2939,8 +2939,9 @@ export async function main(argv) {
     );
     return 2;
   }
-  // On stderr, so that stdout stays the report: the problems, then the one summary line.
-  const progress = (line) => console.error(`check-claims: ${line}`);
+  // On stderr, so that stdout stays the report: the problems, then the one summary line. Not
+  // "check-claims:", which starts the crash line that scripts/judge.mjs reports for an exit 2.
+  const progress = (line) => console.error(`check-claims (progress): ${line}`);
   const report = await checkClaims({ root, online, progress });
   if (verbose) {
     for (const [k, v] of report.counts) console.log(`  ${k}: ${v}`);

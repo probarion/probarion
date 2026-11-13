@@ -1145,17 +1145,19 @@ The software is an unaudited beta.
 
 ### Changed
 
-- `scripts/check-claims.mjs` says what it is doing while it runs, on stderr: first `reading up to <n> files`, with a
-  note that the first run on a fresh Windows clone can take a few minutes, then `<n> files read` every 500 files.
-  Most of a first run is reading each file once (in a fresh local clone on 2026-11-14 it read 1,151 of 1,398 files,
-  1,018 of them for the claim-marker scan). stdout keeps the problems and the one summary line
+- `scripts/check-claims.mjs` says what it is doing while it runs, on stderr: first
+  `check-claims (progress): reading up to <n> files`, with a note that the first run on a fresh Windows clone can
+  take a few minutes, then `<n> files read` every 500 files. Most of a first run is reading each file once (in a
+  fresh local clone on 2026-11-14 it read 1,151 of 1,398 files, 1,018 of them for the claim-marker scan). stdout
+  keeps the problems and the one summary line, and `pnpm judge` still reports a crash by its own error line
   (`scripts/check-claims-progress.test.mjs`). The SDK's two tests of a recorded NEAR AI Cloud decision no longer
   skip while they wait for a recording: `packages/sdk/test/fixtures/nearai-recorded/decision.json` is built from
   entry 4 of the committed mainnet ledger of `v0.probarion.near` (S2, 2026-11-13) and its invoice INV-M003, a
-  labeled test paid to the owner's own Base address. A new third test holds each field to those two files and the
-  body hash to spend 3's `decision_hash`; the other two pass A1 to A7 and A8 offline (O1 and O2 have not run on
-  it). Check with `node scripts/check-claims.mjs` and
-  `pnpm --filter @probarion/sdk exec vitest run test/nearai.recorded.test.ts`.
+  labeled test paid to the owner's own Base address. A new third test holds its context, invoice text, proposal
+  and evidence to those two files, and the body hash to spend 3's `decision_hash`; the other two pass A1 to A7 and
+  A8 offline (these tests run no online check, so O1 and O2 are not part of them). Check with
+  `node scripts/check-claims.mjs` and, after `pnpm install --frozen-lockfile` and
+  `pnpm --filter @probarion/core build`, `pnpm --filter @probarion/sdk exec vitest run test/nearai.recorded.test.ts`.
 
 - The landing's "What works today, and what does not" is a status board. A summary computed from
   the rows comes first: how many are Verified, and what each row marked In part or Not tried yet

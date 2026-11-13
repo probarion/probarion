@@ -26,7 +26,12 @@ const rec = JSON.parse(readFileSync(recorded, "utf8")) as {
 };
 
 describe("recorded NEAR AI Cloud decision (real attestation: mainnet ledger entry 4 of v0.probarion.near)", () => {
-  it("is entry 4 of the committed mainnet ledger and its committed invoice, field for field", () => {
+  it("has the context, proposal, evidence and invoice of entry 4 of the committed mainnet ledger", () => {
+    // scripts/record-nearai.ts writes to this same path, with no source block.
+    expect(
+      rec.source,
+      "decision.json has no source block: record:nearai may have overwritten it; restore it with git",
+    ).toBeDefined();
     const lines = readFileSync(new URL(rec.source.ledger, repoRoot), "utf8").split("\n");
     const entry = JSON.parse(lines[rec.source.seq] ?? "null") as LedgerEntry;
     const body = entry.body;
