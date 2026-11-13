@@ -1,12 +1,12 @@
-On 2026-11-13 the vault `v0.probarion.near` burned 1.00 USDC on NEAR mainnet for spend 2, and the POA bridge delivered 0.9976 USDC, 997600 in base units, to the owner's own Base wallet `0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`, in Base block 56821514. The agent's `spend` call named no address: the vault took the payee from mandate 2, which the owner signed. Code refused two attested model proposals for the same invoice, then the code rules alone allowed the payment. Every step is on chain, and you can check each one with no wallet and no key.
+On 2026-11-13 the vault `v0.probarion.near` paid the owner's own Base wallet `0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27` twice through NEAR Intents, as tests. Spend 2 burned 1.00 USDC on NEAR mainnet, and the POA bridge delivered 0.9976 USDC, 997600 in base units, in Base block 56821514: code refused two attested model proposals for its invoice, then the code rules alone allowed the payment. Spend 3 burned 0.25 USDC, and the bridge delivered 0.2476 USDC, 247600 in base units, in Base block 56898526: an attested model proposed it, and the code rules allowed it. In both, the agent's `spend` call named no address: the vault took the payee from the mandate the owner signed. Every step is on chain, and you can check each one with no wallet and no key.
 
-<Callout kind="note" title="A test, not a customer payment.">
+<Callout kind="note" title="Tests, not customer payments.">
 
-INV-M002 is a labeled sample invoice. The payee is the owner's own Base wallet, and the amount is small on purpose, because the contract is unaudited. The USDC is real USDC on NEAR mainnet and on Base. The owner ran every step on their own machine: they signed the owner calls with near-cli-rs and the 1Click deposit in Meteor, and the kit signed spend 2 with the agent key, which can call `spend` and nothing else, and the ledger entries and anchors with the ledger key. The POA bridge signed the Base transfer.
+INV-M002 and INV-M003 are labeled sample invoices. The payee is the owner's own Base wallet, and the amounts are small on purpose, because the contract is unaudited. The USDC is real USDC on NEAR mainnet and on Base. The owner ran every step on their own machine. For spend 2 they signed the owner calls with near-cli-rs and the 1Click deposit in Meteor. For spend 3 they signed mandate 3 with `probarion.near`. The kit signed both spends with the agent key, which can call `spend` and nothing else, and the ledger entries and anchors with the ledger key. The POA bridge signed the Base transfers. Spend 3 added no USDC and no key: it paid from the Base USDC that spend 2's round left inside `intents.near`.
 
 </Callout>
 
-## The payout at a glance
+## Spend 2 at a glance
 
 | What | Value |
 | --- | --- |
@@ -21,17 +21,35 @@ INV-M002 is a labeled sample invoice. The payee is the owner's own Base wallet, 
 
 The run's files are in [`docs/evidence/mainnet-v0/s1-2026-11-13`](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/README.md): the signed ledger, the snapshot, the verifier's output, the invoice and purchase order, the POA bridge and 1Click statuses, and the order of every transaction.
 
+## Spend 3 at a glance
+
+| What | Value |
+| --- | --- |
+| Vault | The same vault, `v0.probarion.near`, with the same agent key and ledger key |
+| Mandate | Mandate 3: pays `0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27` on Base, at most 0.25 USDC a payment and 0.25 USDC in all, 1 use, until 2026-11-20 ([transaction](https://nearblocks.io/txns/4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T)) |
+| Spend | Spend 3, invoice INV-M003, 0.25 USDC (250000), status `burned`, at 11:41 UTC ([transaction](https://nearblocks.io/txns/5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH)) |
+| On Base | 0.2476 USDC (247600) to the owner's wallet, block 56898526, in the same minute ([transaction](https://basescan.org/tx/0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7)) |
+| Fee | 0.0024 USDC (2400), kept by the POA bridge as its withdrawal fee. Probarion took none |
+| Gas | Spend 3 burned 15.36 Tgas, 0.001424 NEAR, summed over the transaction and its receipts |
+| Decided by | `z-ai/glm-5.3-flash`, an attested model on NEAR AI Cloud, proposed it, and the code rules allowed it. Code refused no proposal for INV-M003 |
+| Ledger | 6 signed entries, covered by 4 anchors on the vault |
+
+The run's files are in [`docs/evidence/mainnet-v0/s2-2026-11-13`](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/README.md): the whole signed ledger, the snapshot, the verifier's output, the invoice and purchase order, the outcome and the spend's decision, the POA bridge status, the Base receipt, the gas record and the order of every transaction.
+
 ## Check it in your browser
 
 Nothing here needs a wallet, a key or an account.
 
-- **Read the chain again.** Open the [mainnet section of the landing page](/#mainnet) and press **Read the chain now**. Your browser reads 4 transactions and 3 views from public RPC and runs the seven checks below. When every answer matches, the verdict line above the checks says "Read just now: 7 of 7 checks pass." A node that does not answer leaves its rows on the recorded values, marked "Could not read".
-- **Open the burn on nearblocks.** [Spend 2](https://nearblocks.io/txns/BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9) shows the vault's `spend`, its `ft_withdraw` call to `intents.near`, and the `ft_burn` of 1000000 with the memo `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`.
-- **Open the arrival on Basescan.** [The Base transfer](https://basescan.org/tx/0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71) shows 0.9976 USDC moving to `0xb22eacdf11177d6d635e8956bbbbdd54b3e6eb27` on the USDC contract `0x833589fcd6edb6e08f4c7c32d4f71b54bda02913`.
+- **Read the chain again.** Open the [mainnet section of the landing page](/#mainnet). Spend 3, the newest payout, shows at the top, open: press **Read the chain now** in its card. Your browser reads 4 transactions and 3 views from public RPC and runs the seven checks below. When every answer matches, the verdict line above the checks says "Read just now: 7 of 7 checks pass." A node that does not answer leaves its rows on the recorded values, marked "Could not read".
+- **Read spend 2 again.** Spend 2 is folded under spend 3. Open it with "Show its seven checks and its ledger", and press its own **Read the chain now**. It reads spend 2's transactions and views in the same way.
+- **Open the burns on nearblocks.** [Spend 2](https://nearblocks.io/txns/BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9) shows the vault's `spend`, its `ft_withdraw` call to `intents.near`, and the `ft_burn` of 1000000 with the memo `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`. [Spend 3](https://nearblocks.io/txns/5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH) shows the same calls, with an `ft_burn` of 250000 and the same memo.
+- **Open the arrivals on Basescan.** [Spend 2's transfer](https://basescan.org/tx/0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71) shows 0.9976 USDC moving to `0xb22eacdf11177d6d635e8956bbbbdd54b3e6eb27`, and [spend 3's](https://basescan.org/tx/0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7) shows 0.2476 USDC, both on the USDC contract `0x833589fcd6edb6e08f4c7c32d4f71b54bda02913`.
 
 ## The seven checks
 
-The landing page runs these seven checks in your browser, in the order of the route from NEAR to Base. The values are the ones the recorded run read from mainnet on 2026-11-13, and a live run must read the same.
+The landing page runs these seven checks in your browser for each payout, in the order of the route from NEAR to Base. The values are the ones the recorded run read from mainnet on 2026-11-13, and a live run must read the same.
+
+### Spend 2
 
 | # | Check | What it reads | What it found |
 | --- | --- | --- | --- |
@@ -43,14 +61,28 @@ The landing page runs these seven checks in your browser, in the order of the ro
 | 06 | The spend's decision is in the anchored ledger | The anchor transaction [`65eBfw6v…eA9Q`](https://nearblocks.io/txns/65eBfw6vMettw5GFc3R2A2WHvDiGeyXs7STGojCveA9Q), the spend transaction, `get_config`, and entries 2 and 3 of [the ledger file](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl) | Signed with the ledger key that `get_config` names, method `anchor`, event `ledger_anchored` with seq 3, count 4 and root `28ac4e58…e6c6`. The spend's `decision_hash` is the body hash of entry 2, `d64f0de7…a336`, and entries 2 and 3 hash, from the link of entry 1, to that root |
 | 07 | 0.9976 USDC arrived on Base | `eth_getTransactionReceipt` for [`0xc2df8f87…ea71`](https://basescan.org/tx/0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71) | Status `0x1`, block 56821514, a `Transfer` of 997600 on the USDC contract `0x833589fcd6edb6e08f4c7c32d4f71b54bda02913` from `0x2cff890f0378a11913b6129b2e97417a2c302680` to the payee of check 01. The chain does not tie this transfer to spend 2: the POA bridge's withdrawal status does ([recorded](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/poa-status.json)). The fee is computed: 1000000 less 997600 is 2400, 0.0024 USDC |
 
+### Spend 3
+
+| # | Check | What it reads | What it found |
+| --- | --- | --- | --- |
+| 01 | The owner signed the payee | The `create_mandate` transaction [`4cmSz4b3…XT3T`](https://nearblocks.io/txns/4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T) and the vault's `get_config` | Signed by `probarion.near`, the vault's owner. It returned mandate 3, paying `0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27` on Base, at most 0.25 USDC, 1 use, until 2026-11-20, for the agent key below |
+| 02 | The agent's key can call one method: spend | The spend transaction and `view_access_key` at its block | `ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd`, the key that signed spend 2, signed spend 3, sent from the vault's own account. It is still a function-call key for `v0.probarion.near`, and its one method is `spend` |
+| 03 | The spend call has no address in it | The spend transaction [`5amtgb8M…9NGH`](https://nearblocks.io/txns/5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH) and `view_account` | Sent from the vault account to itself, method `spend`. The request has 5 fields, each of its type, and no address in any of them: `mandate_id` 3, `amount` 250000, `invoice_hash` `c2461348…83b6`, `ref` INV-M003, `decision_hash` `d3807956…32aa`. The vault's code hash is still `3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`, the recorded build of commit `64ac3c0` |
+| 04 | The vault wrote the memo from the mandate | The receipts of the spend transaction | `v0.probarion.near` called `ft_withdraw` on `intents.near` for 250000 of `base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near`, with the memo `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`: the payee of check 01 |
+| 05 | 0.25 USDC burned on NEAR | The events of the spend transaction | The Base USDC token logged an `ft_burn` of 250000 from `intents.near` with the same memo, `intents.near` logged an `mt_burn` of 250000 of `nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near` from the vault, the vault logged `spend_burned` for spend 3, and `spend` returned status `burned` |
+| 06 | The spend's decision is in the anchored ledger | The anchor transaction [`6jRY21z9…bLyG`](https://nearblocks.io/txns/6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG), the spend transaction, `get_config`, and entries 4 and 5 of [the ledger file](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl) | Signed with the ledger key that `get_config` names, method `anchor`, event `ledger_anchored` with seq 4, count 6 and root `fcacffdc…c037`. The spend's `decision_hash` is the body hash of entry 4, `d3807956…32aa`, and entries 4 and 5 hash, from the link of entry 3, to that root |
+| 07 | 0.2476 USDC arrived on Base | `eth_getTransactionReceipt` for [`0xc6c4507e…7ab7`](https://basescan.org/tx/0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7) | Status `0x1`, block 56898526, a `Transfer` of 247600 on the USDC contract `0x833589fcd6edb6e08f4c7c32d4f71b54bda02913` from `0x2cff890f0378a11913b6129b2e97417a2c302680` to the payee of check 01. The POA bridge's withdrawal status ties it to spend 3 ([recorded](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/poa-status.json)). The fee is computed: 250000 less 247600 is 2400, 0.0024 USDC |
+
 How the page reads them:
 
-- **Pinned views.** The three views, `get_config`, `view_access_key` and `view_account`, are read at the block of spend 2, `GM4ojam5J4e91NpzMF1BdbjF65wJcVPvbF6bijT37FTa` (height 224331722), which the spend's own outcome names. A later change to the vault cannot change their answers, and a check fails when an answer comes from another block.
+- **Pinned views.** The three views, `get_config`, `view_access_key` and `view_account`, are read at the block of each spend, which the spend's own outcome names: for spend 2, `GM4ojam5J4e91NpzMF1BdbjF65wJcVPvbF6bijT37FTa` (height 224331722), and for spend 3, `B7iXoHCJHWLPWbLNispMCJBzSYC5oD8XqEuZr59MvWeB` (height 224358455). A later change to the vault cannot change their answers, and a check fails when an answer comes from another block.
 - **Public hosts.** Every NEAR read asks FastNEAR's archival node, `archival-rpc.mainnet.fastnear.com`, then the regular node, `rpc.mainnet.fastnear.com`. The regular node forgets old transactions within days. The Base read asks `mainnet.base.org`. Each request gives up after 8 seconds and is tried up to twice more, when a retry can help, after 0.5 and 1.5 seconds, before the next host. An answer for another transaction, or one that is not final, goes to the next host. So a NEAR read takes at most 52 seconds, and the Base read 26.
 - **Nothing in between.** The requests go from your browser to those hosts, with no cookies and no referrer, and none goes through Probarion's server. They change nothing and sign nothing.
-- **Not the verifier.** The seven checks read the chain again, and check 06 hashes the two ledger entries the page carries. They do not check the entries' signatures or the rest of the file: the verifier does, see [Run the verifier](#run-the-verifier).
+- **Not the verifier.** The seven checks read the chain again, and check 06 hashes the two ledger entries the page carries for each payout. They do not check the entries' signatures or the rest of the file: the verifier does, see [Run the verifier](#run-the-verifier).
 
-## How the payment was decided
+## How the payments were decided
+
+### Spend 2: two refusals, then the code rules alone
 
 The owner set up the run the same day:
 
@@ -71,6 +103,23 @@ Then the SDK ran three cycles on INV-M002. Cycles 1 and 2 each wrote one signed 
 
 **Why the code rules alone decided the payment.** The owner ran the cycle a third time with no model. The SDK decided with the code rules alone, and every rule passed. Entry 2's body hash, `d64f0de77c38294cf103439e6b5b0c2623b96b114962afd50f5a3c553df2a336`, is the `decision_hash` the spend carries, so the spend points at its own decision.
 
+### Spend 3: an attested model and the code rules
+
+The owner set up the second round the same day, with one transaction:
+
+- **Mandate 3.** The owner's own Base wallet, the payee of mandate 2, up to 0.25 USDC, 1 use, until 2026-11-20 ([transaction](https://nearblocks.io/txns/4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T)).
+
+The round added no USDC and no key. It paid from the 0.499823 Base USDC that spend 2's round left inside `intents.near`, and it wrote on the same ledger with the same ledger key. The kit ran the SDK at commit `c85f41b`, which holds PR #142 and [PR #144](https://github.com/probarion/probarion/pull/144). It ran one cycle on INV-M003, which wrote entries 4 and 5, then anchor 4:
+
+| Entry | Time (UTC) | Who proposed | What code decided |
+| --- | --- | --- | --- |
+| 4 | 11:40 | `z-ai/glm-5.3-flash`, an attested model on NEAR AI Cloud, proposed `pay` with confidence 0.92 | Allowed, decided by `model+rules`: all 16 rules passed |
+| 5 | 11:41 | None: this entry records the payment | Spend 3, `burned`, transaction `5amtgb8M…9NGH` |
+
+**Why code refused nothing this time.** The model answered on attempt 1, in 38.2 seconds. Its payee hint named the mandate's Base address and no NEAR account, so `mandate.payee_mismatch` passed on the address alone. The 16 rules are the 14 of entry 2 plus `model.refused` and `model.low_confidence`, which passed with the action `pay` and a confidence of 0.92 over the floor of 0.7. The rule changes of PR #142 and PR #144 read a mandate's own asset account in a hint, and this hint gave them nothing to read, so they were not exercised on mainnet.
+
+**What the attestation shows.** Before the SDK counted the answer, it checked the model's evidence: the signature, the response, the recorded proposal and the attestation report agree with each other and with ledger position 4 (A1 to A7), and the request matches the invoice text (A8). Entry 4's body hash, `d3807956b1e0a0481656862a50a2147d2b0a1f04834a30829529311c9cec32aa`, is the `decision_hash` spend 3 carries. The TDX quote and the GPU evidence are checked by `verify --online` (O1 and O2), which has not run on this decision.
+
 ## The ledger and its anchors
 
 The ledger key signs every entry, and each entry links the hash of the one before it. Each anchor stores on the vault how many entries it covers and their root. [Ledger and anchors](/docs/concepts/ledger-and-anchors) explains the format.
@@ -80,8 +129,9 @@ The ledger key signs every entry, and each entry links the hash of the one befor
 | 1 | Entry 0 | `097e7bd7…7a90` | 07:18 | [`8REzPLVw…LvPp`](https://nearblocks.io/txns/8REzPLVwoQJrkccMQeFCTLaQHu8m7AczxsMzEH9PLvPp) |
 | 2 | Entries 0 and 1 | `2fb2b5cc…a7e0` | 07:22 | [`6ULZZvGa…DMqY`](https://nearblocks.io/txns/6ULZZvGa7M99jR7Uk5f1Md4KCdD1Cnd5au2s8fAZDMqY) |
 | 3 | Entries 0 to 3 | `28ac4e58…e6c6` | 07:24 | [`65eBfw6v…eA9Q`](https://nearblocks.io/txns/65eBfw6vMettw5GFc3R2A2WHvDiGeyXs7STGojCveA9Q) |
+| 4 | Entries 0 to 5 | `fcacffdc…c037` | 11:41 | [`6jRY21z9…bLyG`](https://nearblocks.io/txns/6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG) |
 
-Each refusal was anchored on chain before the next cycle began, so the vault held a root covering both refusals before the payment was sent. The ledger file is [`ledger-2026-11-13.jsonl`](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl), byte for byte as the run wrote it.
+Each refusal was anchored on chain before the next cycle began, so the vault held a root covering both refusals before spend 2 was sent. Anchor 4 came after spend 3 and covers all 6 entries. There are two ledger files, byte for byte as the runs wrote them: [spend 2's](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl) holds entries 0 to 3, and [spend 3's](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl) holds entries 0 to 5. Its leading bytes are spend 2's file, byte for byte.
 
 ## Run the verifier
 
@@ -94,13 +144,15 @@ pnpm install
 pnpm --filter "{packages/cli}..." build
 ```
 
-Then run it live, with the committed ledger, the invoice text for A8, the repository's evidence for spend 1 and the recorded transactions:
+### With the ledger of 6 entries
+
+Run it live, with the ledger file that holds both payouts, the two invoice texts for A8, the repository's evidence for spend 1 and the recorded transactions:
 
 ```bash
-node packages/cli/dist/bin.js --network mainnet --rpc https://rpc.mainnet.fastnear.com verify --vault v0.probarion.near --ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl --invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt --evidence docs/evidence --proof docs/mainnet-proof.json
+node packages/cli/dist/bin.js --network mainnet --rpc https://rpc.mainnet.fastnear.com verify --vault v0.probarion.near --ledger docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl --invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt --invoice docs/evidence/mainnet-v0/s2-2026-11-13/invoice-INV-M003.txt --evidence docs/evidence --proof docs/mainnet-proof.json
 ```
 
-The kit's live run at 07:24:43 UTC on 2026-11-13 ended with these two lines ([the full output](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/verify-2026-11-13.txt)):
+The kit's live run at 11:41:26 UTC on 2026-11-13 ended with these two lines ([the full output](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)):
 
 ```text
 8 passed, 0 failed, 0 unproven, 1 skipped
@@ -109,45 +161,58 @@ RESULT: PASS
 
 What each check found:
 
-- [Checks a, b and c](/docs/trust/verifier-checks#check-a): the 4 entries carry valid signatures by the ledger key, their hash links recompute from the zero link, and the 3 anchors on chain match the ledger.
-- [Check d](/docs/trust/verifier-checks#check-d): spend 2 is bound to its own `allow` decision, entry 2, with the same invoice, mandate and amount. Spend 1 of 2026-11-11 is exempt: its decision is a file in the repository, from before the vault had a ledger.
-- [Check e](/docs/trust/verifier-checks#check-e): the 2 attested decisions, entries 0 and 1, pass A1 to A7, and A8 passes on both with the invoice text. Entry 2 is reported as decided by code rules with no model, not failed.
+- [Checks a, b and c](/docs/trust/verifier-checks#check-a): the 6 entries carry valid signatures by the ledger key, their hash links recompute from the zero link, and the 4 anchors on chain match the ledger.
+- [Check d](/docs/trust/verifier-checks#check-d): spends 2 and 3 are each bound to their own `allow` decision, entries 2 and 4, with the same invoice, mandate and amount. Spend 1 of 2026-11-11 is exempt: its decision is a file in the repository, from before the vault had a ledger.
+- [Check e](/docs/trust/verifier-checks#check-e): the 3 attested decisions, entries 0, 1 and 4, pass A1 to A7, and A8 passes on all three with the two invoice texts. Entry 2 is reported as decided by code rules with no model, not failed.
 - [Checks f and g](/docs/trust/verifier-checks#check-f): no full-access key, every key is the ledger key or the agent key, and no key is registered for the vault in `intents.near`.
-- [Check h](/docs/trust/verifier-checks#check-h): spend 2 has one matched burn pair, the `ft_burn` memo and the vault's `mt_burn` for the spend's amount.
+- [Check h](/docs/trust/verifier-checks#check-h): spends 2 and 3 each have one matched burn pair, the `ft_burn` memo and the vault's `mt_burn` for the spend's amount.
 - [Check i](/docs/trust/verifier-checks#check-i) skips: no factory made this vault.
 
-Without `--ledger`, checks c and d fail: the chain's anchors cover 4 entries, and spend 2's decision is in no entry. A live run passes while the chain's anchors cover the entries this file holds. When the vault anchors a later entry, use the ledger file that holds it.
+The kit ran these checks from its own SDK clone at `c85f41b`, with the two burn transactions given with `--burn-tx` in place of `--proof`, because that commit's proof file had no spend 3, and with the invoices read from its own folder. The command above, with `--proof docs/mainnet-proof.json` and the committed invoices, gives the same counts.
 
-To check the recorded run with no network, read the snapshot the verifier wrote at 07:24:42 UTC:
+Without `--ledger`, checks c and d fail: the chain's anchors cover 6 entries, and the spends' decisions are in no entry. With spend 2's ledger file of 4 entries, check c fails, because the chain's last anchor covers 6 entries, and check d fails, because spend 3's decision is in none of them. A live run passes while the chain's anchors cover the entries the file holds. When the vault anchors a later entry, use the ledger file that holds it.
+
+To check this run with no network, read the snapshot the verifier wrote at 11:41:25 UTC:
+
+```bash
+node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/s2-2026-11-13/snapshot-2026-11-13.json --invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt --invoice docs/evidence/mainnet-v0/s2-2026-11-13/invoice-INV-M003.txt
+```
+
+### The run after spend 2
+
+Before spend 3, the kit's live run at 07:24:43 UTC read spend 2's ledger file of 4 entries and INV-M002, and it ended with the same two lines ([the full output](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/verify-2026-11-13.txt)). Checks a to c passed on 4 entries and the 3 anchors on chain then. Check d bound spend 2 to entry 2. Check e found 2 attested decisions, entries 0 and 1, that pass A1 to A7, and A8 on both with the invoice text. Check h found spend 2's burn pair. To check that run with no network, read the snapshot the verifier wrote at 07:24:42 UTC:
 
 ```bash
 node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/s1-2026-11-13/snapshot-2026-11-13.json --invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt
 ```
 
-The Base side is not in the ledger: entry 3 records the burn on NEAR. To read the transfer with no key, ask Base's public RPC:
+### The Base side
+
+The Base side is not in the ledger: entries 3 and 5 record the burns on NEAR. To read the transfers with no key, ask Base's public RPC:
 
 ```bash
 curl -s https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71"]}'
+curl -s https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7"]}'
 ```
 
-It answers `"status":"0x1"` and `"blockNumber":"0x363070a"` (56821514), with one `Transfer` log on the USDC contract, from `0x2cff890f0378a11913b6129b2e97417a2c302680` to `0xb22eacdf11177d6d635e8956bbbbdd54b3e6eb27`, whose data ends in `f38e0`: 997600.
+Spend 2's answers `"status":"0x1"` and `"blockNumber":"0x363070a"` (56821514), with one `Transfer` log on the USDC contract, from `0x2cff890f0378a11913b6129b2e97417a2c302680` to `0xb22eacdf11177d6d635e8956bbbbdd54b3e6eb27`, whose data ends in `f38e0`: 997600. Spend 3's answers `"status":"0x1"` and `"blockNumber":"0x36433de"` (56898526), with one `Transfer` log between the same two addresses, whose data ends in `3c730`: 247600.
 
 ## The fee and the cost
 
-- **The bridge fee.** The vault burned 1000000 and the owner's wallet received 997600. The POA bridge's status for spend 2 says `withdrawal_fee` 2400 and `withdraw_amount` 997600 ([status](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/poa-status.json)). Probarion took none.
-- **The top-up.** 1Click took 1500000 of native USDC and credited 1499823 of Base USDC to the vault inside `intents.near` ([status](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/oneclick-status-final.json)). The vault kept 0.499823 Base USDC there after the payout.
-- **The gas.** Spend 2 burned 15.35 Tgas, 0.001423 NEAR, summed over the transaction and every receipt, read from an archival node ([record](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/gas-spend-2.json)). [Limits and costs](/docs/build/limits-and-costs#cross-chain-payouts) lists the gas the contracts attach.
+- **The bridge fee.** For spend 2 the vault burned 1000000 and the owner's wallet received 997600, and for spend 3 it burned 250000 and the wallet received 247600. The POA bridge's statuses say `withdrawal_fee` 2400 for each ([spend 2](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/poa-status.json), [spend 3](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/poa-status.json)). Probarion took none.
+- **The top-up.** 1Click took 1500000 of native USDC and credited 1499823 of Base USDC to the vault inside `intents.near` ([status](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/oneclick-status-final.json)). The vault kept 0.499823 Base USDC there after spend 2, and 0.249823 after spend 3.
+- **The gas.** Spend 2 burned 15.35 Tgas, 0.001423 NEAR, and spend 3 burned 15.36 Tgas, 0.001424 NEAR, each summed over the transaction and every receipt, read from an archival node ([spend 2](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s1-2026-11-13/gas-spend-2.json), [spend 3](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/gas-spend-3.json)). [Limits and costs](/docs/build/limits-and-costs#cross-chain-payouts) lists the gas the contracts attach.
 
-## The NEAR technology in this run
+## The NEAR technology in these runs
 
 | Technology | What it did here |
 | --- | --- |
-| NEAR Intents 1Click | Swapped 1.5 native USDC into Base USDC inside `intents.near`, credited to the vault |
-| `ft_withdraw` on `intents.near` | The vault's call that burned 1.00 Base USDC with the memo the vault built from mandate 2 |
-| POA bridge | Released 0.9976 USDC on Base to the mandate's address and kept 0.0024 USDC as its fee |
-| NEAR AI Cloud | Two attested models proposed paying. Code refused both proposals |
+| NEAR Intents 1Click | Swapped 1.5 native USDC into Base USDC inside `intents.near`, credited to the vault, before spend 2 |
+| `ft_withdraw` on `intents.near` | The vault's call that burned 1.00 and then 0.25 Base USDC, each with the memo the vault built from its mandate |
+| POA bridge | Released 0.9976 USDC and 0.2476 USDC on Base to the mandates' address and kept 0.0024 USDC of each as its fee |
+| NEAR AI Cloud | For INV-M002, two attested models proposed paying, and code refused both proposals. For INV-M003, one attested model proposed paying, and the code rules allowed it |
 | Function-call access keys | The agent key can call `spend` and nothing else. The ledger key can call `anchor` and nothing else |
-| Ledger anchors | 3 anchors on the vault cover the 4 signed entries, so the chain holds a root for every decision |
+| Ledger anchors | 4 anchors on the vault cover the 6 signed entries, so the chain holds a root for every decision |
 
 ## Where to go next
 
@@ -158,9 +223,9 @@ It answers `"status":"0x1"` and `"blockNumber":"0x363070a"` (56821514), with one
 
 ## What this does not do
 
-- **It is a test, not a customer payment.** One payout of 1.00 USDC went to the owner's own Base wallet. It shows the cross-chain path works on mainnet for this vault. It does not show a business paying a supplier.
-- **No mainnet payment had come from a model's proposal by 2026-11-13.** Spend 1 of 2026-11-11 was sent without the SDK, and spend 2 was decided by the code rules alone.
-- **The model hint fix came after the run.** After the run, [PR #142](https://github.com/probarion/probarion/pull/142) changed `payeeHintContradiction`: in a model's hint, a Base or Solana mandate's own asset account names no other payee. In an invoice it is still refused. This run used the code before it, at commit `4ab41ca`.
-- **The two attested decisions were checked offline.** A1 to A8 passed, but `verify --online` has not run on them, so O1 and O2 have not checked their TDX quotes and GPU evidence. The TEE measurement is not pinned, so the record does not show which model image ran.
+- **They are tests, not customer payments.** Two payouts, of 1.00 USDC and 0.25 USDC, went to the owner's own Base wallet: one decided by the code rules alone, one proposed by an attested model and allowed by the code rules. They show the cross-chain path works on mainnet for this vault. They do not show a business paying a supplier.
+- **By 2026-11-13, one mainnet payment had come from a model's proposal.** Spend 1 of 2026-11-11 was sent without the SDK, spend 2 was decided by the code rules alone, and spend 3 was proposed by an attested model and allowed by the code rules.
+- **The model hint fix came after spend 2's run.** After it, [PR #142](https://github.com/probarion/probarion/pull/142) changed `payeeHintContradiction`: in a model's hint, a Base or Solana mandate's own asset account names no other payee. In an invoice it is still refused. Spend 2's run used the code before it, at commit `4ab41ca`. Spend 3's run used commit `c85f41b`, which holds it, but its hint named no NEAR account, so the change was not exercised.
+- **The three attested decisions were checked offline.** A1 to A8 passed on entries 0, 1 and 4, but `verify --online` has not run on them, so O1 and O2 have not checked their TDX quotes and GPU evidence. The TEE measurement is not pinned, so the record does not show which model image ran.
 - **The contract checks the burn, not the arrival.** The vault's part ends with the burn on NEAR. The POA bridge releases the USDC on Base, and check 07 reads that from Base.
 - **No console or proof page serves this vault.** Both serve testnet. The mainnet factory is not deployed, so the console cannot create a mainnet vault yet.

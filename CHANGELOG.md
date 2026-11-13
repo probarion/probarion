@@ -83,16 +83,23 @@ The software is an unaudited beta.
   request, a wider key, another code hash, another `decision_hash`, ledger entries that do not hash to the root, a
   view from another block) and cover the retries, the fallback, a node that answers for another transaction and an
   aborted run. The data guard stops a payout to a wallet that `owner_wallets` in `contracts/deployments/mainnet.json`
-  does not list, since the section calls it a test to the owner's own wallet.
-- A docs page, [Mainnet payout, step by step](https://probarion.xyz/docs/start/mainnet-payout), after "Testnet and
-  mainnet": the payout of 2026-11-13 at a glance, what to open in a browser, the seven checks with the values each
+  does not list, since the section calls it a test to the owner's own wallet. The section shows both Base payouts of
+  2026-11-13, the newest at the top: spend 3, proposed by an attested model and allowed by the code rules, is open,
+  and spend 2 follows folded in a closed `<details>` whose summary gives its amounts, how it was decided and a hint
+  to show its seven checks and its ledger. The fold opens with no JavaScript, and each payout's own **Read the chain
+  now** reads its transactions again in the browser. The card's line on attested decisions counts the decisions in
+  the ledger that payout's verifier run read, and its pronouns agree with the count.
+- A docs page, [Mainnet payouts, step by step](https://probarion.xyz/docs/start/mainnet-payout), after "Testnet and
+  mainnet", for spends 2 and 3: spend 3 has its own table, its seven checks' values, how it was decided (entry 4, an
+  attested model and the code rules, no refusal), ledger entries 4 and 5 and anchor 4, and the verifier run with the
+  ledger of 6 entries. For spend 2: the payout of 2026-11-13 at a glance, what to open in a browser, the seven checks with the values each
   one read, how the payment was decided (the two proposals that `mandate.payee_mismatch` refused and why, then the
   code rules alone), the ledger's 4 entries and 3 anchors, the verifier command and its output, the bridge fee, the
   1Click top-up and the gas, the NEAR technology the run used, and what the run does not show. "Testnet and mainnet"
   links it, the README's Documentation table lists it, and the Docs Center has 35 pages.
 - A README visual of the mainnet payout, `docs/assets/readme/mainnet-payout.svg`: 1.00 USDC burned on NEAR mainnet,
   0.9976 USDC arrived on Base, the gold bar with the coin at the Base end and ticks 01 to 07, "A test, not a customer
-  payment" and the date. It is one self-contained SVG with real text in system fonts, in the site's paper, ink and
+  payment" and the date. It draws spend 2, and its heading, title and last line say so. It is one self-contained SVG with real text in system fonts, in the site's paper, ink and
   gold, and its alt text says all of it. The README's S1 section shows it above a table of what to do and what you
   see (the live button, nearblocks, Basescan, the verifier with the ledger file, the docs page) and a list of the
   NEAR technology the run used and how.

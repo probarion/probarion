@@ -884,17 +884,17 @@ node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/snapshot
 
 ### NEAR mainnet, 2026-11-13: S1, a Base payout
 
-<img src="docs/assets/readme/mainnet-payout.svg" alt="The mainnet payout of 2026-11-13, drawn as the Probarion mark laid along a route. On the left, NEAR mainnet: 1.00 USDC burned by the vault v0.probarion.near for spend 2 at 07:24 UTC. On the right, Base: 0.9976 USDC arrived in the owner's own wallet 0xB22E…6EB27, block 56821514. Between them a gold bar with ticks 01 to 07 for the seven checks, a dashed mark for the bridge, and the gold coin resting at the Base end. A label reads: A test, not a customer payment. Below: decided by the code rules alone, after code refused two attested model proposals; 7 of 7 checks passed; the POA bridge kept a 0.0024 USDC fee." width="100%">
+<img src="docs/assets/readme/mainnet-payout.svg" alt="The mainnet payout of spend 2, 2026-11-13, drawn as the Probarion mark laid along a route. On the left, NEAR mainnet: 1.00 USDC burned by the vault v0.probarion.near for spend 2 at 07:24 UTC. On the right, Base: 0.9976 USDC arrived in the owner's own wallet 0xB22E…6EB27, block 56821514. Between them a gold bar with ticks 01 to 07 for the seven checks, a dashed mark for the bridge, and the gold coin resting at the Base end. A label reads: A test, not a customer payment. Below: decided by the code rules alone, after code refused two attested model proposals; 7 of 7 checks passed; the POA bridge kept a 0.0024 USDC fee." width="100%">
 
 **See it and check it yourself**, with no wallet and no key:
 
 | Do | See |
 | --- | --- |
-| Open [probarion.xyz/#mainnet](https://probarion.xyz/#mainnet) and press **Read the chain now** | Your browser reads 4 transactions and 3 views again from public RPC, the views pinned to spend 2's block, and runs seven checks, from "the owner signed the payee" to "0.9976 USDC arrived on Base". Each row shows the values it read, and the verdict line above the rows then reads `Read just now: 7 of 7 checks pass.` No request goes through Probarion's server |
+| Open [probarion.xyz/#mainnet](https://probarion.xyz/#mainnet), open spend 2 under spend 3, and press its **Read the chain now** | The section shows both Base payouts, the newest at the top and open, and spend 2 folded under it with its own button. Spend 2's button reads 4 transactions and 3 views again from public RPC, the views pinned to spend 2's block, and runs seven checks, from "the owner signed the payee" to "0.9976 USDC arrived on Base". Each row shows the values it read, and the verdict line above the rows then reads `Read just now: 7 of 7 checks pass.` No request goes through Probarion's server |
 | Open spend 2 on [nearblocks](https://nearblocks.io/txns/BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9) | The vault's `ft_withdraw` on `intents.near` and an `ft_burn` of 1000000 with the memo `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`, which the vault built from mandate 2 |
 | Open the transfer on [Basescan](https://basescan.org/tx/0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71) | 0.9976 USDC to the owner's wallet in Base block 56821514 |
 | In a clone, after `pnpm install` and the CLI build, run [the verifier command](#check-the-base-payout-yourself) with the ledger file of [`docs/evidence/mainnet-v0/s1-2026-11-13`](docs/evidence/mainnet-v0/s1-2026-11-13) | `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`: 4 signed entries, 3 anchors, and spend 2 bound to its own decision |
-| Read [Mainnet payout, step by step](https://probarion.xyz/docs/start/mainnet-payout) in the docs | Each of the seven checks with the exact values it reads, why code refused the two proposals, the ledger and its anchors, the fee and what the run does not show |
+| Read [Mainnet payouts, step by step](https://probarion.xyz/docs/start/mainnet-payout) in the docs | For spends 2 and 3, each of the seven checks with the exact values it reads, how each was decided, why code refused spend 2's two proposals, the ledger and its anchors, the fee and what the runs do not show |
 
 **The NEAR technology in this run, and how it was used:**
 
@@ -1003,8 +1003,11 @@ run's ledger, snapshot, verifier output, invoice and purchase order, the POA bri
 and the order of every transaction are in
 [`docs/evidence/mainnet-v0/s2-2026-11-13`](docs/evidence/mainnet-v0/s2-2026-11-13).
 
-Check it yourself. With the `tx` helper from [the 2026-11-11 section](#near-mainnet-2026-11-11), the archival
-node gives the burn's memo, and Base's public RPC gives the transfer:
+Check it yourself. In a browser, open [probarion.xyz/#mainnet](https://probarion.xyz/#mainnet): spend 3 shows
+at the top, open, and its **Read the chain now** runs the seven checks on it from public RPC, from "the owner
+signed the payee" to "0.2476 USDC arrived on Base". With the `tx` helper from
+[the 2026-11-11 section](#near-mainnet-2026-11-11), the archival node gives the burn's memo, and Base's public
+RPC gives the transfer:
 
 ```bash
 tx 5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH | grep -o 'WITHDRAW_TO:0x[0-9A-Fa-f]*' | sort -u   # WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27
@@ -1042,8 +1045,9 @@ What did not run on mainnet, after S1 and S2:
   and a 2 USDC payout). S1 and S2 used their own mandates 2 and 3 and their own amounts, and S1 a 1Click swap in place of step 6's top-up.
 - No mainnet factory: `vaults.probarion.near` is not deployed, and no global contract is published.
 - No console or proof page for this vault: the console and proof pages serve testnet. The landing page's
-  [mainnet section](https://probarion.xyz/#mainnet) reads this payout's transactions and views again from
-  public RPC, in the visitor's browser. The deep demo is still the testnet vaults above.
+  [mainnet section](https://probarion.xyz/#mainnet) shows the two Base payouts, the newest open and the earlier
+  folded, and each one's **Read the chain now** reads its transactions and views again from public RPC, in the
+  visitor's browser. The deep demo is still the testnet vaults above.
 
 ## Where things are in this repository
 
@@ -1145,7 +1149,7 @@ You see `test/pay-per-call.test.ts` pass: 20 calls paid at 0.01 test USDC and th
 
 | | |
 | --- | --- |
-| **Docs Center** | [Docs home](https://probarion.xyz/docs) · [Evaluate in 5 minutes](https://probarion.xyz/docs/start/evaluate-in-5-minutes) · [Mainnet payout, step by step](https://probarion.xyz/docs/start/mainnet-payout) · [Owner quickstart](https://probarion.xyz/docs/start/owner-quickstart) · [Developer quickstart](https://probarion.xyz/docs/start/developer-quickstart) · [Errors](https://probarion.xyz/docs/build/errors) · [For AI agents](https://probarion.xyz/docs/resources/for-ai-agents) · [llms.txt](https://probarion.xyz/llms.txt) |
+| **Docs Center** | [Docs home](https://probarion.xyz/docs) · [Evaluate in 5 minutes](https://probarion.xyz/docs/start/evaluate-in-5-minutes) · [Mainnet payouts, step by step](https://probarion.xyz/docs/start/mainnet-payout) · [Owner quickstart](https://probarion.xyz/docs/start/owner-quickstart) · [Developer quickstart](https://probarion.xyz/docs/start/developer-quickstart) · [Errors](https://probarion.xyz/docs/build/errors) · [For AI agents](https://probarion.xyz/docs/resources/for-ai-agents) · [llms.txt](https://probarion.xyz/llms.txt) |
 | **Design** | [Design spec](docs/specs/2026-10-21-probarion-design.md) · [Interfaces: ABI, ledger, attestation checks, verifier](docs/specs/2026-10-21-probarion-interfaces.md) · [Security policy](SECURITY.md) · [Threat model](docs/THREAT_MODEL.md) |
 | **Packages** | [`@probarion/core`](packages/core/README.md) · [`@probarion/sdk`](packages/sdk/README.md) · [`probarion` CLI](packages/cli/README.md) · [`intents-stub`](contracts/intents-stub/README.md) |
 | **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Web deploy runbook](docs/runbooks/web-deploy.md) · [Key rotation](docs/ops/key-rotation.md) · [Usage numbers](docs/ops/metrics.md) · [Watcher](docs/ops/watcher.md) · [Alerts](docs/ops/alerts.md) · [Incident runbook](docs/RUNBOOK.md) · [Monitoring](docs/ops/MONITORING.md) |

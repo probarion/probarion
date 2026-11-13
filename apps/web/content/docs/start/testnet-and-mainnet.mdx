@@ -138,7 +138,7 @@ A live `verify` of the vault, with its committed ledger after S2, the two invoic
 node packages/cli/dist/bin.js --network mainnet --rpc https://rpc.mainnet.fastnear.com verify --vault v0.probarion.near --ledger docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl --invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt --invoice docs/evidence/mainnet-v0/s2-2026-11-13/invoice-INV-M003.txt --evidence docs/evidence --proof docs/mainnet-proof.json
 ```
 
-[`docs/evidence/mainnet-v0`](https://github.com/probarion/probarion/tree/main/docs/evidence/mainnet-v0) holds the record of the three runs, with every transaction of each. No console or proof page serves this vault: the site serves testnet only. [Mainnet payout, step by step](/docs/start/mainnet-payout) walks each payout to Base: the seven checks the landing page reads again in your browser, the ledger and its anchors, and the two refusals before the first.
+[`docs/evidence/mainnet-v0`](https://github.com/probarion/probarion/tree/main/docs/evidence/mainnet-v0) holds the record of the three runs, with every transaction of each. No console or proof page serves this vault: the site serves testnet. [Mainnet payouts, step by step](/docs/start/mainnet-payout) walks each payout to Base: the seven checks the landing page reads again in your browser, the ledger and its anchors, and the two refusals before spend 2.
 
 ## When mainnet opens
 
@@ -152,7 +152,7 @@ All of this is Planned.
 
 ## Where to go next
 
-- [Mainnet payout, step by step](/docs/start/mainnet-payout) walks the Base payout of 2026-11-13, a test to the owner's own Base address decided by code rules alone, and how to check it.
+- [Mainnet payouts, step by step](/docs/start/mainnet-payout) walks the two Base payouts of 2026-11-13, tests to the owner's own Base address: 1.00 USDC decided by code rules alone, and 0.25 USDC proposed by an attested model and allowed by the code rules. It shows how to check both.
 - [What works today](/docs/start/what-works-today) gives the status of every part.
 - The [owner quickstart](/docs/start/owner-quickstart) sets up a testnet vault in the console, with test USDC from the faucet.
 - The [developer quickstart](/docs/start/developer-quickstart) runs one payment cycle against a testnet vault with the SDK.

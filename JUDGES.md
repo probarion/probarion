@@ -39,9 +39,10 @@ included, is signed into a hash-chained Ed25519 ledger whose root is anchored on
    evidence (A1 to A8) before counting its answer; `verify --online` (O1 and O2: the TDX quote and the GPU evidence)
    has not run on it. With the ledger of 6 entries, the live `verify` passes checks a to h
    ([the run](docs/evidence/mainnet-v0/s2-2026-11-13/README.md)).
-   With no clone, press **Read the chain now** at [probarion.xyz/#mainnet](https://probarion.xyz/#mainnet): your browser
-   reads each payout's 4 transactions and 3 views from public RPC and runs seven checks on each.
-   [Mainnet payout, step by step](https://probarion.xyz/docs/start/mainnet-payout) gives each value they read.
+   With no clone, open [probarion.xyz/#mainnet](https://probarion.xyz/#mainnet). Spend 3, the newest, is open, and
+   spend 2 is folded under it. Each has its own **Read the chain now**: your browser reads that payout's 4
+   transactions and 3 views from public RPC and runs its seven checks.
+   [Mainnet payouts, step by step](https://probarion.xyz/docs/start/mainnet-payout) gives each value they read.
 
 ## Run it
 
