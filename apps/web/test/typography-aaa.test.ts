@@ -23,6 +23,7 @@ const MODULES: Readonly<Record<string, string>> = {
   docs: "src/components/docs/docs.module.css",
   canary: "src/components/site/canary.module.css",
   usage: "src/components/site/usage.module.css",
+  mainnet: "src/components/site/mainnet.module.css",
   status: "src/components/site/status.module.css",
 };
 const AAA = 7;

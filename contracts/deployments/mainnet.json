@@ -15,6 +15,10 @@
     "deploy_tx": "HMQj8TtwqCn3dYfPDzQbFScwBi4xQadaEqPhAV7p789F",
     "lock_tx": "Ap8e7bAiDkA6WvCWbzcezKVmweuJ1Zyei6GQK8rCrZs6"
   },
+  "owner_wallets": {
+    "near": ["probarion-duong.near"],
+    "base": ["0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27"]
+  },
   "funding": {
     "usdc_storage_tx": "AoXATi6L84yAtjMYbcxk9nSEq7vpo3SMtrTuCDhXBR73",
     "usdc_float_tx": "HQQe3aTrhq4gAZZ9RcCiNNfnfUcBnK7Sbm6hHHsnWMBC",

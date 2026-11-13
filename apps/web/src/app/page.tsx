@@ -6,6 +6,7 @@ import { InkBand } from "@/components/site/InkBand";
 import { Integrate } from "@/components/site/Integrate";
 import { Journey } from "@/components/site/Journey";
 import { LiveCheck } from "@/components/site/LiveCheck";
+import { MainnetPayout } from "@/components/site/MainnetPayout";
 import { ChainList, Closing } from "@/components/site/Sections";
 import { StatusBoard } from "@/components/site/StatusBoard";
 import s from "@/components/site/site.module.css";
@@ -21,6 +22,7 @@ export default function Home() {
       <Journey />
       <Integrate />
       <InkBand />
+      <MainnetPayout />
       <ConsoleShots />
       <LedgerTest />
       <ChainList />

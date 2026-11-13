@@ -14,7 +14,6 @@ import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { explorerTxUrl } from "@/lib/config";
 import { REPO_URL } from "@/lib/proof/cli";
 import {
-  ATTESTED_BASE_TX,
   BASE_TX,
   BOARD_GROUPS,
   BOARD_LINKS,
@@ -448,9 +447,9 @@ describe("the status board's rows", () => {
     const hrefs = row?.evidence.map((e) => e.href) ?? [];
     for (const href of [
       BOARD_TX.basePayout.url,
-      BASE_TX.url,
+      BASE_TX.basePayout.url,
       BOARD_TX.attestedPayout.url,
-      ATTESTED_BASE_TX.url,
+      BASE_TX.attestedPayout.url,
       BOARD_LINKS.mainnetRunS1,
       BOARD_LINKS.mainnetRunS2,
     ]) {
@@ -489,7 +488,6 @@ describe("the status board's evidence", () => {
       ...strings(HERO),
       ...strings(BOARD_TX),
       ...strings(BASE_TX),
-      ...strings(ATTESTED_BASE_TX),
       ...strings(BOARD_LINKS),
       ...strings(STORY),
       ...strings(INTEGRATE),
@@ -590,19 +588,21 @@ describe("the status board's evidence", () => {
       if (fact) expect(fact.url, t.hash).toBe(explorerTxUrl(t.network as "testnet", t.hash));
     }
     // The Base side of the payout, on Base's explorer, as the README and JUDGES.md link it.
-    expect(BASE_TX.hash).toBe(mainnet.proof.first_base_payout_base_tx);
-    expect(BASE_TX.label).toBe(`${BASE_TX.hash.slice(0, 10)}…${BASE_TX.hash.slice(-4)}`);
-    expect(SOURCES.readme).toContain(BASE_TX.url);
-    expect(SOURCES.judges).toContain(BASE_TX.url);
+    expect(BASE_TX.basePayout.hash).toBe(mainnet.proof.first_base_payout_base_tx);
+    expect(BASE_TX.basePayout.label).toBe(
+      `${BASE_TX.basePayout.hash.slice(0, 10)}…${BASE_TX.basePayout.hash.slice(-4)}`,
+    );
+    expect(SOURCES.readme).toContain(BASE_TX.basePayout.url);
+    expect(SOURCES.judges).toContain(BASE_TX.basePayout.url);
     expect(SOURCES.judges).toContain("the POA bridge released 0.9976 USDC on Base");
     expect(SOURCES.judges).toContain("spend 2 burned 1.00 USDC");
     // The Base side of spend 3, the payout on an attested model's proposal, the same way.
-    expect(ATTESTED_BASE_TX.hash).toBe(mainnet.proof.attested_base_payout_base_tx);
-    expect(ATTESTED_BASE_TX.label).toBe(
-      `${ATTESTED_BASE_TX.hash.slice(0, 10)}…${ATTESTED_BASE_TX.hash.slice(-4)}`,
+    expect(BASE_TX.attestedPayout.hash).toBe(mainnet.proof.attested_base_payout_base_tx);
+    expect(BASE_TX.attestedPayout.label).toBe(
+      `${BASE_TX.attestedPayout.hash.slice(0, 10)}…${BASE_TX.attestedPayout.hash.slice(-4)}`,
     );
-    expect(SOURCES.readme).toContain(ATTESTED_BASE_TX.url);
-    expect(SOURCES.judges).toContain(ATTESTED_BASE_TX.url);
+    expect(SOURCES.readme).toContain(BASE_TX.attestedPayout.url);
+    expect(SOURCES.judges).toContain(BASE_TX.attestedPayout.url);
     expect(SOURCES.judges).toContain("the POA bridge released 0.2476 USDC on Base");
     expect(SOURCES.judges).toContain("spend 3 burned 0.25 USDC");
   });
@@ -657,28 +657,27 @@ describe("the status board's evidence", () => {
     record.set(REHEARSAL.txHash, { code: REHEARSAL.contractCode });
     // The Base side of the payout: JUDGES.md's words for what the bridge released.
     const released = /the POA bridge released (\d+\.\d+) USDC on Base/.exec(SOURCES.judges)?.[1];
-    record.set(BASE_TX.hash, { amount: Number(released) });
+    record.set(BASE_TX.basePayout.hash, { amount: Number(released) });
     // The Base side of spend 3: the POA bridge's own status record of S2, in base units of 6 decimals.
     const poa = JSON.parse(
       text(ROOT, "docs", "evidence", "mainnet-v0", "s2-2026-11-13", "poa-status.json"),
     ) as { data: { tx_hash: string; transfer_tx_hash: string; withdraw_amount: string } };
     expect(poa.data.tx_hash).toBe(BOARD_TX.attestedPayout.hash);
-    expect(poa.data.transfer_tx_hash).toBe(ATTESTED_BASE_TX.hash);
+    expect(poa.data.transfer_tx_hash).toBe(BASE_TX.attestedPayout.hash);
     // The kit's own read of that transfer on Base agrees with the bridge: same tx, same amount, a match.
     const receipt = JSON.parse(
       text(ROOT, "docs", "evidence", "mainnet-v0", "s2-2026-11-13", "base-receipt.json"),
     ) as { tx: string; transfers: { value: string }[]; match: boolean };
-    expect(receipt.tx).toBe(ATTESTED_BASE_TX.hash);
+    expect(receipt.tx).toBe(BASE_TX.attestedPayout.hash);
     expect(receipt.transfers[0]?.value).toBe(poa.data.withdraw_amount);
     expect(receipt.match).toBe(true);
-    record.set(ATTESTED_BASE_TX.hash, { amount: Number(poa.data.withdraw_amount) / 1e6 });
+    record.set(BASE_TX.attestedPayout.hash, { amount: Number(poa.data.withdraw_amount) / 1e6 });
 
     const facts: TxFact[] = [
       ...Object.values(TX),
       ...Object.values(MAINNET_TX),
       ...Object.values(BOARD_TX),
-      BASE_TX,
-      ATTESTED_BASE_TX,
+      ...Object.values(BASE_TX),
       HERO.paid.tx,
       HERO.refused.tx,
     ];
@@ -818,8 +817,7 @@ describe("the status board's evidence", () => {
       ...Object.values(TX),
       ...Object.values(MAINNET_TX),
       ...Object.values(BOARD_TX),
-      BASE_TX,
-      ATTESTED_BASE_TX,
+      ...Object.values(BASE_TX),
       HERO.paid.tx,
       HERO.refused.tx,
     ];

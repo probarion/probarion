@@ -1,0 +1,1215 @@
+/*
+ * The #mainnet section (MainnetPayout.tsx): a payout on NEAR mainnet drawn as the brand mark laid along a route, the
+ * stone, with its seven checks; then the decision trail beside the verifier's verdict. The newest payout shows open, and
+ * each earlier one follows, folded behind a summary card. Light only, and every colour is
+ * a token from app/globals.css. Nothing moves until the button is pressed, and then only under
+ * prefers-reduced-motion: no-preference, once each time: no effect starts on scroll, and nothing loops.
+ */
+
+/* The ink band above brings the dark; the console screenshots below bring their own top padding. */
+.section {
+  padding-top: clamp(64px, 9vw, 128px);
+}
+/* The h2 keeps its two lines while they fit; the lede takes the rest of the row. */
+.head {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(18em, 1fr);
+  gap: 18px 48px;
+  align-items: end;
+  margin-bottom: clamp(28px, 3.4vw, 48px);
+}
+.headLine {
+  display: block;
+}
+.lede {
+  justify-self: end;
+  max-width: 26em;
+  color: var(--color-mute);
+}
+
+.payouts {
+  display: grid;
+  gap: clamp(48px, 6vw, 80px);
+}
+.payout {
+  display: grid;
+  gap: clamp(28px, 3vw, 40px);
+  min-width: 0;
+}
+/* Shown when there is more than one payout, to tell the stones apart. */
+.payoutTitle {
+  font-weight: 400;
+  font-size: clamp(22px, 2vw, 28px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.stoneWrap {
+  min-width: 0;
+}
+
+/*
+ * The earlier payouts, after the newest: each folded in a native details that starts closed and opens with no script.
+ * The summary is a white card with the payout's heading, what it was, and a hint whose arrow turns when it opens.
+ */
+.folds {
+  display: grid;
+  gap: 16px;
+}
+.fold {
+  min-width: 0;
+}
+/* With earlier payouts, the transactions of 2026-11-11 come after their folds, at the width of the verdict column. */
+.earlierAfter {
+  max-width: 520px;
+}
+.foldSummary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title hint"
+    "line hint";
+  align-items: center;
+  gap: 8px 40px;
+  min-height: 44px;
+  padding: clamp(18px, 2.4vw, 28px) clamp(18px, 2.6vw, 36px);
+  border: 1px solid var(--color-line);
+  border-radius: 24px;
+  background: var(--color-surface);
+  cursor: pointer;
+  list-style: none;
+}
+.foldSummary::-webkit-details-marker {
+  display: none;
+}
+.foldTitle {
+  grid-area: title;
+  font-weight: 400;
+  font-size: clamp(22px, 2vw, 28px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.foldLine {
+  grid-area: line;
+  max-width: var(--container-measure);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.foldHint {
+  grid-area: hint;
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-gold-ink);
+}
+/* A gold ring with the arrow in it: it points down while closed and up once the payout is open. */
+.foldArrow {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-gold-deep);
+  border-radius: 50%;
+  font-size: 16px;
+}
+.fold[open] .foldArrow {
+  transform: rotate(180deg);
+}
+.foldHide,
+.fold[open] .foldShow {
+  display: none;
+}
+.fold[open] .foldHide {
+  display: inline;
+}
+.foldSummary:hover .foldShow,
+.foldSummary:hover .foldHide {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.foldBody {
+  display: grid;
+  gap: clamp(28px, 3vw, 40px);
+  min-width: 0;
+  margin-top: clamp(28px, 3vw, 40px);
+}
+
+/* A pill in the section's tones: a burn is neutral, an arrival or an allow is ok, a refusal is bad. */
+.pill {
+  display: inline-block;
+  max-width: 100%;
+  white-space: normal;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 1px 10px;
+  border-radius: 999px;
+  letter-spacing: 0;
+}
+.toneNeutral {
+  background: var(--color-plan-bg);
+  color: var(--color-plan);
+}
+.toneOk {
+  background: var(--color-ok-bg);
+  color: var(--color-ok);
+}
+.toneBad {
+  background: var(--color-bad-bg);
+  color: var(--color-bad);
+}
+/* A short hash link stays whole while it fits, and still breaks inside when it does not. Links in words wrap. */
+.tx {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.hash {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/* --- The stone: an ink slab. One column, or on a wide screen the route on the left and the checks on the right. --- */
+.stone {
+  --p: 1;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  min-width: 0;
+  padding: clamp(18px, 2.6vw, 36px);
+  border: 1px solid var(--color-band-line);
+  border-radius: 24px;
+  background: var(--color-band);
+  color: var(--color-band-fg);
+}
+.stone a {
+  color: var(--color-band-fg);
+}
+.stone :focus-visible {
+  outline-color: var(--color-band-fg);
+}
+.stone .toneNeutral {
+  background: var(--color-band-line);
+  color: var(--color-band-fg);
+}
+.intro {
+  min-width: 0;
+}
+.caveat {
+  max-width: var(--container-measure);
+  padding-left: 14px;
+  border-left: 3px solid var(--color-gold-deep);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-band-mute);
+}
+.caveatLabel {
+  display: block;
+  font-weight: 600;
+  color: var(--color-band-fg);
+}
+.ends {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 20px;
+  margin-top: 22px;
+}
+.end {
+  min-width: 0;
+}
+.endBase {
+  text-align: right;
+}
+.place {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold-light);
+}
+.figure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-top: 6px;
+}
+.endBase .figure {
+  justify-content: flex-end;
+}
+.figure b {
+  font-weight: 300;
+  font-size: clamp(36px, 4.4vw, 64px);
+  line-height: 1;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+  padding-bottom: 0.06em;
+}
+.endLine {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-band-mute);
+  overflow-wrap: anywhere;
+}
+
+/* The route: the coin rides the gold bar from NEAR to Base, over one tick per check and the bridge. */
+.route {
+  position: relative;
+  height: 80px;
+  min-width: 0;
+}
+.track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 44px;
+  height: 8px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    var(--color-gold-deep) 0%,
+    var(--color-gold-bright) 35%,
+    var(--color-gold-pale) 50%,
+    var(--color-gold-mid) 70%,
+    var(--color-gold-deep) 100%
+  );
+}
+.sheen {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 26%;
+  transform: translateX(-110%);
+  background: linear-gradient(90deg, transparent, var(--color-gold-pale), transparent);
+}
+/* While a run reads, and where it stopped, the bar past the coin is dimmed. */
+.dim {
+  display: none;
+  position: absolute;
+  top: 44px;
+  right: 0;
+  left: calc(var(--p) * (100% - 40px) + 20px);
+  height: 8px;
+  border-radius: 0 2px 2px 0;
+  background: color-mix(in srgb, var(--color-band) 72%, transparent);
+}
+.stone[data-trace="running"] .dim,
+.stone[data-trace="stopped"] .dim {
+  display: block;
+}
+.bridge {
+  position: absolute;
+  top: 34px;
+  height: 28px;
+  left: calc(var(--x) * (100% - 40px) + 20px);
+  border-left: 1px dashed var(--color-band-mute);
+}
+.coin {
+  position: absolute;
+  top: 0;
+  left: calc(var(--p) * (100% - 40px));
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    var(--color-gold-deep) 0%,
+    var(--color-gold-bright) 28%,
+    var(--color-gold-pale) 42%,
+    var(--color-gold-mid) 56%,
+    var(--color-gold-deep) 80%,
+    var(--color-gold-ink) 100%
+  );
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-band) 60%, transparent);
+}
+.glint {
+  position: absolute;
+  right: -6px;
+  top: -8px;
+  width: 20px;
+  height: 20px;
+  transform: scale(0);
+  pointer-events: none;
+  background:
+    radial-gradient(circle, var(--color-gold-pale) 0 2px, transparent 3px),
+    linear-gradient(90deg, transparent, var(--color-gold-pale), transparent) center / 100% 2px
+    no-repeat,
+    linear-gradient(0deg, transparent, var(--color-gold-pale), transparent) center / 2px 100%
+    no-repeat;
+}
+.ticks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 58px;
+  height: 22px;
+}
+.tick {
+  position: absolute;
+  left: calc(var(--x) * (100% - 40px) + 20px);
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 22px;
+  white-space: nowrap;
+  color: var(--color-gold-light);
+}
+.tickBridge,
+.tick[data-state="reading"],
+.tick[data-state="unread"] {
+  color: var(--color-band-mute);
+}
+.tick[data-state="unread"] {
+  text-decoration: line-through;
+}
+.tick[data-state="fail"] {
+  color: var(--color-band-bad);
+  text-decoration: line-through;
+}
+.timing {
+  max-width: var(--container-measure);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-band-mute);
+}
+
+/* The verdict and the button. */
+.runBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-band-line);
+}
+.verdict {
+  flex: 1 1 16em;
+  min-width: 0;
+}
+.verdictTitle {
+  display: block;
+  font-weight: 300;
+  font-size: clamp(24px, 2.2vw, 30px);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.verdict[data-tone="bad"] .verdictTitle {
+  color: var(--color-band-bad);
+}
+.verdictSub {
+  display: block;
+  max-width: var(--container-measure);
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-band-mute);
+  overflow-wrap: anywhere;
+}
+.run {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px 24px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-ink);
+  background: linear-gradient(
+    135deg,
+    var(--color-gold-bright) 0%,
+    var(--color-gold-light) 42%,
+    var(--color-gold-pale) 52%,
+    var(--color-gold-bright) 100%
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-gold-ink) 35%, transparent);
+}
+.run::before {
+  content: "";
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-gold-deep);
+  box-shadow: inset 0 0 0 1px var(--color-gold-ink);
+}
+.run:hover {
+  box-shadow: inset 0 0 0 2px var(--color-gold-ink);
+}
+.run[hidden] {
+  display: none;
+}
+.run[aria-disabled="true"] {
+  cursor: progress;
+}
+.noJs {
+  max-width: var(--container-measure);
+  font-size: 15px;
+  color: var(--color-band-mute);
+}
+
+/* The seven checks: a gold rail each, its number, what it reads, and the values it found. */
+.checks {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+}
+.check {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 5fr) minmax(0, 7fr);
+  grid-template-areas:
+    "num what vals"
+    "num prob prob";
+  gap: 6px 18px;
+  padding: 10px 0 10px 18px;
+  border-top: 1px solid var(--color-band-line);
+}
+.checkRail {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--color-gold-deep);
+}
+.check[data-state="pass"] .checkRail {
+  background: linear-gradient(
+    180deg,
+    var(--color-gold-mid) 0%,
+    var(--color-gold-pale) 50%,
+    var(--color-gold-bright) 100%
+  );
+}
+.check[data-state="reading"] .checkRail,
+.check[data-state="unread"] .checkRail {
+  background: var(--color-band-line);
+}
+.check[data-state="fail"] .checkRail {
+  background: var(--color-band-bad);
+}
+.railSheen {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 70%;
+  transform: translateY(-110%);
+  background: linear-gradient(180deg, transparent, var(--color-gold-pale), transparent);
+}
+.num {
+  grid-area: num;
+  padding-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-gold-light);
+}
+.what {
+  grid-area: what;
+  min-width: 0;
+}
+.checkTitle {
+  font-weight: 400;
+  font-size: 17px;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+.state,
+.sources {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-band-mute);
+  overflow-wrap: anywhere;
+}
+/*
+ * The site sets code at 0.86em (.site code), which is under 12px in 13px text: a view name keeps 12px. Two classes
+ * outrank .site code whatever order the stylesheets load in.
+ */
+.check .sources code {
+  font-size: 12px;
+}
+.word {
+  font-weight: 600;
+  color: var(--color-band-fg);
+}
+.word::before {
+  content: "\2713" / "";
+  margin-right: 6px;
+  color: var(--color-gold-light);
+}
+.check[data-state="pass"] .word::before {
+  color: var(--color-gold-bright);
+}
+.check[data-state="reading"] .word {
+  color: var(--color-band-mute);
+}
+.check[data-state="reading"] .word::before {
+  content: "\25CB" / "";
+}
+.vals {
+  grid-area: vals;
+  min-width: 0;
+}
+/* The values fold behind this line on a phone (the 620px block shows it); wider, they always show. */
+.valsSummary {
+  display: none;
+}
+.pairs {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 14px;
+}
+.pairs > div {
+  display: contents;
+}
+/* The request's fields: each name and value stay together and wrap as one, 16px from the next. */
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.fields > div {
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+.pairs dt,
+.fields dt {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-band-mute);
+}
+.pairs dd,
+.fields dd {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-band-fg);
+  overflow-wrap: anywhere;
+}
+.fields dd,
+.full {
+  font-family: var(--font-mono);
+}
+/*
+ * While a run reads, the values on show are the last ones read, dimmed: they are not this run's yet. A row that fails
+ * or cannot be read keeps them dimmed too, and its sentence says where they come from.
+ */
+.check[data-state="reading"] .pairs dd,
+.check[data-state="reading"] .fields dd,
+.check[data-state="fail"] .pairs dd,
+.check[data-state="fail"] .fields dd,
+.check[data-state="unread"] .pairs dd,
+.check[data-state="unread"] .fields dd {
+  color: var(--color-band-mute);
+}
+.valsNote {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-gold-light);
+}
+.problem {
+  grid-area: prob;
+  max-width: var(--container-measure);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.check[data-state="fail"] .problem {
+  background: var(--color-band-bad-bg);
+  color: var(--color-band-bad);
+}
+.check[data-state="unread"] .problem {
+  background: var(--color-band-line);
+  color: var(--color-gold-light);
+}
+.foot {
+  max-width: var(--container-measure);
+  padding-top: 16px;
+  border-top: 1px solid var(--color-band-line);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-band-mute);
+}
+
+/* --- Under the stone: the decision trail beside the verifier's verdict and the earlier mainnet transactions. --- */
+.lower {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: clamp(28px, 4vw, 56px);
+  align-items: start;
+}
+.trail,
+.side {
+  min-width: 0;
+}
+.side {
+  display: grid;
+  gap: 24px;
+}
+.sideTitle {
+  font-weight: 400;
+  font-size: clamp(22px, 2vw, 28px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.setup {
+  max-width: var(--container-measure);
+  margin-top: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-mute);
+  overflow-wrap: anywhere;
+}
+.setup a,
+.entryText a,
+.sealText a,
+.earlier a {
+  color: var(--color-ink);
+}
+
+/* The main line: gold, from the first entry to the payment. The refused proposals branch off it on a dashed spur. */
+.line {
+  position: relative;
+  margin-top: 18px;
+}
+.line::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 6px;
+  bottom: 24px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--color-gold-deep);
+}
+.entry {
+  position: relative;
+  min-width: 0;
+}
+.entryHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.entryLabel {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--color-gold-ink);
+}
+.entryText {
+  max-width: var(--container-measure);
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+/* A station on the main line: a gold dot on the rail. */
+.station {
+  padding: 0 0 14px 36px;
+}
+.station::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    var(--color-gold-deep) 0%,
+    var(--color-gold-bright) 40%,
+    var(--color-gold-mid) 70%,
+    var(--color-gold-deep) 100%
+  );
+  box-shadow: 0 0 0 3px var(--color-paper);
+}
+.station:last-child {
+  padding-bottom: 0;
+}
+/* The main line ends at the last dot: a paper strip covers the rail beside the last entry's text. */
+.line > .station:last-child::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 18px;
+  bottom: 0;
+  width: 9px;
+  background: var(--color-paper);
+}
+/* The spur leaves the rail with a dashed bend, runs down past the refused entries and ends in a red stop. */
+.spur {
+  position: relative;
+  padding: 0 0 14px 36px;
+}
+.spur::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 10px;
+  width: 26px;
+  height: 22px;
+  border-top: 2px dashed var(--color-mute);
+  border-right: 2px dashed var(--color-mute);
+  border-top-right-radius: 12px;
+}
+.spurName {
+  display: block;
+  padding-left: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.spurList {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  margin-top: 8px;
+  padding-left: 30px;
+}
+.spurList::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -12px;
+  bottom: -14px;
+  border-left: 2px dashed var(--color-mute);
+}
+.spurEnd {
+  position: relative;
+  display: block;
+  margin-top: 14px;
+  padding-left: 30px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-bad);
+}
+.spurEnd::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 0;
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-bad);
+}
+.trailSum {
+  max-width: var(--container-measure);
+  margin-top: 18px;
+  font-size: 15px;
+}
+
+/* The anchors, as coin seals: the number big on the coin, the words beside it, and the entries it covers below. */
+.seals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px 20px;
+  margin-top: 14px;
+}
+.seal {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.sealCoin {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+  background: linear-gradient(
+    135deg,
+    var(--color-gold-deep) 0%,
+    var(--color-gold-bright) 28%,
+    var(--color-gold-pale) 42%,
+    var(--color-gold-mid) 56%,
+    var(--color-gold-deep) 80%,
+    var(--color-gold-ink) 100%
+  );
+  box-shadow:
+    inset 0 0 0 4px color-mix(in srgb, var(--color-gold-pale) 30%, transparent),
+    0 6px 14px -8px var(--color-gold-ink);
+}
+.sealText {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-mute);
+  overflow-wrap: anywhere;
+}
+.cover {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.cover i {
+  width: 14px;
+  height: 6px;
+  border-radius: 1px;
+  border: 1px solid var(--color-gold-deep);
+}
+.cover i[data-on] {
+  background: var(--color-gold-deep);
+}
+
+/* The verifier's verdict, in a white card. */
+.verify {
+  padding: 20px;
+  border: 1px solid var(--color-line);
+  border-radius: 20px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+.verifyLead {
+  max-width: var(--container-measure);
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--color-mute);
+}
+.verifyBlock {
+  margin-top: 12px;
+}
+.resultOk,
+.resultBad {
+  display: block;
+  font-weight: 300;
+  font-size: clamp(28px, 2.6vw, 38px);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+.resultOk {
+  color: var(--color-ok);
+}
+.resultBad {
+  color: var(--color-bad);
+}
+.verifyCounts,
+.verifyAttested {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.verifyFoot {
+  max-width: var(--container-measure);
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-line);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-mute);
+}
+.verifyFoot a,
+.verifyLinks a {
+  color: var(--color-ink);
+}
+.verifyLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.earlierList {
+  margin-top: 10px;
+}
+.earlierList li {
+  padding-block: 10px;
+  font-size: 15px;
+  line-height: 1.5;
+  border-top: 1px solid var(--color-line);
+}
+.earlierList li:last-child {
+  border-bottom: 1px solid var(--color-line);
+}
+/* Each earlier transaction: its line, then its hash on the same line while it fits. */
+.earlierText {
+  margin-right: 4px;
+}
+
+/* --- Widths: the site's breakpoints --- */
+@media (min-width: 1101px) {
+  .stone {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-areas:
+      "intro checks"
+      "route checks"
+      "timing checks"
+      "bar checks"
+      "foot checks"
+      ". checks";
+    grid-template-rows: auto auto auto auto auto 1fr;
+    column-gap: clamp(28px, 3vw, 44px);
+  }
+  .intro {
+    grid-area: intro;
+  }
+  .route {
+    grid-area: route;
+  }
+  .timing {
+    grid-area: timing;
+  }
+  .runBar {
+    grid-area: bar;
+  }
+  .checks {
+    grid-area: checks;
+  }
+  .foot {
+    grid-area: foot;
+  }
+  .check:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+  .check:first-child .checkRail {
+    top: 0;
+  }
+}
+@media (max-width: 960px) {
+  .head,
+  .lower {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lede {
+    justify-self: start;
+  }
+  /* A fold's hint goes under its line, at the start, so the heading keeps the width. */
+  .foldSummary {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "title"
+      "line"
+      "hint";
+  }
+  .foldHint {
+    justify-self: start;
+  }
+}
+/* A narrow row: the number beside the title, then the values on the full width, each pair on its own line. */
+@media (max-width: 760px) {
+  .check {
+    grid-template-columns: 24px minmax(0, 1fr);
+    grid-template-areas:
+      "num what"
+      "vals vals"
+      "prob prob";
+    gap: 6px 10px;
+    padding-left: 16px;
+  }
+  /* The state and the sources share a line box, so the box takes their size, not the body's. */
+  .what,
+  .pairs {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .state {
+    display: inline;
+    margin-right: 10px;
+  }
+  .sources {
+    display: inline;
+  }
+  .pairs {
+    display: block;
+  }
+  .pairs > div {
+    display: block;
+    padding-left: 14px;
+    text-indent: -14px;
+  }
+  .pairs dt,
+  .pairs dd {
+    display: inline;
+  }
+  .pairs dt {
+    margin-right: 8px;
+  }
+}
+@media (max-width: 620px) {
+  .stone {
+    gap: 14px;
+    padding: 16px;
+  }
+  /* Seven rows of values make a long page on a phone: each folds behind its line, and a tap opens it. */
+  .valsSummary {
+    display: list-item;
+    width: fit-content;
+    padding-block: 3px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-band-mute);
+    cursor: pointer;
+  }
+  .vals[open] > .valsSummary {
+    margin-bottom: 6px;
+  }
+  /* A narrow column of right-aligned lines reads badly: the Base end aligns left, and its figure keeps right. */
+  .endBase .endLine {
+    text-align: left;
+  }
+  .check {
+    padding-block: 8px;
+  }
+  .checkRail {
+    top: 8px;
+    bottom: 8px;
+  }
+  /* The seal says which entries it covers; the marks under it repeat that, so a phone leaves them out. */
+  .cover {
+    display: none;
+  }
+  .seals {
+    gap: 12px;
+  }
+  .sealCoin {
+    width: 42px;
+    height: 42px;
+  }
+  .spurList,
+  .spurEnd {
+    padding-left: 20px;
+  }
+  .ends {
+    gap: 0 14px;
+  }
+  .figure b {
+    font-size: clamp(32px, 10.5vw, 48px);
+  }
+  .figure {
+    gap: 4px 8px;
+  }
+  .run {
+    width: 100%;
+  }
+  .verify {
+    padding: 18px 16px;
+  }
+}
+/* At 359px and below the bridge's label would touch ticks 06 and 07. */
+@media (max-width: 359px) {
+  .tickBridge {
+    display: none;
+  }
+}
+
+/* --- Motion: after the button only, under no-preference, never looping. The page is complete without it. --- */
+@media (prefers-reduced-motion: no-preference) {
+  .stone[data-trace] .coin,
+  .stone[data-trace] .dim {
+    transition: left 0.55s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .stone[data-trace] .check[data-state="pass"] .railSheen {
+    animation: sheenY 0.9s ease-out 1 both;
+  }
+  .stone[data-trace="done"] .sheen {
+    animation: sheenX 1.3s cubic-bezier(0.3, 0.6, 0.3, 1) 0.15s 1 both;
+  }
+  .stone[data-trace="done"] .glint {
+    animation: glint 1s ease-out 0.9s 1 both;
+  }
+}
+@keyframes sheenY {
+  from {
+    transform: translateY(-110%);
+  }
+  to {
+    transform: translateY(160%);
+  }
+}
+@keyframes sheenX {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+@keyframes glint {
+  0% {
+    transform: scale(0) rotate(0deg);
+  }
+  45% {
+    transform: scale(1) rotate(45deg);
+  }
+  100% {
+    transform: scale(0) rotate(90deg);
+  }
+}
+
+/* --- Forced colours: the fills go, so pills, panels and the stone get an edge; the metal keeps its own colours. --- */
+@media (forced-colors: active) {
+  .stone,
+  .verify,
+  .pill,
+  .problem,
+  .run {
+    border: 1px solid CanvasText;
+  }
+  .line::before,
+  .check .checkRail,
+  .check[data-state] .checkRail {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+  .track,
+  .coin,
+  .station::before,
+  .sealCoin,
+  .cover i[data-on] {
+    forced-color-adjust: none;
+  }
+  .spurEnd::before {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+}
