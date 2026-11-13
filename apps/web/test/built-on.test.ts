@@ -353,14 +353,14 @@ describe("the built-on facts", () => {
     ).toContain("## The mainnet vault");
   });
 
-  it("NEAR AI Cloud: 7 published attested decisions that pass A1 to A7, 6 of them O1 and O2, two paid invoices, and the image not pinned", () => {
+  it("NEAR AI Cloud: 7 published attested decisions that pass A1 to A7 and have passed O1 and O2, two paid invoices, and the image not pinned", () => {
     const [, ai] = BUILT_ON.rows;
     expect(ai.body).toBe(
       "An optional private model, run in a TEE, reads the invoice and proposes. Code decides, and the contract has the last word.",
     );
     expect(ai.checks).toEqual([
       "7 published attested decisions on testnet: 2 on the Canary, 5 by Payables",
-      "All 7 pass A1 to A7 offline, and 6 passed O1 and O2 online",
+      "All 7 pass A1 to A7 offline and have passed O1 and O2 online",
       "On 2026-11-12 Payables paid two invoices on its own with it: 2 test USDC each",
     ]);
     const row = readmeRow("NEAR AI Cloud adapter");
@@ -374,6 +374,8 @@ describe("the built-on facts", () => {
     expect(row).toContain(
       "the four attested decisions the demo vault held then, entries 10 to 13, passed O1 and O2",
     );
+    // "have passed O1 and O2": the Canary's 2 on 2026-11-11 and the demo vault's 5 in the 16:13 UTC run of 2026-11-12.
+    expect(row).toContain("passed O1 and O2 on all five, entry 15 included");
     expect(row).toContain("the vault paid 2.00 test USDC as spend 4");
     expect(row).toContain(
       "later that day the same happened for INV-2010, which the vault paid as spend 5",

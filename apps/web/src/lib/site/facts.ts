@@ -931,7 +931,7 @@ export const BUILT_ON = {
       body: "An optional private model, run in a TEE, reads the invoice and proposes. Code decides, and the contract has the last word.",
       checks: [
         "7 published attested decisions on testnet: 2 on the Canary, 5 by Payables",
-        "All 7 pass A1 to A7 offline, and 6 passed O1 and O2 online",
+        "All 7 pass A1 to A7 offline and have passed O1 and O2 online",
         "On 2026-11-12 Payables paid two invoices on its own with it: 2 test USDC each",
       ],
       note: "The TEE image is not pinned yet, so this does not show which model image ran.",
