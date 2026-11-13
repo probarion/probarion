@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { slug } from "github-slugger";
 import type { Code, List, Root, RootContent } from "mdast";
 import { describe, expect, it } from "vitest";
+import { AGENT_RULES } from "@/lib/docs/agents";
 import { changelogTree } from "@/lib/docs/changelog";
 import { headingsOf } from "@/lib/docs/headings";
 import { MDX_COMPONENT_NAMES } from "@/lib/docs/markdown";
@@ -229,6 +230,29 @@ describe("copy rules", () => {
         const m = field ? stale.exec(field) : null;
         if (m) found.push(`${fileOf(p.path)}: ${m[0]}`);
       }
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("call no Base payout unrun once contracts/deployments/mainnet.json records one", () => {
+    const record = JSON.parse(
+      readFileSync(join(ROOT, "contracts", "deployments", "mainnet.json"), "utf8"),
+    ) as { first_base_payout_tx?: string | null };
+    // Before spike S1 ran on 2026-11-13 these words were true.
+    if (!record.first_base_payout_tx) return;
+    const stale =
+      /no Base payout|no such payout has run|no mainnet payout|S1,? [^.]*is unproven|S1 is unproven|none has run through NEAR Intents|waits for spike S1|no mandate to a Base payee/i;
+    const found: string[] = [];
+    for (const p of PAGES) {
+      const fields = [p.title, p.nav, p.description, p.lede, readMdx(p.path)];
+      for (const field of fields) {
+        const m = field ? stale.exec(field) : null;
+        if (m) found.push(`${fileOf(p.path)}: ${m[0]}`);
+      }
+    }
+    for (const rule of AGENT_RULES) {
+      const m = stale.exec(rule);
+      if (m) found.push(`apps/web/src/lib/docs/agents.ts: ${m[0]}`);
     }
     expect(found).toEqual([]);
   });

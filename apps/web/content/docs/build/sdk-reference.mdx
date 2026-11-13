@@ -81,7 +81,7 @@ With `model: { provider: "near-ai-cloud", apiKey }`, `Probarion` makes a `NearAi
 
 ## Snapshot and proof
 
-`snapshot()` and `verify()` use these, so you need them directly only to build a snapshot or a check of your own. A few concern only the mainnet vault `v0.probarion.near`, deployed on 2026-11-11 with no ledger: the code names it as the only vault whose spends may predate the signed ledger. [Verifier checks a to i](/docs/trust/verifier-checks) says what each check proves, and [Verify a vault yourself](/docs/trust/verify-a-vault) runs the verifier on a live vault.
+`snapshot()` and `verify()` use these, so you need them directly only to build a snapshot or a check of your own. A few concern only the mainnet vault `v0.probarion.near`, whose first spend, on 2026-11-11, came before its ledger: the code names it as the only vault whose spends may predate the signed ledger. [Verifier checks a to i](/docs/trust/verifier-checks) says what each check proves, and [Verify a vault yourself](/docs/trust/verify-a-vault) runs the verifier on a live vault.
 
 <RefTable id="sdk-proof" />
 

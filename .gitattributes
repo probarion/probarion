@@ -14,3 +14,5 @@ eval/purpose/*.txt -text
 eval/invoices/*.pdf binary
 # The 402 demo mandate's purpose: its sha256 goes on chain as the mandate's purpose_hash, so git never converts it.
 examples/402/demo-purpose.txt -text
+# S1 on mainnet (2026-11-13): the invoice and PO hashes are on chain and the ledger is kept byte for byte, so git never converts the folder.
+docs/evidence/mainnet-v0/s1-2026-11-13/* -text

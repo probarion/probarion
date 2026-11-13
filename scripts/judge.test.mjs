@@ -25,6 +25,7 @@ import {
   ledgerPrefix,
   locate,
   looksLikeNetworkError,
+  MAINNET_V0_LEDGER,
   matchA8,
   matchVerify,
   parseArgs,
@@ -137,7 +138,7 @@ function fakeExec(calls, overrides = {}) {
       const ex = examples.find((e) => e.script === args[2]);
       return ex ? answer(0, `${ex.output.join("\n")}\n`) : answer(1, "", "unknown snippet\n");
     }
-    if (args.includes("verify") && args.includes("--invoices")) {
+    if (args.includes("verify") && args.includes("--offline") && args.includes("--invoices")) {
       return answer(0, JSON.stringify(a8Report()));
     }
     if (args.includes("verify")) {
@@ -770,7 +771,7 @@ describe("safety", () => {
     assert.equal(snippetProblem(`${sdk}await fetch("https://rpc");`, four), null);
   });
 
-  test("the live verifies read the chain with an empty or downloaded ledger, and send nothing", async () => {
+  test("the live verifies read the chain with an empty, downloaded or committed ledger, and send nothing", async () => {
     const r = await judge([]);
     const live = r.calls.filter((c) => c.args.includes("--network"));
     assert.equal(live.length, 4);
@@ -779,7 +780,8 @@ describe("safety", () => {
       assert.ok(c.args.includes("--ledger"));
       assert.equal(c.args[1], "verify");
     }
-    // Three testnet vaults, and the one mainnet vault with the repository's evidence and records.
+    // Three testnet vaults, and the one mainnet vault with its committed ledger, its invoice and the repository's
+    // evidence and records.
     assert.deepEqual(
       live.map((c) => `${at(c, "--network")} ${at(c, "--vault")}`),
       [
@@ -790,8 +792,12 @@ describe("safety", () => {
       ],
     );
     const mainnet = live[3];
+    assert.equal(at(mainnet, "--ledger"), MAINNET_V0_LEDGER);
+    assert.equal(at(mainnet, "--invoices"), "docs/evidence/mainnet-v0/s1-2026-11-13");
     assert.equal(at(mainnet, "--evidence"), "docs/evidence");
     assert.equal(at(mainnet, "--proof"), "docs/mainnet-proof.json");
+    // The committed ledger is the one the README's mainnet verify command passes.
+    assert.ok(README.includes(`--ledger ${MAINNET_V0_LEDGER}`));
   });
 });
 

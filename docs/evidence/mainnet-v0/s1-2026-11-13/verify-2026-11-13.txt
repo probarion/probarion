@@ -1,0 +1,16 @@
+Probarion verify: v0.probarion.near (mainnet)
+entries 4, anchors 3, generated 2026-11-13T07:24:43.179Z
+
+a  ledger-signatures      PASS      4 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+b  hash-links             PASS      4 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                PASS      3 anchors match the ledger; 0 entries after the last anchored count (4) are not chain-attested
+d  spends-have-decisions  PASS      1 on-chain spend, bound to its own allow or hold decision (same invoice, mandate and amount); 1 spend has a decision_hash listed as pre-ledger by the snapshot (exempt: at most one spend per listed hash, created before the first anchor)
+e  attestations           PASS      2 attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 (request binding and mandate match) passes for 2 of 2 attested decisions (seq 0, 1); notes (not failures): mandate 2 (seq 0): the model was shown remaining 1000000 and status active; the chain now holds 0 and exhausted (the values at decision time need archival state); mandate 2 (seq 1): the model was shown remaining 1000000 and status active; the chain now holds 0 and exhausted (the values at decision time need archival state); rules-only or unattested (reported, not failed): seq 2
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      1 burned spend has a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount
+i  factory-version        SKIP      not a factory vault
+
+invoices: 1 file read; A8 checks it against the attested decisions with its sha256 (check e gives the result): E:/APP2028/near-hackathon/owner-steps/mainnet-s1/invoices-mainnet/invoice-INV-M002.txt (seq 0, 1)
+8 passed, 0 failed, 0 unproven, 1 skipped
+RESULT: PASS

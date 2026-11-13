@@ -1,0 +1,38 @@
+{
+  "at": "2026-11-13T07:22:50.171Z",
+  "network": "mainnet",
+  "vault": "v0.probarion.near",
+  "ref": "INV-M002",
+  "invoice_hash": "bd45f2327fb0c2c1e960606e5c0bb91e3cfec7883f21315e94f454a83fee8357",
+  "status": "refused_by_code",
+  "spend_id": null,
+  "code": "mandate.payee_mismatch",
+  "spend_tx": null,
+  "anchor_tx": "6ULZZvGa7M99jR7Uk5f1Md4KCdD1Cnd5au2s8fAZDMqY",
+  "ledger_seq": 1,
+  "ledger_complete": true,
+  "decision_hash": "03ca13d64d158ce1a5f505433e0062e176907eed365b0e0629f769b87858d3a4",
+  "verdict": "refuse",
+  "decided_by": "model+rules",
+  "model": "Qwen/Qwen3.8-27B",
+  "model_usage": {
+    "model": "Qwen/Qwen3.8-27B",
+    "promptTokens": 764,
+    "completionTokens": 1624
+  },
+  "model_attempts": [
+    {
+      "attempt": 1,
+      "ok": true,
+      "secs": 23.2
+    }
+  ],
+  "model_rules": [
+    "model.refused: pass (model proposed pay)",
+    "model.low_confidence: pass (confidence 0.9 (floor 0.7))"
+  ],
+  "rules_not_passed": [
+    "mandate.payee_mismatch: refuse (invoice names NEAR account base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near; the mandate pays base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27)"
+  ],
+  "ledger_entries": 2
+}

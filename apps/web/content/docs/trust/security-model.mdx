@@ -4,7 +4,7 @@
 
 </Callout>
 
-A spend is checked by code off chain and again by the contract on chain, and every decision goes into a signed, hash-chained ledger. The contract is the layer that holds whatever the off-chain code does: a leaked agent key can spend only what the mandates naming it still allow, and only to the payees they name. Probarion's servers hold no owner key, and the CLI and the console sign no owner or approver transaction. The owner's full-access key is the one key with no bound inside the vault. Today the vault runs on NEAR testnet, with test tokens, and one small vault, `v0.probarion.near`, holds a little real USDC on mainnet. Its one spend's decision is pre-ledger: a decision file in the repository, with no signed ledger and no attestation. No Base payout has run on mainnet.
+A spend is checked by code off chain and again by the contract on chain, and every decision goes into a signed, hash-chained ledger. The contract is the layer that holds whatever the off-chain code does: a leaked agent key can spend only what the mandates naming it still allow, and only to the payees they name. Probarion's servers hold no owner key, and the CLI and the console sign no owner or approver transaction. The owner's full-access key is the one key with no bound inside the vault. Today the vault runs on NEAR testnet, with test tokens, and one small vault, `v0.probarion.near`, holds a little real USDC on mainnet. Its first spend's decision is pre-ledger: a decision file in the repository, with no signed ledger and no attestation. Its second, a Base payout of 1.00 USDC on 2026-11-13, is in a signed ledger anchored on chain: code rules alone decided it, after code refused two attested model proposals.
 
 <Flow>
 
