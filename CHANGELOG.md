@@ -1067,6 +1067,17 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing's "Built on NEAR, with NEAR AI Cloud" section is recomposed below its card. "Also in
+  the stack" (NEAR Intents, and the Intel TDX and NVIDIA NRAS checks of `verify --online`) is now
+  the card's last row, on the same columns as the NEAR and NEAR AI Cloud rows. The four channels
+  sit under the heading "Where to get Probarion", each card in the same order: logo, kind, name,
+  what you get, the exact names with their version, and one full-width link that names the page
+  it opens. The package, server, repository and listing names are a list for screen readers. The
+  trademark notices, every sentence kept, move into a small footer under a hairline, apart from the
+  technical note. The NEAR AI Cloud row now says all 7 attested testnet decisions have passed O1
+  and O2 online (the Canary's 2 on 2026-11-11 and the demo vault's 5 in the 16:13 UTC run of
+  2026-11-12), where it said 6. The styles live in `components/site/ships.module.css`, and
+  `apps/web/test/built-on.test.ts` checks that every class the section reads exists.
 - The judge's `live-verify-mainnet-v0` step verifies `v0.probarion.near` with its committed ledger
   (`--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl`) and the run's invoice text
   (`--invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt`, one file, so the verifier warns about
