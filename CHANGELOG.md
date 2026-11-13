@@ -34,7 +34,7 @@ The software is an unaudited beta.
 - `JUDGES.md`, a page for judges and screeners whose first part takes two minutes: the mechanism in one sentence
   (the model proposes, code rules decide, the contract checks again), three links to open (the demo vault's proof
   page with its live TEE check, the landing page's live `check_spend` and the mainnet transactions of 2026-11-11),
-  `pnpm judge` with the line its offline quick run printed on 2026-11-13 (at commit 53a726e since the Base
+  `pnpm judge` with the line its offline quick run printed on 2026-11-13 (at commit 6193a71 since the Base
   payout), what is proven with its evidence and transactions, assume breach (a fooled model, the software inside
   the TEE, the agent key, the agent host and its keys) and why the TEE verdict is not enforced on chain, the worst
   case with the agent key public, priced on `v0.probarion.near` by view calls on 2026-11-13, who it is for as a
