@@ -27,6 +27,7 @@ const MODULES: Readonly<Record<string, string>> = {
   integrate: "src/components/site/integrate.module.css",
   console: "src/components/site/console.module.css",
   hero: "src/components/site/hero.module.css",
+  compare: "src/components/site/compare.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -564,7 +565,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["hero", ".cap"],
       ["hero", ".steps"],
       ["site", ".proofIntro"],
-      ["site", ".compareMore"],
+      ["compare", ".moreLink"],
+      ["compare", ".moreNote"],
       ["site", ".boFine"],
       ["head", ".lede"],
       ["docs", ".prose > :is(p, ul, ol, blockquote)"],

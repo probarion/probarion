@@ -764,48 +764,6 @@ a.netPill:hover {
   color: var(--color-ok);
 }
 
-/* Compare: a real table; under 960 px each row stacks as a card with its column names */
-.compare {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  border: 1px solid var(--color-line);
-  border-radius: 18px;
-  overflow: hidden;
-  background: var(--color-surface);
-  font-size: 15px;
-}
-.compare th,
-.compare td {
-  text-align: left;
-  vertical-align: top;
-  padding: 16px 20px;
-  border-top: 1px solid var(--color-line);
-}
-.compareHead th {
-  border-top: 0;
-  background: var(--color-paper);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-mute);
-}
-.compareRow {
-  font-weight: 500;
-  width: 30%;
-}
-.compareDiy {
-  color: var(--color-mute);
-}
-
-.compareMore {
-  max-width: var(--container-measure);
-  margin-top: 18px;
-  font-size: 15px;
-}
-
 /* The integrate section's code box: the section lays it out in integrate.module.css. */
 .codeBox {
   border-radius: 16px;
@@ -1727,33 +1685,6 @@ a.netPill:hover {
   }
   .vs {
     grid-template-columns: 1fr;
-  }
-  .compareHead {
-    display: none;
-  }
-  .compare tr,
-  .compare th,
-  .compare td {
-    display: block;
-    width: auto;
-  }
-  .compare .compareRow {
-    padding-bottom: 4px;
-  }
-  .compare td {
-    border-top: 0;
-    padding-block: 4px;
-  }
-  .compare td::before {
-    content: attr(data-label) ": ";
-    font-weight: 500;
-    color: var(--color-ink);
-  }
-  .compare tr + tr th {
-    border-top: 1px solid var(--color-line);
-  }
-  .compare td:last-child {
-    padding-bottom: 16px;
   }
   .bandGrid,
   .tamper {

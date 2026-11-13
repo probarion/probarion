@@ -1649,8 +1649,46 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(table).toContain('role="columnheader"');
     expect(table).toContain('role="rowheader"');
     expect(table).toContain('role="cell"');
-    expect(table.match(/<tr[^>]*role="row"/g)?.length).toBe(COMPARE.rows.length + 1);
+    // The header row, one label row per group, and the rows.
+    expect(table.match(/<tr[^>]*role="row"/g)?.length).toBe(
+      COMPARE.rows.length + 1 + COMPARE.groups.length,
+    );
     expect(table.match(/<tr(?![^>]*role="row")/g)).toBeNull();
+    // Each group opens with a label that spans the four columns and heads its rows.
+    expect(COMPARE.head.length).toBe(4);
+    const labels = [...table.matchAll(/<th[^>]*scope="rowgroup"[^>]*>([^<]*)<\/th>/g)];
+    expect(labels.map((m) => m[1])).toEqual(COMPARE.groups.map((g) => g.label));
+    for (const m of labels) {
+      expect(m[0]).toMatch(/\scolspan="4"/i);
+      expect(m[0]).toContain('role="rowheader"');
+    }
+    expect(table.match(/<tbody[^>]*role="rowgroup"/g)?.length).toBe(COMPARE.groups.length);
+  });
+
+  it("groups the comparison's rows in order: every group has rows, next to each other, and every row a known group", () => {
+    const ids = COMPARE.groups.map((g) => g.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const r of COMPARE.rows) expect(ids, r.question).toContain(r.group);
+    // The rows' groups, with repeats collapsed, are the groups in their order: no group is empty or split.
+    const runs = COMPARE.rows
+      .map((r) => r.group)
+      .filter((g, i, all) => i === 0 || all[i - 1] !== g);
+    expect(runs).toEqual(ids);
+  });
+
+  it("shows, in every row of the comparison, the pill of its status row and that row's name", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    const table =
+      /<table[^>]*aria-labelledby="compare-title"[\s\S]*?<\/table>/.exec(html)?.[0] ?? "";
+    const rows = table.split("<tr").slice(1).map(textContent);
+    for (const r of COMPARE.rows) {
+      const st = statusOf(r.status);
+      const row = rows.find((t) => t.includes(r.question));
+      expect(row, r.question).toBeDefined();
+      expect(row, r.question).toContain(st.pill);
+      expect(row, r.question).toContain(st.row);
+      expect(st.row).toBe(r.status);
+    }
   });
 
   it("names no product in the do-it-yourself column", () => {
@@ -2075,11 +2113,14 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(doc).toContain("Sources read on 2026-11-11.");
     expect(doc).toContain('NEAR\'s Agent API, the x402 "exact" scheme on NEAR, and AP2');
     expect(doc).toContain("## What Probarion does not have");
-    expect(COMPARE.more.label).toContain("2026-11-11");
     expect(COMPARE.more.label).toContain("NEAR Agent API, x402 and AP2");
+    expect(COMPARE.more.note).toContain("2026-11-11");
+    expect(COMPARE.more.note).toContain("lacks");
     const html = renderToStaticMarkup(createElement(Home));
     const compare = html.slice(html.indexOf('id="compare"'), html.indexOf('id="payment"'));
     expect(compare).toContain(`href="${COMPARE.more.href}"`);
+    expect(textContent(compare)).toContain(COMPARE.more.label);
+    expect(textContent(compare)).toContain(COMPARE.more.note);
   });
 
   it("says of a do-it-yourself contract that someone has to read its code", () => {

@@ -1246,15 +1246,27 @@ export const COMPARE = {
   eyebrow: "Why not just a spending limit?",
   title: "A cap stops big payments. It does not stop the wrong ones.",
   sub: "You can write a contract with a limit in an afternoon. These are the parts that take longer, and where Probarion stands on each.",
-  head: ["Question", "A limit contract you write", "Probarion"],
+  head: ["Question", "A limit contract you write", "Probarion", "Status"],
+  /**
+   * On a phone the header row is read, not shown: these short labels open the two answers there, hidden from screen
+   * readers, which hear the column headers above.
+   */
+  short: { diy: "Your contract", probarion: "Probarion" },
+  /** The rows in two groups, in this order. Each row names its group; a group's rows are next to each other. */
+  groups: [
+    { id: "pays", label: "When the agent pays" },
+    { id: "checks", label: "When someone checks" },
+  ],
   rows: [
     {
+      group: "pays",
       question: "Who picks the payee?",
       diy: "Usually the caller, so the agent.",
       probarion: "The mandate. `spend` has no recipient argument.",
       status: "Vault contract",
     },
     {
+      group: "pays",
       question: "What can the agent's key do?",
       diy: "Often a full-access key, or a key that can call anything.",
       probarion:
@@ -1262,18 +1274,21 @@ export const COMPARE = {
       status: "Vault contract",
     },
     {
+      group: "pays",
       question: "A cross-chain payee?",
       diy: "The agent passes an address to a bridge.",
       probarion: "The vault builds the Intents withdrawal memo from the mandate.",
       status: "Vault contract",
     },
     {
+      group: "pays",
       question: "Big payments?",
       diy: "Refused, or allowed.",
       probarion: "Held above a limit you set until a person approves.",
       status: "Vault contract",
     },
     {
+      group: "checks",
       question: "A record of what was refused?",
       diy: "Failed transactions, if anyone looks.",
       probarion:
@@ -1281,18 +1296,21 @@ export const COMPARE = {
       status: "TypeScript SDK and CLI",
     },
     {
+      group: "checks",
       question: "Can someone check it without trusting you?",
       diy: "They have to read your code.",
       probarion: "An open verifier runs 9 checks, on a snapshot or against the chain.",
       status: "Offline verifier, checks a to i",
     },
     {
+      group: "checks",
       question: "Is the deployed code the code they read?",
       diy: "Hard to tell.",
       probarion: "Reproducible builds, with code hashes recorded in the repository.",
       status: "Reproducible builds",
     },
     {
+      group: "checks",
       question: "Is the model's advice tied to this payment?",
       diy: "No model, or one nobody can check.",
       probarion: "A NEAR AI Cloud TEE attestation bound by a nonce to one ledger position.",
@@ -1301,12 +1319,13 @@ export const COMPARE = {
   ],
   /** Under the table: the sourced comparison in the repository, which says what Probarion does not have too. */
   more: {
-    label:
-      "How it compares with NEAR Agent API, x402 and AP2, sources read 2026-11-11, including what Probarion lacks",
+    label: "How it compares with NEAR Agent API, x402 and AP2",
+    note: "Sources read 2026-11-11. It also lists what Probarion lacks.",
     href: blob("docs/comparison-2026-11.md"),
   },
 } as const;
-// A wrong `status` name fails the typecheck where Compare.tsx calls statusOf(r.status).
+// A wrong `status` name fails the typecheck where Compare.tsx calls statusOf(r.status); a wrong `group` fails
+// site-facts.test.ts.
 
 // --- plug in your agent ---------------------------------------------------------------------------
 
