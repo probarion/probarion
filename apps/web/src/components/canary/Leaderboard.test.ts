@@ -131,6 +131,13 @@ describe("the scoreboard before an outside visitor has tried", () => {
     expect(html).not.toContain("<table");
   });
 
+  it("keeps the line and the freshness note 2.5em apart (WCAG 1.4.8): 20px under the line, over .fresh's 12px", () => {
+    // 17px text at 1.55 is 26.35px a line; 26.35 + 20 = 46.35px from the line's top to the note's is 2.73em.
+    expect(renderBoard(none(6))).toMatch(
+      /<p class="mb-5">6 attempts so far, all by the team\. Be the first visitor\.<\/p><p class="[^"]*">Updated every minute\.<\/p>/,
+    );
+  });
+
   it("says there are no attempts yet when the team has made none either", () => {
     expect(visible(renderBoard(none(0)))).toContain("No attempts yet. Be the first visitor.");
   });

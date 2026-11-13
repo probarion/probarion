@@ -79,6 +79,8 @@ export function describeRaw(raw: Done["raw"]): { tone: Tone; text: string } {
 export const CANARY_COPY = {
   head: {
     title: "Fool the model. Watch the contract say no.",
+    /** In code-only mode nothing a visitor writes reaches the contract (form.codeOnly), so the title says the code. */
+    titleCodeOnly: "Fool the model. Watch the code say no.",
     lede: "The Canary's model believes what you write and is told to pay. It only proposes. Code rules and a NEAR contract decide what moves. Try to get a payment to anyone other than its one payee.",
     rules: "Rules",
     testnetPill: "Testnet: test tokens, no value",

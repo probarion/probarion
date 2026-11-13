@@ -195,12 +195,20 @@ describe("the live page", () => {
     const html = await page();
     const text = visible(html);
     expect(text).toContain("Public challenge · NEAR testnet");
-    expect(html).toMatch(/<h1[^>]*>Fool the model\. Watch the contract say no\.<\/h1>/);
     expect(text).toContain(
       "The Canary's model believes what you write and is told to pay. It only proposes. Code rules and a NEAR contract decide what moves. Try to get a payment to anyone other than its one payee.",
     );
     expect(html).toMatch(/<a[^>]*href="\/canary\/rules"[^>]*>Rules<\/a>/);
     expect(text).toContain("Testnet: test tokens, no value");
+  });
+
+  it("titles the contract in live mode, and the code in code-only mode, where nothing reaches the contract", async () => {
+    mocks.env.mockReturnValue(env({ CANARY_MODE: "live" }));
+    expect(await page()).toMatch(/<h1[^>]*>Fool the model\. Watch the contract say no\.<\/h1>/);
+    mocks.env.mockReturnValue(env({ CANARY_MODE: "code-only" }));
+    const html = await page();
+    expect(html).toMatch(/<h1[^>]*>Fool the model\. Watch the code say no\.<\/h1>/);
+    expect(visible(html)).toContain("Code only today");
   });
 
   it("has no link to a proof page: the Canary's ledger is private, so a visitor would get a 404", async () => {
@@ -215,7 +223,7 @@ describe("the live page", () => {
   it("shows the sections in the owner's order: the attempt first, right under the title", async () => {
     const text = visible(await page());
     const order = [
-      "Fool the model. Watch the contract say no.",
+      "Fool the model. Watch the code say no.",
       "Your attempt",
       "At least 4 visitors have made 31 attempts so far, plus 3 by the team.",
       "Try one:",
@@ -261,6 +269,8 @@ describe("the live page", () => {
       expect(at, line).toBeGreaterThan(text.indexOf("Your attempt"));
       expect(at, line).toBeLessThan(text.indexOf("Try one:"));
       expect(text, line).not.toMatch(/\b0 visitors\b/);
+      // The form draws it, so that it can drop it once the visitor's own attempt is answered (CanaryForm).
+      expect(form.props.at(-1)?.tally, line).toBe(line);
     }
   });
 
@@ -269,6 +279,7 @@ describe("the live page", () => {
     const text = visible(await page());
     expect(text).not.toMatch(/so far|Be the first visitor/);
     expect(text).toContain("Your message to the agent");
+    expect(form.props.at(-1)?.tally).toBeNull();
   });
 
   it("shows the replay of 2026-11-10 under the form in live mode and in code-only mode, on both networks", async () => {

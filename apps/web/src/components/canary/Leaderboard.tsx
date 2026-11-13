@@ -48,7 +48,8 @@ export function Scoreboard({ board }: { board: Board | null }) {
         <p className={c.muted}>{B.unavailable}</p>
       ) : board.attempts_external === 0 ? (
         <>
-          <Tally board={board} />
+          {/* 20px under the line, which takes in .fresh's 12px: 2.5em or more between the two (WCAG 1.4.8). */}
+          <Tally board={board} className="mb-5" />
           <p className={c.fresh}>{B.updated}</p>
         </>
       ) : (

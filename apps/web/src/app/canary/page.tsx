@@ -6,13 +6,12 @@ import { LatestAttempts, Scoreboard } from "@/components/canary/Leaderboard";
 import { RehearsalCard } from "@/components/canary/RehearsalCard";
 import { ReplayView } from "@/components/canary/ReplayView";
 import { ByConstructionCard, ReplayCards, SideCards } from "@/components/canary/StaticCards";
-import { Tally } from "@/components/canary/Tally";
 import { VaultCard } from "@/components/canary/VaultCard";
 import c from "@/components/site/canary.module.css";
 import s from "@/components/site/site.module.css";
 import { brandCardClass, linePillClass } from "@/components/ui";
 import { loadBoard, loadFeed } from "@/lib/canary/board-data";
-import { CANARY_COPY, eyebrow } from "@/lib/canary/copy";
+import { CANARY_COPY, eyebrow, tallyLine } from "@/lib/canary/copy";
 import { loadReadiness } from "@/lib/canary/ready";
 import { summarizeVault, type VaultSummary } from "@/lib/canary/vault";
 import { type CanaryVia, parseVia, withVia } from "@/lib/canary/via";
@@ -70,13 +69,22 @@ async function readVault(
 
 /**
  * The header has no link to a proof page: the Canary's ledger is private (the database forbids making it public), so
- * `/proof/<its vault>` is "page not found" for everyone but its team.
+ * `/proof/<its vault>` is "page not found" for everyone but its team. In code-only mode nothing a visitor writes
+ * reaches the contract, so the title says the code; the replay, and the live page in raw mode, keep the contract.
  */
-function Header({ network, via }: { network: Network; via: CanaryVia | null }) {
+function Header({
+  network,
+  via,
+  mode = "live",
+}: {
+  network: Network;
+  via: CanaryVia | null;
+  mode?: "live" | "code-only";
+}) {
   return (
     <header>
       <p className={s.eyebrow}>{eyebrow(network)}</p>
-      <h1 className={c.title}>{H.title}</h1>
+      <h1 className={c.title}>{mode === "code-only" ? H.titleCodeOnly : H.title}</h1>
       <p className={c.lede}>{H.lede}</p>
       <div className={c.pills}>
         <Link className={linePillClass} href={withVia("/canary/rules", via)}>
@@ -151,15 +159,20 @@ export default async function CanaryPage({
   if (vault.mandates?.length === 0)
     return <Replay network={view.network} banner="closed" via={via} />;
   const { summary } = vault;
-  // The attempt comes first, right under the title, with the one line of how many have tried; the vault it attacks and
-  // why an address cannot work come next.
+  // The attempt comes first, right under the title, with the one line of how many have tried (none when the board could
+  // not be read; the form drops it once the visitor's own attempt is in); the vault it attacks and why an address
+  // cannot work come next.
   return (
     <div className={`${s.site} ${s.wrap} ${c.page}`}>
-      <Header network={view.network} via={via} />
+      <Header network={view.network} via={via} mode={view.mode} />
       <section className={brandCardClass}>
         <h2 className={c.cardTitle}>{CANARY_COPY.form.title}</h2>
-        <Tally board={board} className="mb-4" />
-        <CanaryForm network={view.network} mode={view.mode} via={via} />
+        <CanaryForm
+          network={view.network}
+          mode={view.mode}
+          via={via}
+          tally={board === null ? null : tallyLine(board)}
+        />
       </section>
       <VaultCard network={view.network} vault={view.vault} summary={summary} />
       <ByConstructionCard />

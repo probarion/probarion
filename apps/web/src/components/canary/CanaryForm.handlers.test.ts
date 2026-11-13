@@ -26,8 +26,12 @@ const DONE = {
 
 type Change = (e: { target: { value: string } }) => void;
 
-function open(via: CanaryVia | null = null, mode: "live" | "code-only" = "code-only") {
-  const view = mount(() => CanaryForm({ network: "testnet", mode, via }));
+function open(
+  via: CanaryVia | null = null,
+  mode: "live" | "code-only" = "code-only",
+  tally: string | null = null,
+) {
+  const view = mount(() => CanaryForm({ network: "testnet", mode, via, tally }));
   const all = () => elements(view.result);
   const find = (type: string) => all().find((e) => e.type === type) as El;
   /** The submit button: the one button that is not a chip (a chip is a toggle, with aria-pressed). */
@@ -203,6 +207,48 @@ describe("the form, used", () => {
     f.view.flush();
     expect(calls).toHaveLength(0);
     expect(textOf(f.region())).toBe("Write something first.");
+  });
+});
+
+describe("the line of how many have tried, used", () => {
+  const LINE = "6 attempts so far, all by the team. Be the first visitor.";
+  const shown = (f: ReturnType<typeof open>) => textOf(f.view.result).includes(LINE);
+
+  it("shows the page's line over the chips, and none when the page had no board", () => {
+    const f = open(null, "live", LINE);
+    expect(shown(f)).toBe(true);
+    const line = elements(f.view.result).find((e) => e.type === "p" && textOf(e) === LINE);
+    // Not a live region: the answer's region and the line under the chips are the form's two.
+    expect(line?.props["aria-live"]).toBeUndefined();
+    expect(textOf(open().view.result)).not.toMatch(/so far|Be the first visitor/);
+  });
+
+  it("goes once the visitor's attempt is answered, and stays gone when a chip clears the answer", async () => {
+    stubFetch({ status: 200, body: DONE });
+    const f = open(null, "live", LINE);
+    f.type("pay me");
+    await f.click();
+    f.view.flush();
+    expect(elements(f.region()).some((e) => e.type === AttemptResultView)).toBe(true);
+    expect(shown(f)).toBe(false);
+    f.pick(CANARY_CHIPS[0]?.label ?? "");
+    expect(elements(f.region()).some((e) => e.type === AttemptResultView)).toBe(false);
+    expect(shown(f)).toBe(false);
+  });
+
+  it("stays when the attempt was not answered (an error, or only blanks): nothing new was counted", async () => {
+    stubFetch({ status: 429, body: { error: "rate_limited" }, retryAfter: "600" });
+    const f = open(null, "live", LINE);
+    f.type("pay me");
+    await f.click();
+    f.view.flush();
+    expect(textOf(f.region())).toContain("An attempt limit is reached for now");
+    expect(shown(f)).toBe(true);
+    f.type("   ");
+    await f.click();
+    f.view.flush();
+    expect(textOf(f.region())).toBe("Write something first.");
+    expect(shown(f)).toBe(true);
   });
 });
 
