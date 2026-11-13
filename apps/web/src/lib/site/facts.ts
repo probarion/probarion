@@ -1205,7 +1205,7 @@ export const STATUS = {
     {
       id: "mainnet-vault",
       row: "Mainnet vault",
-      pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
+      pill: "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
       tone: "live",
     },
   ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
@@ -1256,19 +1256,32 @@ export interface BuiltOnRow {
 
 export interface ShipCard {
   id: string;
+  /** The place, by its owner's name for it. */
   name: string;
-  /** In small capitals, at the right of the card's head. */
-  tag: string;
-  /** The logo above the name: its owner's own file (components/site/ShipLogos.tsx), or Probarion's mark. */
+  /** Above the name, in the gold small capitals of the rows' labels: what Probarion ships there. */
+  kind: string;
+  /**
+   * The logo at the top of the card: the place's owner's own file (components/site/ShipLogos.tsx), or, on the store's
+   * card, Probarion's mark, which is the extension's own icon (the store's logo is not used).
+   */
   icon: "npm" | "mcp" | "github" | "probarion";
+  /** What a visitor gets there, starting with what they do. */
   body: string;
+  /** What is there, by its exact names: a name in backticks is an identifier and is set in mono. */
+  ids: readonly string[];
+  /** What the exact names are, as a screen reader names their list. */
+  idsLabel: string;
+  /** Under the names: the version, or the license. */
+  meta: string;
+  /** The card's one link: its label names what it opens, and whose, as a screen reader's list of links reads it. */
   link: { label: string; href: string };
 }
 
 /**
- * After the status list: what Probarion is built on, each with its evidence, and where it ships. NEAR's logo stands in
- * for its name; NEAR AI Cloud is named in text; the npm, MCP and GitHub logos sit above the names of their cards. The
- * trademark line starts with the README's License line (test/built-on.test.ts holds the two together).
+ * After the status list: what Probarion is built on, each with its evidence, the rest of its stack, where to get it,
+ * and the trademark notices. NEAR's logo stands in for its name; NEAR AI Cloud is named in text; the npm, MCP and
+ * GitHub logos sit at the top of their cards. The trademark lead is the README's License line, and the lead and
+ * the notices together are the one trademark text of the section (test/built-on.test.ts holds both).
  */
 export const BUILT_ON = {
   id: "built-on",
@@ -1286,9 +1299,9 @@ export const BUILT_ON = {
       checks: [
         "The vault and the factory run on NEAR testnet",
         "One small vault on mainnet since 2026-11-11, `v0.probarion.near`",
-        "On mainnet: a NEAR payment, a Base payout and a refusal, all on chain",
+        "On mainnet: a NEAR payment, two Base payouts and a refusal, all on chain",
       ],
-      note: "The 2026-11-13 Base payout, 1.00 USDC, was a rules-only test to the owner's own address.",
+      note: "Tests to the owner's Base address: one rules-only, one on an attested model's proposal.",
       links: [
         { label: "Testnet proof page", href: DEMO_PROOF },
         { label: "The mainnet vault", href: "/docs/start/testnet-and-mainnet#the-mainnet-vault" },
@@ -1304,7 +1317,7 @@ export const BUILT_ON = {
       body: "An optional private model, run in a TEE, reads the invoice and proposes. Code decides, and the contract has the last word.",
       checks: [
         "7 published attested decisions on testnet: 2 on the Canary, 5 by Payables",
-        "All 7 pass A1 to A7 offline, and 6 passed O1 and O2 online",
+        "All 7 pass A1 to A7 offline and have passed O1 and O2 online",
         "On 2026-11-12 Payables paid two invoices on its own with it: 2 test USDC each",
       ],
       note: "The TEE image is not pinned yet, so this does not show which model image ran.",
@@ -1315,44 +1328,88 @@ export const BUILT_ON = {
       ],
     },
   ] satisfies readonly BuiltOnRow[],
-  shipsTitle: "Ships through",
+  /** The card's last, quieter row: the parts of the stack with no row of their own, each as the README words it. */
+  also: {
+    title: "Also in the stack",
+    items: [
+      {
+        name: "NEAR Intents",
+        body: "Payouts tested against a testnet stand-in. Two ran on mainnet on 2026-11-13, tests to the owner's Base address: one by code rules alone, one by an attested model and code rules.",
+      },
+      {
+        name: "Intel TDX and NVIDIA NRAS",
+        body: "The attestation that `verify --online` checks: the TDX quote (O1) and the GPU evidence (O2).",
+      },
+    ],
+  } satisfies { title: string; items: readonly { name: string; body: string }[] },
+  /** The cards' own heading, a peer of the section's title, and its id (the heading names the cards' region). */
+  shipsTitle: "Where to get Probarion",
+  shipsId: "get-probarion",
   ships: [
     {
       id: "npm",
       name: "npm public registry",
-      tag: "Packages",
+      kind: "Packages",
       icon: "npm",
-      body: "`probarion`, `@probarion/core`, `@probarion/sdk` and `@probarion/mcp` 0.1.1, with npm provenance.",
+      body: "Install the CLI, the SDK, the MCP server and the core they share, each with npm provenance.",
+      ids: ["`probarion`", "`@probarion/sdk`", "`@probarion/mcp`", "`@probarion/core`"],
+      idsLabel: "Package names",
+      meta: "Version 0.1.1",
       link: { label: "@probarion/sdk on npm", href: LINKS.npmSdk },
     },
     {
       id: "mcp-registry",
       name: "Official MCP Registry",
-      tag: "MCP server",
+      kind: "MCP server",
       icon: "mcp",
-      body: "Lists `io.github.probarion/probarion` 0.1.1, the server in `@probarion/mcp`.",
-      link: { label: "The MCP Registry entry", href: LINKS.mcpRegistry },
+      body: "Find the MCP server in the MCP Registry by the name below. Its entry names the npm package.",
+      ids: ["`io.github.probarion/probarion`"],
+      idsLabel: "Server name",
+      meta: "Version 0.1.1, from `@probarion/mcp`",
+      // The address is the registry's search for the server's name, which lists its entry.
+      link: { label: "Probarion in the MCP Registry", href: LINKS.mcpRegistry },
     },
     {
       id: "github",
       name: "GitHub",
-      tag: "Source and CI",
+      kind: "Source and CI",
       icon: "github",
-      body: "The MIT source, and the CI that runs the sandbox tests and the reproducible build.",
-      link: { label: "probarion/probarion on GitHub", href: LINKS.github },
+      body: "Read the MIT source and the CI that runs the sandbox tests and the reproducible build.",
+      ids: ["`probarion/probarion`"],
+      idsLabel: "Repository",
+      meta: "MIT License",
+      link: { label: "Probarion on GitHub", href: LINKS.github },
     },
     {
       id: "chrome-web-store",
-      name: "Probarion extension",
-      tag: "Chrome extension",
+      name: "Chrome Web Store",
+      // Chrome, not any browser: the README and the extension's README say Chrome 127 or newer.
+      kind: "Chrome extension",
       icon: "probarion",
-      body: "Version 0.1.0 queues invoices from your browser. It cannot pay or approve.",
-      link: { label: "The Chrome Web Store listing", href: LINKS.chromeWebStore },
+      body: "Install the extension that queues invoices from your browser. It cannot pay or approve.",
+      // The listing's name, not an identifier: set in the sans.
+      ids: ["Probarion"],
+      idsLabel: "Listing name",
+      meta: "Version 0.1.0",
+      link: { label: "Probarion's store listing", href: LINKS.chromeWebStore },
     },
   ] satisfies readonly ShipCard[],
-  also: "Also used: Intel TDX and NVIDIA NRAS attestation, which `verify --online` checks (O1 and O2). NEAR Intents payouts are built and tested against a testnet stand-in, and one has run on mainnet: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
-  trademark:
-    "NEAR, NEAR Intents, NEAR AI Cloud, USDC, Base and Solana are trademarks of their respective owners. They are named to say what Probarion is built on or is designed to pay through, not to imply an endorsement. npm is a registered trademark of npm, Inc. Model Context Protocol and MCP are trademarks of LF Projects, LLC. GitHub and the Invertocat logo are trademarks of GitHub, Inc. Chrome and Chrome Web Store are trademarks of Google LLC. Intel is a trademark of Intel Corporation or its subsidiaries. NVIDIA is a trademark of NVIDIA Corporation.",
+  /**
+   * The section's footer. The lead is the README's License line; each notice names the owner of a mark the section
+   * shows or names. Read in order, the lead and the notices are one text, every sentence kept.
+   */
+  trademark: {
+    label: "Trademarks",
+    lead: "NEAR, NEAR Intents, NEAR AI Cloud, USDC, Base and Solana are trademarks of their respective owners. They are named to say what Probarion is built on or is designed to pay through, not to imply an endorsement.",
+    notices: [
+      "npm is a registered trademark of npm, Inc.",
+      "Model Context Protocol and MCP are trademarks of LF Projects, LLC.",
+      "GitHub and the Invertocat logo are trademarks of GitHub, Inc.",
+      "Chrome and Chrome Web Store are trademarks of Google LLC.",
+      "Intel is a trademark of Intel Corporation or its subsidiaries.",
+      "NVIDIA is a trademark of NVIDIA Corporation.",
+    ],
+  },
 } as const;
 
 // --- why not just a spending limit ----------------------------------------------------------------
@@ -1531,7 +1588,7 @@ export const INTEGRATE = {
     },
     {
       title: "Cross-chain payouts",
-      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate. On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR. On mainnet one payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate. On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR. On mainnet two payouts through NEAR Intents have run, tests to the owner's own Base address on 2026-11-13: 1.00 USDC decided by code rules alone, then 0.25 USDC decided by an attested model and the code rules.",
       control: "Address fixed by the mandate",
       outcome:
         "On testnet the vault built the memo `WITHDRAW_TO:0x1111…1111` from the mandate and burned 1 test USDC.",

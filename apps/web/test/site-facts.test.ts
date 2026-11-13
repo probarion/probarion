@@ -519,7 +519,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(JOURNEY.steps[1].tag).not.toMatch(/not recorded/);
     const row = README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter"));
     expect(row).toContain("**Built**");
-    expect(row).toContain("**Recorded on NEAR testnet**");
+    expect(row).toContain("**Recorded on NEAR testnet and, since 2026-11-13, on mainnet**");
     expect(row).toContain("pass A1 to A7 offline");
     expect(row).toContain("pass A1 to A7 offline and, on 2026-11-11, the online checks O1 and O2");
     expect(row).toContain("(docs/evidence/canary-vault/verify-online-2026-11-11.txt)");
@@ -824,7 +824,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
         {
           start: "NEAR AI Cloud adapter",
           says: [
-            "**Recorded on NEAR testnet**",
+            "**Recorded on NEAR testnet and, since 2026-11-13, on mainnet**",
             "pass A1 to A7 offline",
             "the online checks O1 and O2",
             "the four attested decisions the demo vault held then, entries 10 to 13, passed O1 and O2",
@@ -867,7 +867,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Mainnet vault",
-      pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
+      pill: "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
       readme: [
         {
           start: "Mainnet vault",
@@ -876,6 +876,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
             "2026-11-11",
             "`PROBARION:NoMandate`",
             "the POA bridge released 0.9976 USDC on Base",
+            "the POA bridge released 0.2476 USDC on Base",
           ],
         },
       ],
@@ -1083,7 +1084,7 @@ describe("the status list", () => {
       {
         id: "mainnet-vault",
         row: "Mainnet vault",
-        pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
+        pill: "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
         tone: "live",
       },
     ]);
@@ -1662,7 +1663,7 @@ describe("the problem, the comparison and the integrate section", () => {
     );
     expect(w.outcome).toContain("`WITHDRAW_TO:0x1111…1111`");
     expect(w.outcome).toContain("burned 1 test USDC");
-    // The caveat: a stand-in on testnet, and on mainnet one payout, to a Base address.
+    // The caveat: a stand-in on testnet, and on mainnet two payouts, to the owner's own Base address.
     expect(w.body).toContain(
       "On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR.",
     );
@@ -1670,10 +1671,10 @@ describe("the problem, the comparison and the integrate section", () => {
       "On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR.",
     );
     expect(w.body).toContain(
-      "On mainnet one payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+      "On mainnet two payouts through NEAR Intents have run, tests to the owner's own Base address on 2026-11-13: 1.00 USDC decided by code rules alone, then 0.25 USDC decided by an attested model and the code rules.",
     );
     expect(prose).toContain(
-      "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to the owner's own Base address this way, a test decided by code rules alone",
+      "On mainnet two payouts have run this way, both tests to the owner's own Base address on 2026-11-13. In S1 `v0.probarion.near` paid 1.00 USDC, a test decided by code rules alone",
     );
     expect(prose).toContain("the POA bridge released 0.9976 USDC on Base, keeping a fee of 0.0024");
     expect(prose).toContain("a Base or Solana address paid out through NEAR Intents");

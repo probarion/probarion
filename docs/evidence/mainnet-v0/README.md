@@ -136,3 +136,24 @@ ledger: it prints `6 passed, 2 failed, 0 unproven, 1 skipped` and `RESULT: FAIL 
 now, add `--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl` and
 `--invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt`, and leave out `--snapshot`
 ([the command](s1-2026-11-13/README.md#check-it)). The offline command on `snapshot-2026-11-11.json` still passes.
+
+## 2026-11-13: S2, a Base payout decided by an attested model and the code rules
+
+The S1 section above records round 1 and stays true for it. On 2026-11-13, from 11:39 to 11:41 UTC, the owner ran
+round 2 on this vault: the owner signed mandate 3 (0.25 USDC once, to the same Base address, the owner's own), and the
+SDK paid INV-M003, a labeled test, as spend 3. This time an attested model, `z-ai/glm-5.3-flash` on NEAR AI Cloud,
+proposed paying, and every code rule passed: ledger entry 4, `model+rules`. The vault burned 0.25 Base USDC with
+`WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`
+([`5amtgb8M…`](https://nearblocks.io/txns/5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH)), and the POA bridge released
+0.2476 USDC on Base
+([`0xc6c4507e…`](https://basescan.org/tx/0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7)), keeping
+0.0024. Since then the vault's signed ledger has 6 entries and 4 anchors. The run's record, the whole ledger and how to
+check it: [`s2-2026-11-13/README.md`](s2-2026-11-13/README.md).
+
+Since anchor 4 covers 6 entries, the live command of the S1 section above, with round 1's ledger of 4 entries, fails
+checks c and d. To check the vault live now, use
+`--ledger docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl` and give both invoices,
+`--invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt` and
+`--invoice docs/evidence/mainnet-v0/s2-2026-11-13/invoice-INV-M003.txt`
+([the command](s2-2026-11-13/README.md#check-it)). The offline commands on the committed snapshots of 2026-11-11 and
+of round 1 still check those recorded runs.

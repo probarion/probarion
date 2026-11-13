@@ -1,0 +1,5 @@
+utc	label	hash	signer	receiver	status
+2026-11-13T11:39:34Z	mandate_s2	4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T	probarion.near	v0.probarion.near	ok
+2026-11-13T11:41:19Z	spend_3	5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH	v0.probarion.near	v0.probarion.near	ok
+2026-11-13T11:41:19Z	anchor_cycle	6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG	v0.probarion.near	v0.probarion.near	ok
+2026-11-13T11:41:22Z	base_release	0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7	bridge	0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27	base
