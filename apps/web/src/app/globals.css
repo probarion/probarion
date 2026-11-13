@@ -85,6 +85,11 @@
  */
 :root {
   color-scheme: only light;
+  /*
+   * The landing's one rhythm, G: the paper between any two sections. Each section owns G below itself and none above
+   * (components/site/head.module.css), and so do the hero and the ink band. 64px on a phone, 115px at 1280.
+   */
+  --space-section: clamp(64px, 9vw, 128px);
 }
 
 /* The sticky header's height: a skip link, an anchor or a section jump lands clear of it. */

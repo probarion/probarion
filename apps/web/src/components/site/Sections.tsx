@@ -4,6 +4,7 @@ import { CHAIN, CLOSING, EVALUATE_ROUTE, LINKS, STATUS, type StatusTone } from "
 import { NEXT_STEP } from "@/lib/site/next-step";
 import { NextStep } from "./NextStep";
 import { Rich } from "./Rich";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
 const TONE: Readonly<Record<StatusTone, string | undefined>> = {
@@ -14,25 +15,22 @@ const TONE: Readonly<Record<StatusTone, string | undefined>> = {
 
 export function ChainList() {
   return (
-    <section className={`${s.section} ${s.flush}`} id="chain">
-      <div className={s.wrap}>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{CHAIN.title}</h2>
-          <p>{CHAIN.intro}</p>
+    <LandingSection
+      id="chain"
+      head={{ eyebrow: CHAIN.eyebrow, title: CHAIN.title, lede: CHAIN.intro }}
+    >
+      {CHAIN.rows.map(({ title, body, tx }) => (
+        <div key={tx.hash} className={s.tx}>
+          <h3>{title}</h3>
+          <p>
+            <Rich text={body} />
+          </p>
+          <ExternalLink className={`${s.link} ${s.txHash}`} href={tx.url}>
+            {tx.label}
+          </ExternalLink>
         </div>
-        {CHAIN.rows.map(({ title, body, tx }) => (
-          <div key={tx.hash} className={s.tx}>
-            <h3>{title}</h3>
-            <p>
-              <Rich text={body} />
-            </p>
-            <ExternalLink className={`${s.link} ${s.txHash}`} href={tx.url}>
-              {tx.label}
-            </ExternalLink>
-          </div>
-        ))}
-      </div>
-    </section>
+      ))}
+    </LandingSection>
   );
 }
 

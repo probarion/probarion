@@ -428,6 +428,7 @@ export const VERIFIER_OUTPUT = {
 export const CONTRACT_REFUSAL_CODE = "OverPerPayment";
 
 export const JOURNEY = {
+  eyebrow: "How a payment works",
   title: "What happens to one invoice",
   /** The label of a step's note on what is true today (audit P1-10). */
   today: "Today",
@@ -624,7 +625,8 @@ export interface ConsoleShot {
 const SHOT_META = "Testnet console, 2026-11-09, vault demo.vaults.probarion.testnet";
 
 export const CONSOLE_SHOTS = {
-  title: "The console",
+  eyebrow: "The console",
+  title: "An invoice held for an approver, then paid.",
   intro:
     "Screenshots from the testnet demo vault, taken while a fifth invoice went through it: INV-2004, 4 test USDC, above the mandate's 3 USDC approval limit.",
   shots: [
@@ -723,6 +725,7 @@ export const RECORDED_RESULT: TamperResult = {
 };
 
 export const TAMPER_COPY = {
+  eyebrow: "Verify a test ledger",
   title: "Change one field. Watch it break.",
   intro:
     "This is the real verifier from `@probarion/core`. It runs in your browser on a committed test fixture: five entries signed with test keys, not a live vault. It shows one thing: the verifier catches an edit that was not re-signed. Nothing leaves the page.",
@@ -746,7 +749,9 @@ export const TAMPER_COPY = {
 // --- on chain -------------------------------------------------------------------------------------
 
 export const CHAIN = {
-  title: "Read it on chain",
+  eyebrow: "Read it on chain",
+  /** Its count is the number of rows (test/section-heads.test.ts). */
+  title: "Three testnet transactions from the smoke run.",
   intro: "A smoke run of the contract alone on NEAR testnet, with test tokens, on 2026-11-01.",
   rows: [
     {

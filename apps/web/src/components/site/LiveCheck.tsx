@@ -5,7 +5,7 @@ import { fill, LIVE_VAULT, type RecordedFile } from "@/lib/site/live-check";
 import recordedJson from "@/lib/site/live-check-recorded.json";
 import { answerFromRecorded, verdictWord } from "@/lib/site/live-check-view";
 import { LiveCheckClient } from "./LiveCheckClient";
-import { Rich } from "./Rich";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
 const recorded = recordedJson as unknown as RecordedFile;
@@ -36,29 +36,23 @@ function NoScriptAnswers() {
 
 export function LiveCheck() {
   return (
-    <section className={s.section} id="try">
-      <div className={s.wrap}>
-        <p className={s.eyebrow}>{LIVE_CHECK.eyebrow}</p>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{LIVE_CHECK.title}</h2>
-          <p>
-            <Rich text={LIVE_CHECK.intro} />
-          </p>
-        </div>
-        <NoScriptAnswers />
-        <LiveCheckClient
-          recorded={recorded}
-          scenarios={LIVE_CHECK.scenarios}
-          mandates={LIVE_CHECK.mandates}
-          copy={LIVE_CHECK.copy}
-          codes={LIVE_CHECK.codes}
-          explorer={
-            <ExternalLink className={s.link} href={explorerAccountUrl("testnet", LIVE_VAULT)}>
-              {LIVE_CHECK.copy.explorer}
-            </ExternalLink>
-          }
-        />
-      </div>
-    </section>
+    <LandingSection
+      id="try"
+      head={{ eyebrow: LIVE_CHECK.eyebrow, title: LIVE_CHECK.title, lede: LIVE_CHECK.intro }}
+    >
+      <NoScriptAnswers />
+      <LiveCheckClient
+        recorded={recorded}
+        scenarios={LIVE_CHECK.scenarios}
+        mandates={LIVE_CHECK.mandates}
+        copy={LIVE_CHECK.copy}
+        codes={LIVE_CHECK.codes}
+        explorer={
+          <ExternalLink className={s.link} href={explorerAccountUrl("testnet", LIVE_VAULT)}>
+            {LIVE_CHECK.copy.explorer}
+          </ExternalLink>
+        }
+      />
+    </LandingSection>
   );
 }

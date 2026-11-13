@@ -5,7 +5,7 @@ import { NEXT_STEP } from "@/lib/site/next-step";
 import { ledgerRows, TAMPER_EDITS } from "@/lib/site/tamper";
 import fixture from "@/lib/site/valid-snapshot.json";
 import { NextStep } from "./NextStep";
-import { Rich } from "./Rich";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 import { TamperTest } from "./TamperTest";
 
@@ -38,16 +38,11 @@ export function TamperPanel({ next = false }: { next?: boolean }) {
 
 export function LedgerTest() {
   return (
-    <section className={s.section} id="verify">
-      <div className={s.wrap}>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{TAMPER_COPY.title}</h2>
-          <p>
-            <Rich text={TAMPER_COPY.intro} />
-          </p>
-        </div>
-        <TamperPanel next />
-      </div>
-    </section>
+    <LandingSection
+      id="verify"
+      head={{ eyebrow: TAMPER_COPY.eyebrow, title: TAMPER_COPY.title, lede: TAMPER_COPY.intro }}
+    >
+      <TamperPanel next />
+    </LandingSection>
   );
 }

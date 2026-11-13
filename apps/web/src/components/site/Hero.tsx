@@ -3,6 +3,7 @@ import { RouteLink } from "@/components/RouteLink";
 import { ExternalLink } from "@/components/ui";
 import { type CopyPart, HERO, NUMBERS, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
 import { Rich } from "./Rich";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
 function TxRow({ tx }: { tx: TxFact }) {
@@ -143,57 +144,53 @@ export function Hero() {
 
 export function Problem() {
   return (
-    <section className={s.section} id="problem">
-      <div className={s.wrap}>
-        <p className={s.eyebrow}>{PROBLEM.eyebrow}</p>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{PROBLEM.title}</h2>
-          <p>{PROBLEM.sub}</p>
+    <LandingSection
+      id="problem"
+      head={{ eyebrow: PROBLEM.eyebrow, title: PROBLEM.title, lede: PROBLEM.sub }}
+    >
+      <div className={s.vs}>
+        <div className={s.vsCol}>
+          <h3>{PROBLEM.withoutTitle}</h3>
+          <ul>
+            {PROBLEM.without.map((line) => (
+              <li key={line}>
+                <span className={s.vsNo} role="img" aria-label={PROBLEM.noLabel}>
+                  ✕
+                </span>
+                <span>
+                  <Rich text={line} />
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
-        <div className={s.vs}>
-          <div className={s.vsCol}>
-            <h3>{PROBLEM.withoutTitle}</h3>
-            <ul>
-              {PROBLEM.without.map((line) => (
-                <li key={line}>
-                  <span className={s.vsNo} role="img" aria-label={PROBLEM.noLabel}>
-                    ✕
-                  </span>
-                  <span>
-                    <Rich text={line} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className={`${s.vsCol} ${s.vsWith}`}>
-            <h3>{PROBLEM.withTitle}</h3>
-            <ul>
-              {PROBLEM.with.map((line) => (
-                <li key={line}>
-                  <span className={s.vsYes} role="img" aria-label={PROBLEM.yesLabel}>
-                    ✓
-                  </span>
-                  <span>
-                    <Rich text={line} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-        <div className={s.numbers}>
-          {NUMBERS.map(({ name, value, rest }) => (
-            <div key={name}>
-              <b>{value}</b>
-              <p>
-                <strong>{name}</strong>
-                <Rich text={rest} />
-              </p>
-            </div>
-          ))}
+        <div className={`${s.vsCol} ${s.vsWith}`}>
+          <h3>{PROBLEM.withTitle}</h3>
+          <ul>
+            {PROBLEM.with.map((line) => (
+              <li key={line}>
+                <span className={s.vsYes} role="img" aria-label={PROBLEM.yesLabel}>
+                  ✓
+                </span>
+                <span>
+                  <Rich text={line} />
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
-    </section>
+      <div className={s.numbers}>
+        {NUMBERS.map(({ name, value, rest }) => (
+          <div key={name}>
+            <b>{value}</b>
+            <p>
+              <strong>{name}</strong>
+              <Rich text={rest} />
+            </p>
+          </div>
+        ))}
+      </div>
+    </LandingSection>
   );
 }

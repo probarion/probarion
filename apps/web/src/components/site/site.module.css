@@ -251,9 +251,9 @@ a.netPill:hover {
   text-underline-offset: 3px;
 }
 
-/* Hero */
+/* Hero. Like every section, it owns G (--space-section) of paper below itself. */
 .hero {
-  padding-block: clamp(36px, 6vw, 76px) clamp(48px, 7vw, 96px);
+  padding-block: clamp(36px, 6vw, 76px) var(--space-section);
 }
 .heroEyebrow {
   margin-bottom: 14px;
@@ -448,11 +448,11 @@ a.netPill:hover {
 }
 
 /* Numbers */
+/* No rule under the strip: the next section's hairline, G below it, already closes it. */
 .numbers {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border-top: 1px solid var(--color-line);
-  border-bottom: 1px solid var(--color-line);
 }
 .numbers > div {
   padding: clamp(20px, 2.4vw, 32px) clamp(16px, 2vw, 28px) clamp(24px, 3vw, 40px);
@@ -1121,9 +1121,6 @@ a.netPill:hover {
 }
 
 /* The console: real testnet screenshots, three across. On a phone the row scrolls sideways, one shot at a time. */
-.shots {
-  padding-bottom: 0;
-}
 /* Positioned, so that a link's absolutely positioned screen-reader text stays inside the row when it scrolls. */
 .shotRow {
   position: relative;
@@ -1179,10 +1176,11 @@ a.netPill:hover {
   color: var(--color-mute);
 }
 
-/* Ink band */
+/* Ink band. It keeps its own padding inside, and owns G of paper below itself, as each section does. */
 .band {
   background: var(--color-band);
   color: var(--color-band-fg);
+  margin-bottom: var(--space-section);
 }
 .band :focus-visible {
   outline-color: var(--color-band-fg);
@@ -1820,12 +1818,16 @@ a.netPill:hover {
   margin-top: 13px;
 }
 
-/* Closing */
+/*
+ * Closing: the page's end statement. Its rule sits halfway down its gap, G under the section before it and G over the
+ * title, on the wrap's left edge like every section head's hairline.
+ */
 .close {
-  border-top: 1px solid var(--color-line);
-  padding-block: clamp(64px, 9vw, 128px);
+  padding-block: 0 var(--space-section);
 }
 .closeTitle {
+  border-top: 1px solid var(--color-line);
+  padding-top: var(--space-section);
   font-weight: 300;
   font-size: clamp(42px, 7.4vw, 108px);
   letter-spacing: -0.045em;

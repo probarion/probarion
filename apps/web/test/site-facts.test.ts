@@ -2303,9 +2303,10 @@ describe("colours", () => {
     }
   });
 
-  it("are read from tokens: site.module.css and docs.module.css hold no literal colour", () => {
+  it("are read from tokens: site.module.css, head.module.css and docs.module.css hold no literal colour", () => {
     for (const parts of [
       ["src", "components", "site", "site.module.css"],
+      ["src", "components", "site", "head.module.css"],
       ["src", "components", "docs", "docs.module.css"],
     ]) {
       const module = text(WEB, ...parts);

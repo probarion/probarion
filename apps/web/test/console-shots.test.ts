@@ -100,6 +100,10 @@ describe("the console screenshots on the landing (audit P1-23)", () => {
     expect(verify).toBeGreaterThan(start);
     const section = html.slice(start, verify);
     const words = text(section);
+    // The label is the eyebrow, over the heading that says what the screenshots show.
+    expect(CONSOLE_SHOTS.eyebrow).toBe("The console");
+    expect(words).toContain(`${CONSOLE_SHOTS.eyebrow} ${CONSOLE_SHOTS.title}`);
+    expect(words.indexOf(CONSOLE_SHOTS.eyebrow)).toBeLessThan(words.indexOf(CONSOLE_SHOTS.title));
     expect(words).toContain(CONSOLE_SHOTS.title);
     expect(words).toContain(text(CONSOLE_SHOTS.intro.replace(/`/g, "")));
     for (const s of CONSOLE_SHOTS.shots) {

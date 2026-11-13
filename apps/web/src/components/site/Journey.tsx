@@ -10,6 +10,7 @@ import {
 } from "@/lib/site/facts";
 import { Rich } from "./Rich";
 import { ScrollRegion } from "./ScrollRegion";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
 const TONE = { pass: s.pass, fail: s.fail } as const;
@@ -128,17 +129,14 @@ function Story() {
 
 export function Journey() {
   return (
-    <section className={s.section} id="payment">
-      <div className={s.wrap}>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{JOURNEY.title}</h2>
-          <p>{JOURNEY.intro}</p>
-        </div>
-        {JOURNEY.steps.map((step) => (
-          <Step key={step.n} step={step} />
-        ))}
-        <Story />
-      </div>
-    </section>
+    <LandingSection
+      id="payment"
+      head={{ eyebrow: JOURNEY.eyebrow, title: JOURNEY.title, lede: JOURNEY.intro }}
+    >
+      {JOURNEY.steps.map((step) => (
+        <Step key={step.n} step={step} />
+      ))}
+      <Story />
+    </LandingSection>
   );
 }
