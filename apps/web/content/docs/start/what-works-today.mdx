@@ -22,7 +22,7 @@ The status list leaves these parts out, among others. Each one follows one row o
 | --- | --- |
 | [NEAR AI Cloud adapter](#near-ai-cloud-adapter) | Preview |
 | [npm release 0.1.1](#npm-release-011) | Live |
-| [Test USDC on testnet](#test-usdc-on-testnet) | Preview |
+| [Test USDC on testnet](#test-usdc-on-testnet) | Live |
 | [Browser extension, server half](#browser-extension-server-half) | Preview |
 | [Browser extension for Chrome](#browser-extension-for-chrome) | Preview |
 | [Testnet and mainnet from one deployment](#testnet-and-mainnet-from-one-deployment) | Preview |
@@ -48,7 +48,7 @@ Code: [`.github/workflows/release.yml`](https://github.com/probarion/probarion/b
 
 ### Test USDC on testnet
 
-The testnet faucet is Preview: it is built and tested, and its key is set on probarion.xyz. On 2026-11-09 its button minted 25 test USDC into the testnet demo vault, `demo.vaults.probarion.testnet`.
+The testnet faucet is Live: it is built and tested, and its key is set on probarion.xyz. On 2026-11-09 its button minted 25 test USDC into the testnet demo vault, `demo.vaults.probarion.testnet` ([the transaction](https://testnet.nearblocks.io/txns/9GGZoC1aaAtmj366JXoTV2FkJBfbax3jsHYCqjcXjd5m)).
 
 On a testnet vault's Top-up tab (`/console/<vault>/topup`), signed in as the vault's owner, the "Add test USDC" button mints 25 test USDC into the vault, with no wallet: the Probarion team's key signs the mint, and that key can only mint the test token. It works once a UTC day per vault, and for up to 3 vaults per signed-in account a day. A cap of 50 mints a UTC day for all vaults together can also stop it until midnight UTC, and the button then answers "Today's test USDC for all vaults is given out." with the time to wait.
 

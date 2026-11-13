@@ -92,6 +92,7 @@ export const OPERATE: readonly DocPage[] = [
       "docs/evidence/demo-vault/verify-online-2026-11-12.txt",
       "docs/evidence/mainnet-v0/s2-2026-11-13/README.md",
       "docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt",
+      "apps/web/src/lib/site/facts.ts",
     ],
     reviewed: "2026-11-13",
     phase: 2,

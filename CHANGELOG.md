@@ -1180,6 +1180,17 @@ The software is an unaudited beta.
 
 ### Changed
 
+- Docs status words now match the landing's board and the records. "Holds and approvals" is Live (testnet holds
+  approved on 2026-11-09 and 2026-11-11, a rejection on 2026-11-12) and "The ledger and anchors" is Live (the SDK's
+  ledger on `v0.probarion.near`, 6 entries and 4 anchors, a live verify that passed on 2026-11-13). The console,
+  its Keys tab and the testnet faucet read Live where their tried status rows do, with email alerts and the Base
+  top-up still Preview. The quickstarts and "Let an agent pay" stay Preview, since their own steps have not run
+  as written, and the developer quickstart no longer says no rules-only `process()` has paid (S1 did, on
+  mainnet). The docs home's developer door starts with `npx -y @probarion/mcp@0.1.1 demo` (no key), then
+  `npm install @probarion/sdk @probarion/core`, and drops its untimed "15 min". New:
+  `docs/agent-market-2026-11.md`, marked not built: how market.near.ai jobs are posted and paid (read
+  2026-11-13), why a spend-only key cannot sign its delegated `ft_transfer`, and what a mandate paying its
+  treasury would need. Check: `pnpm exec vitest run test/docs-status-labels.test.ts` in `apps/web`.
 - The landing's "What works today, and what does not" is a status board. A summary computed from
   the rows comes first: how many are Verified, and what each row marked In part or Not tried yet
   misses. A key then defines the two marks every row can carry: Proof (Verified, In part, Not tried
