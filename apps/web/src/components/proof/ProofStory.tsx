@@ -213,7 +213,7 @@ export function ProofStory({
   const usdc = f.paidUsdc === null ? "" : `, ${f.paidUsdc} USDC in all`;
   return (
     <ul
-      className="mt-4 grid gap-1.5 border-l-2 border-gold-deep pl-4 text-sm text-ink"
+      className="mt-4 grid max-w-measure gap-1.5 border-l-2 border-gold-deep pl-4 text-sm text-ink"
       data-story=""
     >
       <li data-story-line="paid">

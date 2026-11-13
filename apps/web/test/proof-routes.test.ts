@@ -485,7 +485,7 @@ describe("/proof/[vault]", () => {
     expect(out).toContain('data-headline="ok"');
   });
 
-  it("stays a live page, read per request and rate-limited per address: no revalidate and no cache", () => {
+  it("stays force-dynamic and rate-limited per IP: no revalidate and no route cache", () => {
     const src = readFileSync(
       fileURLToPath(new URL("../src/app/proof/[vault]/page.tsx", import.meta.url)),
       "utf8",

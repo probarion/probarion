@@ -1186,9 +1186,10 @@ The software is an unaudited beta.
   alone; or before the signed ledger), and how many decisions the code rules refused or held and how many
   payments the contract refused, by rule or code. The "Check the TEE now" card moves up, right under the result
   and above the checks. The 3 newest decision cards show; the next ones, up to 20, fold under "Show the next N
-  decisions", and an audit link still opens the card it names. The page stays dynamic and rate-limited per
-  address, with no cache. Check it with `pnpm exec vitest run test/proof-story.test.ts test/proof-routes.test.ts`
-  in `apps/web`.
+  decisions", and an audit link still opens the card it names. The page stays dynamic (no revalidate and no route
+  cache) and rate-limited per IP address. As before, the checks reuse a vault's result for up to 60 s, and the
+  story is dated with that snapshot's `taken_at`. Check it with
+  `pnpm exec vitest run test/proof-story.test.ts test/proof-routes.test.ts` in `apps/web`.
 
 - The landing's "What works today, and what does not" is a status board. A summary computed from
   the rows comes first: how many are Verified, and what each row marked In part or Not tried yet

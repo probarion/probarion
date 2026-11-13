@@ -21,7 +21,10 @@ export const maxDuration = 60;
 
 type Props = {
   params: Promise<{ vault: string }>;
-  /** `?seq=N` asks for the full card of an older decision, which the page otherwise shows as its summary line. */
+  /**
+   * `?seq=N` asks for that decision's full card, open, with its group open (an older decision otherwise shows only its
+   * summary line).
+   */
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 

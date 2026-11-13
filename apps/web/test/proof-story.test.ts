@@ -38,7 +38,7 @@ function lines(markup: string): string[] {
 async function story(snapshot: Snapshot, rows?: readonly DecisionRow[]) {
   const r = rows ?? (await decisionRows(snapshot, snapshot.network as Network));
   return renderToStaticMarkup(
-    createElement(ProofStory, { snapshot, rows: r, takenAt: "2026-11-13T19:08:17.870Z" }),
+    createElement(ProofStory, { snapshot, rows: r, takenAt: snapshot.taken_at }),
   );
 }
 
@@ -46,7 +46,7 @@ describe("the story lines on the committed snapshots", () => {
   it("mainnet: the 3 paid spends by how each was decided, and the 2 refusals by their rule only", async () => {
     const out = await story(read(MAINNET));
     expect(lines(out)).toEqual([
-      "As of 2026-11-13T19:08:17.870Z, this vault has paid out 3 spends on chain, 2.25 USDC in all.",
+      "As of 2026-11-13T11:41:25.550Z, this vault has paid out 3 spends on chain, 2.25 USDC in all.",
       "Of these, 1 was paid after an attested model proposed it (A1 to A7 pass on this snapshot), 1 on the code rules alone, and 1 on a decision from before the signed ledger.",
       "2 decisions were refused by the code rules (mandate.payee_mismatch).",
     ]);
@@ -58,7 +58,7 @@ describe("the story lines on the committed snapshots", () => {
 
   it("testnet demo: the attested and the rules-only payments, then the refusals and the hold by rule", async () => {
     expect(lines(await story(read(DEMO)))).toEqual([
-      "As of 2026-11-13T19:08:17.870Z, this vault has paid out 4 spends on chain, 12 USDC in all.",
+      "As of 2026-11-12T01:10:25.941Z, this vault has paid out 4 spends on chain, 12 USDC in all.",
       "Of these, 1 was paid after an attested model proposed it (A1 to A7 pass on this snapshot), and 3 on the code rules alone.",
       "6 decisions were refused by the code rules (4 mandate.payee_mismatch, 2 custom.owner_confirms_without_model). 1 decision was held (custom.owner_confirms_without_model).",
     ]);
@@ -66,7 +66,7 @@ describe("the story lines on the committed snapshots", () => {
 
   it("Canary: nothing paid, what the ledger holds, and the contract's refusal on chain", async () => {
     expect(lines(await story(read(CANARY)))).toEqual([
-      "As of 2026-11-13T19:08:17.870Z, this vault has paid out no spend on chain.",
+      "As of 2026-11-11T07:17:23.962Z, this vault has paid out no spend on chain.",
       "Its signed ledger holds 4 decisions, 2 made with model output.",
       "3 decisions were refused by the code rules (invoice.amount_invalid). The contract refused 1 payment on chain (OverPerPayment).",
     ]);
@@ -74,7 +74,7 @@ describe("the story lines on the committed snapshots", () => {
 
   it("402: every payment on the code rules alone", async () => {
     expect(lines(await story(read(PERCALL)))).toEqual([
-      "As of 2026-11-13T19:08:17.870Z, this vault has paid out 21 spends on chain, 0.21 USDC in all.",
+      "As of 2026-11-11T05:47:15.375Z, this vault has paid out 21 spends on chain, 0.21 USDC in all.",
       "All 21 were paid on the code rules alone.",
       "2 decisions were refused by the code rules (mandate.uses_exhausted).",
     ]);
@@ -88,9 +88,7 @@ describe("the story lines on crafted data", () => {
     (spends[0] as { amount: string }).amount = "1.5";
     (spends[1] as { decision_hash: string }).decision_hash = "f".repeat(64);
     const [paid, decided] = lines(await story(s));
-    expect(paid).toBe(
-      "As of 2026-11-13T19:08:17.870Z, this vault has paid out 21 spends on chain.",
-    );
+    expect(paid).toBe(`As of ${s.taken_at}, this vault has paid out 21 spends on chain.`);
     expect(decided).toBe(
       "Of these, 20 were paid on the code rules alone, and 1 on no decision in the signed ledger (see check d).",
     );
@@ -140,7 +138,7 @@ describe("the story lines on crafted data", () => {
     const s = structuredClone(read(CANARY));
     s.ledger = [];
     expect(lines(await story(s, []))).toEqual([
-      "As of 2026-11-13T19:08:17.870Z, this vault has paid out no spend on chain.",
+      `As of ${s.taken_at}, this vault has paid out no spend on chain.`,
       "Its signed ledger holds no decision yet.",
     ]);
   });
@@ -183,6 +181,8 @@ describe("the story on the page", () => {
       `As of ${s.taken_at}, this vault has paid out 4 spends on chain, 12 USDC in all.`,
     );
     expect(out).toContain(`snapshot taken ${s.taken_at}`);
+    // A list item is not under the page's `[&_p]:max-w-measure`, so the list keeps the reading measure itself (1.4.8).
+    expect(out).toMatch(/<ul class="[^"]*\bmax-w-measure\b[^"]*" data-story="">/);
   });
 
   it("is left out when the decision rows could not be built", async () => {
