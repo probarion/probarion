@@ -16,22 +16,29 @@ The software is an unaudited beta.
 ### Added
 
 - The online check of the mainnet vault's attested decisions, kept as evidence. On 2026-11-13, from 17:51:48 to
-  17:52:19 UTC, after the computer's clock was synced, a read-only
-  `verify --network mainnet --vault v0.probarion.near --online` ran with S2's ledger of 6 entries, the two
-  committed invoice texts, `--evidence docs/evidence`, `--proof docs/mainnet-proof.json` and `--snapshot` to a
-  scratch file. It printed `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`. In check e, the 3 attested decisions (ledger entries 0 and 1,
-  the two refused proposals of S1 by `z-ai/glm-5.3-flash` and `Qwen/Qwen3.8-27B`, and entry 4, the allowed proposal
-  of S2 by `z-ai/glm-5.3-flash`) pass A1 to A7 and A8, and online it found 3 DCAP-genuine TDX quotes bound to their
-  requests (O1: debug off, an accepted TCB status, report_data matches) and 3 GPU payloads bound to the request nonce
-  and verified by NVIDIA NRAS (O2). The TEE measurement is not pinned, so O1 does not show which model image ran. The
-  output is `docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt`. S2's README gains a dated section
-  on it and a row in its files table, and its line that O1 and O2 had not run now says when it was written. The
-  README, JUDGES.md, SECURITY.md, the threat model, eleven docs pages (with the file among their sources), the
-  privacy page and the status board's mainnet vault and live attested model rows cite the output where they said
-  that O1 and O2 had not run on these decisions; the two rows link it as `verify` evidence, and
-  `apps/web/test/status-board.test.ts` holds the links, the notes and the file's `RESULT: PASS` and 3 GPU payloads.
-  Still not done: every mainnet payment is a test to the owner's own address, spend 1 of 2026-11-11 was sent
-  without the SDK, there is no mainnet factory, and no third party has audited the code.
+  17:52:19 UTC, after the computer's clock was synced, a read-only `verify --online` of `v0.probarion.near` on
+  mainnet ran with S2's ledger of 6 entries, the two committed invoice texts, `--evidence docs/evidence`,
+  `--proof docs/mainnet-proof.json` and `--snapshot` to a scratch file. It printed
+  `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`. In check e, the 3 attested decisions (ledger
+  entries 0 and 1, the two refused proposals of S1 by `z-ai/glm-5.3-flash` and `Qwen/Qwen3.8-27B`, and entry 4,
+  the allowed proposal of S2 by `z-ai/glm-5.3-flash`) pass A1 to A7 and A8, and online it found 3 DCAP-genuine TDX
+  quotes bound to their requests (O1: debug off, an accepted TCB status, report_data matches) and 3 GPU payloads
+  bound to the request nonce and verified by NVIDIA NRAS (O2). The TEE measurement is not pinned, so O1 does not
+  show which model image ran. The output is `docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt`.
+  S2's README gains a dated section on it and a row in its files table, its line that O1 and O2 had not run now
+  says when it was written, and the mainnet folder's README gains a dated line that links it. The README,
+  JUDGES.md, SECURITY.md, the threat model, eleven docs pages (with the file among their sources) and the status
+  board's mainnet vault and live attested model rows now link the output where they said that O1 and O2 had not
+  run on these decisions; the two rows link it as `verify` evidence. The privacy page now says they passed, with
+  no link. The README's list of what did not run on mainnet drops that point, and so does the "Not yet" list of
+  JUDGES.md, whose item on spend 1 now says how it was sent. The verifier checks page's "Online checks O1 and O2"
+  section adds the mainnet run, and the two older Unreleased entries that said the mainnet decisions had not been
+  checked online now say they passed later that day. `apps/web/test/status-board.test.ts` holds the links, the
+  notes and the file's `RESULT: PASS` and 3 GPU payloads. It also refuses the old words that O1 and O2 had not run
+  on these decisions in the README, JUDGES.md, SECURITY.md, the threat model, the site's copy, every docs page and
+  the Unreleased section, and checks that each docs page with the file among its sources links it. Still not done:
+  every mainnet payment is a test to the owner's own address, spend 1 of 2026-11-11 was sent without the SDK, there
+  is no mainnet factory, and no third party has audited the code.
 - A second mainnet payout to Base, decided by an attested model and the code rules, kept as evidence. On
   2026-11-13, from 11:39 to 11:41 UTC, the owner ran S2 on `v0.probarion.near` from their own terminal, with a kit
   copied from S1's and changed for round 2, which runs the SDK at commit `c85f41b`: the owner signed mandate 3
@@ -39,9 +46,9 @@ The software is an unaudited beta.
   paying INV-M003, every code rule passed (ledger entry 4, `model+rules`), and spend 3 burned 0.25 USDC with
   `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`. The POA bridge released 0.2476 USDC on Base and kept a
   fee of 0.0024. INV-M003 is a labeled test, not a customer payment. At decision time the SDK checked the model's
-  evidence with A1 to A7 and A8; `verify --online` (O1 and O2) has not run on it. The model's payee hint named no
-  NEAR account, so the payee rule changes of PR #142 and PR #144, which that SDK holds, were not exercised on
-  mainnet: the hint gave them nothing to read. Two testnet rehearsals came before it.
+  evidence with A1 to A7 and A8; a later read-only `verify --online` that day passed O1 and O2 on it. The model's
+  payee hint named no NEAR account, so the payee rule changes of PR #142 and PR #144, which that SDK holds, were
+  not exercised on mainnet: the hint gave them nothing to read. Two testnet rehearsals came before it.
   `docs/evidence/mainnet-v0/s2-2026-11-13` holds the whole signed ledger byte for byte (6 entries, 4 anchors; its
   leading bytes are S1's file), the snapshot, the live `verify` output of 11:41:26 UTC (8 passed, 0 failed, 0 unproven, 1 skipped), the outcome,
   the spend decision, the burn, the POA bridge status, the Base receipt, the order of every transaction, the gas
@@ -1200,7 +1207,7 @@ The software is an unaudited beta.
   `docs/THREAT_MODEL.md`, the privacy page and the docs pages that list them (SDK reference, Let an agent pay,
   glossary, what works today, how one payment works, what is Probarion, architecture, security model and verifier
   checks). The 3 are on `v0.probarion.near`, of 2026-11-13: they pass A1 to A7 and, with the two invoice texts,
-  A8 offline, and have not been checked online (O1 and O2). Code refused the two of S1, and the third, entry 4,
+  A8 offline and, in a later run that day, O1 and O2 online. Code refused the two of S1, and the third, entry 4,
   led to spend 3, a 0.25 USDC test to the owner's own Base address. The docs tests now also refuse a page that
   says the recorded attested decisions are all on testnet.
 

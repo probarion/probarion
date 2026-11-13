@@ -1437,7 +1437,10 @@ export const BOARD_LINKS = {
   mainnetRunS2: blob("docs/evidence/mainnet-v0/s2-2026-11-13/README.md"),
   /** The live verify of the mainnet ledger after S2: all 6 entries, both invoices, 3 attested decisions. */
   mainnetVerify: blob("docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt"),
-  /** The later read-only run of the same verify with --online, 17:52 UTC: O1 and O2 on the 3 attested decisions. */
+  /**
+   * A later read-only run of the README's mainnet verify command with --online, 17:52 UTC: O1 and O2 on the 3
+   * attested decisions.
+   */
   mainnetVerifyOnline: blob("docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt"),
   teeCheck: blob("docs/evidence/tee-check/live-2026-11-12.json"),
   eval: blob("eval/results/adversary.md"),

@@ -157,3 +157,9 @@ checks c and d. To check the vault live now, use
 `--invoice docs/evidence/mainnet-v0/s2-2026-11-13/invoice-INV-M003.txt`
 ([the command](s2-2026-11-13/README.md#check-it)). The offline commands on the committed snapshots of 2026-11-11 and
 of round 1 still check those recorded runs.
+
+On 2026-11-13 at 17:52 UTC a later read-only run of [that command](s2-2026-11-13/README.md#check-it), with `--online`
+added and `--snapshot` to a scratch file, passed O1 and O2 for the vault's 3 attested decisions, entries 0, 1 and 4
+([output](s2-2026-11-13/verify-online-2026-11-13.txt),
+[the online check](s2-2026-11-13/README.md#the-online-check-2026-11-13)). The TEE measurement is not pinned, so this
+does not show which model image ran.

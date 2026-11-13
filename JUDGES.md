@@ -137,11 +137,12 @@ and verifier stay free under the MIT license; the hosted console would be paid, 
 
 ## Not yet, as of 2026-11-13
 
-- **Spend 1 was sent without the SDK, and the payee rule's change was not tried on mainnet.** Spend 2 was decided by
-  code rules alone after code refused two attested proposals, and spend 3, 0.25 USDC to the owner's own Base address,
-  was decided by an attested model and the code rules. Spend 3's hint named no NEAR account, so the payee rule's later
-  reading of a Base mandate's own asset account in a model's hint (PR #142 and PR #144), which the SDK of the run holds,
-  was not exercised on mainnet: the hint gave it nothing to read.
+- **Spend 1 was sent without the SDK, and the payee rule's change was not tried on mainnet.** Spend 1, the 1 USDC
+  payment of 2026-11-11 on NEAR, was sent with the vault's spend-only key from the owner's own terminal, without the
+  SDK, so no signed ledger entry and no attestation cover its decision ([the run](README.md#near-mainnet-2026-11-11)).
+  Spend 3's hint named no NEAR account, so the payee rule's later reading of a Base mandate's own asset account in a
+  model's hint (PR #142 and PR #144), which the SDK of the run holds, was not exercised on mainnet: the hint gave it
+  nothing to read.
 - **NEAR Intents is a stand-in on testnet.** `intents-stub.probarion.testnet` stands in for `intents.near`, so a
   testnet burn does not leave NEAR; the real Intents payouts are the two mainnet tests of 2026-11-13.
 - **No outside users yet.** [/usage](https://probarion.xyz/usage) on testnet showed 0 external owners, 0 Canary

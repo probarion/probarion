@@ -1,7 +1,7 @@
 // The landing's status board (components/site/StatusBoard.tsx): every row stands on a status row, every mark is held to
 // the words of the record that backs it, every evidence link to a named constant and its source, and the copy to the
 // site's rules. Nothing here fetches: links are checked against the repository and the transactions it records.
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import GithubSlugger from "github-slugger";
@@ -12,6 +12,7 @@ import Home from "@/app/page";
 import { StatusBoard } from "@/components/site/StatusBoard";
 import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { explorerTxUrl } from "@/lib/config";
+import { PAGES, pageFile } from "@/lib/docs/registry";
 import { REPO_URL } from "@/lib/proof/cli";
 import {
   BASE_TX,
@@ -522,6 +523,65 @@ describe("the status board's rows", () => {
     const html = board();
     expect(html).toContain(BOARD_LINKS.mainnetVerifyOnline);
     expect(visibleText(html)).toContain("O1 and O2 pass, 3 of 3");
+  });
+
+  it("no file says any more that O1 and O2 have not run on the mainnet decisions, and each docs page citing the run links it", () => {
+    // The read-only run of 2026-11-13 at 17:52 UTC passed O1 and O2 on entries 0, 1 and 4. Evidence files keep what
+    // they said at the time of a run, and older CHANGELOG releases keep their words; the Unreleased section is held.
+    const docs = join(WEB, "content", "docs");
+    const pages = readdirSync(docs, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".mdx"))
+      .map((f) => join(docs, f));
+    const changelog = text(ROOT, "CHANGELOG.md");
+    const start = changelog.indexOf("## Unreleased");
+    const unreleased = changelog.slice(start, changelog.indexOf("\n## ", start + 1));
+    const texts: [string, string][] = [
+      ...[
+        "README.md",
+        "JUDGES.md",
+        "SECURITY.md",
+        join("docs", "THREAT_MODEL.md"),
+        join("apps", "web", "src", "lib", "site", "facts.ts"),
+        join("apps", "web", "src", "lib", "site", "ops-copy.ts"),
+      ].map((f): [string, string] => [f, text(ROOT, f)]),
+      ...pages.map((f): [string, string] => [f, readFileSync(f, "utf8")]),
+      ["CHANGELOG.md, Unreleased", unreleased],
+    ];
+    const OLD = [
+      /have not been checked online/i,
+      /O1 and O2 have not (?:run|checked)/i,
+      /has not run on (?:it|them|this decision|those attested decisions|the 3 mainnet decisions|the three)\b/i,
+      /has not checked the mainnet model decisions/i,
+      /mainnet model decisions are not checked online/i,
+      /No online check of the attested decisions/i,
+    ];
+    expect(pages.length).toBeGreaterThan(30);
+    expect(start).toBeGreaterThan(0);
+    expect(unreleased.length).toBeGreaterThan(1000);
+    for (const [name, body] of texts) {
+      for (const old of OLD) expect(flat(body), `${name}: ${old}`).not.toMatch(old);
+    }
+    // Each docs page with the online output among its sources links it.
+    const file = "docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt";
+    const citing = PAGES.filter((p) => p.sources.includes(file));
+    expect(citing.map((p) => p.path).sort()).toEqual([
+      "build/let-an-agent-pay",
+      "build/sdk-reference",
+      "operate/architecture",
+      "resources/glossary",
+      "start/how-one-payment-works",
+      "start/mainnet-payout",
+      "start/testnet-and-mainnet",
+      "start/what-is-probarion",
+      "start/what-works-today",
+      "trust/security-model",
+      "trust/verifier-checks",
+    ]);
+    for (const p of citing) {
+      expect(text(docs, `${pageFile(p.path)}.mdx`), p.path).toContain(
+        `${REPO_URL}/blob/main/${file}`,
+      );
+    }
   });
 });
 

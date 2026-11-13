@@ -1030,11 +1030,11 @@ pass A1 to A7, and A8 on all three with the two invoice texts; it reports entry 
 that offline it does not verify the quote. Check h finds the burn pairs of spends 2 and 3, and check i
 skips. The kit read the invoices from its own folder, so the output names those paths; the committed
 copies have the same sha256. At 17:52 UTC on 2026-11-13 a read-only run of that command with `--online`
-added, and `--snapshot` to a scratch file, printed the same counts and `RESULT: PASS`, and check e added O1 and O2 for entries 0, 1 and 4:
-3 DCAP-genuine TDX quotes bound to their requests (debug off, an accepted TCB status, report_data matches)
-and 3 GPU payloads bound to the request nonce and verified by NVIDIA NRAS
-([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)). The measurement is not
-pinned, so O1 does not show which image ran. Offline, with no network:
+added, and `--snapshot` to a scratch file, printed the same counts and `RESULT: PASS`, and check e added
+O1 and O2 for entries 0, 1 and 4: 3 DCAP-genuine TDX quotes bound to their requests (debug off, an
+accepted TCB status, report_data matches) and 3 GPU payloads bound to the request nonce and verified by
+NVIDIA NRAS ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)). The
+measurement is not pinned, so O1 does not show which image ran. Offline, with no network:
 
 ```bash
 node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/s2-2026-11-13/snapshot-2026-11-13.json \
