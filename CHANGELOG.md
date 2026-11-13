@@ -1145,6 +1145,23 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing's "What works today, and what does not" is a status board. A summary computed from
+  the rows comes first: how many are Verified, and what each row marked In part or Not tried yet
+  misses. A key then defines the two marks every row can carry: Proof (Verified, In part, Not tried
+  yet) and, where it applies, Use (Running, Released). The 13 rows sit in four groups (On chain,
+  Packages, The web app, Agents and the model) on one set of columns: name, what it does and what
+  is not done yet, the marks, where it runs, and the evidence. Each evidence link names its kind
+  (Try, Testnet, Mainnet, Base, npm, Registry, Store, Log, Record, Page, Docs, Verify), and the
+  real-money kinds are set in ink. The web console is one row whose tried parts fold under a line
+  that names them, with what is left to try always shown. Known gaps close the section in three
+  short lists. No status changed: each mark follows its STATUS row's tone and the README, and
+  `apps/web/test/status-board.test.ts` holds every mark, transaction, amount and link to its record.
+  The styles live in `components/site/status.module.css`.
+  The mainnet rows now tell round 2 (S2): three test payments, the 0.25 USDC one on an attested
+  model's proposal, with spend 3, its Base transfer and the S2 run linked, and `verify --online`
+  (O1 and O2) not yet run on the 3 mainnet decisions. The board's mainnet verify links now open
+  S2's output, the live verify of the 6-entry ledger.
+
 - After S2, the judge's `live-verify-mainnet-v0` step verifies `v0.probarion.near` with S2's copy of the ledger
   (`docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl`, 6 entries, since the chain's anchors now
   cover 6 and S1's copy of 4 fails checks c and d) and both invoice texts (`--invoice` for INV-M002 and for

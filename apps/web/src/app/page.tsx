@@ -7,7 +7,8 @@ import { Integrate } from "@/components/site/Integrate";
 import { Journey } from "@/components/site/Journey";
 import { LiveCheck } from "@/components/site/LiveCheck";
 import { MainnetPayout } from "@/components/site/MainnetPayout";
-import { ChainList, Closing, StatusList } from "@/components/site/Sections";
+import { ChainList, Closing } from "@/components/site/Sections";
+import { StatusBoard } from "@/components/site/StatusBoard";
 import s from "@/components/site/site.module.css";
 import { LedgerTest } from "@/components/site/TamperPanel";
 
@@ -25,7 +26,7 @@ export default function Home() {
       <ConsoleShots />
       <LedgerTest />
       <ChainList />
-      <StatusList />
+      <StatusBoard />
       <BuiltOn />
       <Closing />
     </div>

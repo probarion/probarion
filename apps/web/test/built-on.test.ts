@@ -164,7 +164,7 @@ describe("the built-on section", () => {
       [
         "/proof/demo.vaults.probarion.testnet#seq-13",
         "/proof/demo.vaults.probarion.testnet#seq-15",
-        LINKS.demoVerifyOnline,
+        LINKS.demoVerifyOnlineA8,
       ],
     ]);
     expect(BUILT_ON.also.title).toBe("Also in the stack");
@@ -415,6 +415,18 @@ describe("the built-on facts", () => {
     );
     expect(text(ROOT, "docs", "evidence", "demo-vault", "verify-online-2026-11-12.txt")).toContain(
       "4 GPU payloads bound to the request nonce and verified by NRAS (O2)",
+    );
+    // All 7 online: the Canary's 2 on 2026-11-11, and the demo vault's 5 in the later run of 2026-11-12, which the
+    // section links, as the README and JUDGES.md cite it.
+    const online = text(ROOT, "docs", "evidence", "demo-vault", "verify-online-a8-2026-11-12.txt");
+    expect(online).toContain("5 DCAP-genuine TDX quotes bound to this request");
+    expect(online).toContain("5 GPU payloads bound to the request nonce and verified by NRAS (O2)");
+    expect(online).toContain("generated 2026-11-12T16:13");
+    expect(text(ROOT, "docs", "evidence", "canary-vault", "verify-online-2026-11-11.txt")).toMatch(
+      /2 DCAP-genuine TDX quotes/,
+    );
+    expect(text(ROOT, "JUDGES.md")).toContain(
+      "and O1 and O2 in a live run at 16:13 UTC on 2026-11-12 ([output](docs/evidence/demo-vault/verify-online-a8-2026-11-12.txt))",
     );
   });
 

@@ -1,18 +1,12 @@
 import { RouteLink } from "@/components/RouteLink";
 import { ExternalLink } from "@/components/ui";
-import { INTEGRATE, SDK_SNIPPET, type StatusTone, statusOf } from "@/lib/site/facts";
+import { INTEGRATE, SDK_SNIPPET } from "@/lib/site/facts";
 import { Rich } from "./Rich";
 import { ScrollRegion } from "./ScrollRegion";
+import { StatusPill } from "./StatusPill";
 import s from "./site.module.css";
 
-const TONE: Readonly<Record<StatusTone, string | undefined>> = {
-  live: s.live,
-  work: s.work,
-  plan: s.plan,
-};
-
 export function Integrate() {
-  const sdk = statusOf(INTEGRATE.cards[0].status);
   return (
     <section className={s.section} id="integrate">
       <div className={s.wrap}>
@@ -25,12 +19,10 @@ export function Integrate() {
         </div>
         <div className={s.ways}>
           {INTEGRATE.cards.map((c) => {
-            const st = statusOf(c.status);
             return (
               <div key={c.title} className={s.way}>
                 <h3>
-                  {c.title}{" "}
-                  <span className={`${s.pill} ${s.pillInline} ${TONE[st.tone]}`}>{st.pill}</span>
+                  {c.title} <StatusPill row={c.status} />
                 </h3>
                 <p>
                   <Rich text={c.body} />
@@ -57,7 +49,7 @@ export function Integrate() {
             <span>{INTEGRATE.fileName}</span>
             <span className={s.codeMeta}>
               {INTEGRATE.codeLabel}
-              <span className={`${s.pill} ${s.pillInline} ${TONE[sdk.tone]}`}>{sdk.pill}</span>
+              <StatusPill row={INTEGRATE.cards[0].status} />
             </span>
           </div>
           <ScrollRegion className={s.codeBody} label={INTEGRATE.fileName}>
@@ -97,7 +89,6 @@ export function Integrate() {
         </ul>
         <div className={s.who}>
           {INTEGRATE.who.map((w) => {
-            const st = statusOf(w.status);
             return (
               <div key={w.title}>
                 <b>{w.title}</b>
@@ -109,7 +100,7 @@ export function Integrate() {
                   <span className="sr-only">:</span> <Rich text={w.outcome} />
                 </p>
                 <p className={s.whoProof}>
-                  <span className={`${s.pill} ${TONE[st.tone]}`}>{st.pill}</span>
+                  <StatusPill row={w.status} inline={false} />
                   <ExternalLink className={s.link} href={w.evidence.url}>
                     {w.evidence.label}
                   </ExternalLink>

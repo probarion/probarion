@@ -1,16 +1,10 @@
 import Link from "next/link";
 import { ExternalLink } from "@/components/ui";
-import { CHAIN, CLOSING, EVALUATE_ROUTE, LINKS, STATUS, type StatusTone } from "@/lib/site/facts";
+import { CHAIN, CLOSING, EVALUATE_ROUTE, LINKS } from "@/lib/site/facts";
 import { NEXT_STEP } from "@/lib/site/next-step";
 import { NextStep } from "./NextStep";
 import { Rich } from "./Rich";
 import s from "./site.module.css";
-
-const TONE: Readonly<Record<StatusTone, string | undefined>> = {
-  live: s.live,
-  work: s.work,
-  plan: s.plan,
-};
 
 export function ChainList() {
   return (
@@ -31,44 +25,6 @@ export function ChainList() {
             </ExternalLink>
           </div>
         ))}
-      </div>
-    </section>
-  );
-}
-
-export function StatusList() {
-  return (
-    <section className={`${s.section} ${s.flush}`} id="status">
-      <div className={s.wrap}>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{STATUS.title}</h2>
-        </div>
-        <div className={s.status}>
-          {STATUS.rows.map(({ row, pill, tone }) => (
-            <div key={row} className={s.statusRow}>
-              <span>{row}</span>
-              <span className={`${s.pill} ${TONE[tone]}`}>{pill}</span>
-            </div>
-          ))}
-        </div>
-        <p className={s.statusNote}>
-          <Rich text={STATUS.checked} />
-        </p>
-        <h3 className={s.gapsTitle} id={STATUS.gaps.id}>
-          {STATUS.gaps.title}
-        </h3>
-        <ul className={s.gaps}>
-          <li>
-            {STATUS.gaps.auditBefore}
-            <ExternalLink className={s.link} href={LINKS.security}>
-              {STATUS.gaps.auditLink}
-            </ExternalLink>
-            <Rich text={STATUS.gaps.auditAfter} />
-          </li>
-          <li>
-            <Rich text={STATUS.gaps.v0} />
-          </li>
-        </ul>
       </div>
     </section>
   );

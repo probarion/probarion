@@ -57,6 +57,7 @@ import {
   SITE_DESCRIPTION,
   SPEND_REQUEST_FIELDS,
   STATUS,
+  STATUS_BOARD,
   STORY,
   statusOf,
   TAMPER_COPY,
@@ -1096,12 +1097,15 @@ describe("the status list", () => {
   });
 
   it("tells v0's missing ledger, its failing checks and its older build once, in the known gaps (audit P1-10)", () => {
-    expect(STATUS.gaps.v0).toBe(
+    const v0 = STATUS.gaps.lists
+      .flatMap((l) => l.items)
+      .find((g) => g.lead === "The smoke-run vault.")?.parts[0];
+    expect(v0).toBe(
       "`v0.probarion.testnet`, the vault of the 2026-11-01 smoke run, sent its spends with the agent key alone, without a ledger, so a live `verify --vault` on it fails checks d and h. It also runs a build from before the 2026-11-03 `set_ledger_key` fix. The vaults the testnet factory creates, the demo vault among them, run the fixed build recorded in `contracts/code-hashes.json`.",
     );
     const prose = README.replace(/\s+/g, " ");
     const smokeRun = /on (\d{4}-\d{2}-\d{2})\./.exec(CHAIN.intro)?.[1];
-    expect(STATUS.gaps.v0).toContain(`the vault of the ${smokeRun} smoke run`);
+    expect(v0).toContain(`the vault of the ${smokeRun} smoke run`);
     expect(prose).toContain(
       "its spends were sent with the agent key directly, without the SDK, a model or a ledger",
     );
@@ -1132,8 +1136,9 @@ describe("the status list", () => {
 
   it("ends the status list with what tests check and a list of known gaps the beta strip links to (audit P1-10)", () => {
     expect(STATUS.checked).toBe(
-      "The numbers, transactions and status rows on this page are checked against the repository by tests (`apps/web/test/site-facts.test.ts`).",
+      "The numbers, transactions and status rows on this page are checked against the repository by tests (`apps/web/test/site-facts.test.ts` and `apps/web/test/status-board.test.ts`).",
     );
+    expect(existsSync(join(WEB, "test", "status-board.test.ts"))).toBe(true);
     expect(STATUS.checked).not.toContain("Every fact");
     expect(existsSync(join(WEB, "test", "site-facts.test.ts"))).toBe(true);
     expect(STATUS.gaps.title).toBe("Known gaps");
@@ -1148,7 +1153,13 @@ describe("the status list", () => {
     expect(out.indexOf(STATUS.gaps.title)).toBeGreaterThan(
       out.indexOf("checked against the repository"),
     );
-    expect(section.match(/<li/g)).toHaveLength(2);
+    // The gaps close the section: every row comes before them, and their lists hold the gap items only.
+    const gapsAt = section.indexOf(`id="${STATUS.gaps.id}"`);
+    for (const { id } of STATUS.rows)
+      expect(section.indexOf(`id="${id}"`), id).toBeLessThan(gapsAt);
+    expect(section.slice(gapsAt).match(/<li/g)).toHaveLength(
+      STATUS.gaps.lists.reduce((n, l) => n + l.items.length, 0),
+    );
     expect(betaStrip("testnet").gaps).toEqual({ label: "Known gaps", href: `/#${STATUS.gaps.id}` });
   });
 
@@ -1592,7 +1603,11 @@ describe("the problem, the comparison and the integrate section", () => {
       const row = statusOf(w.status);
       expect(read, w.title).toContain(`${w.control} →: ${w.outcome.replace(/`/g, "")}`);
       expect(html, w.title).toContain(`href="${w.evidence.url}"`);
-      expect(read, w.title).toContain(`${row.pill}${w.evidence.label} (opens in a new tab)`);
+      // The pill links its row on the status board, and says so to a screen reader.
+      expect(read, w.title).toContain(
+        `${row.pill}${STATUS_BOARD.pillSuffix}${w.evidence.label} (opens in a new tab)`,
+      );
+      expect(html, w.title).toContain(`href="#${row.id}"`);
     }
   });
 
