@@ -1,0 +1,147 @@
+/*
+ * The site footer (SiteFooter.tsx), on every page. Hierarchy by type alone, with no cards, fills or effects: the
+ * wordmark, the motto in ink, the group headings in ink, the links and the base row in mute (8:1 on paper, ink on
+ * hover). Two rows on one grid of two tracks, four parts to six: the identity and the three link groups on top, the
+ * note and the legal links under a hairline, so the note sits under the motto and the legal links start where Product
+ * starts. At 960px and below each row stacks: the identity over the three groups, the note over the legal links. At
+ * 620px and below Product holds the left column and Developers and Follow share the right. Nothing moves on scroll.
+ * Every colour is a token from app/globals.css.
+ */
+.footer {
+  border-top: 1px solid var(--color-line);
+  padding-top: clamp(48px, 6vw, 72px);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.footer a:hover {
+  color: var(--color-ink);
+  text-decoration-line: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.top,
+.base {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr);
+  column-gap: 32px;
+}
+.top {
+  row-gap: 40px;
+}
+
+/*
+ * Identity: the header's wordmark one size down, then the motto. Two classes, so that the size beats site.module.css
+ * .brand whatever order the modules load in; .brand keeps its tight line for the one-line logo.
+ */
+.footer .brand {
+  font-size: 21px;
+  gap: 8px;
+  color: var(--color-ink);
+}
+.footer .brand:hover {
+  text-decoration-line: none;
+}
+.footer .brand svg {
+  width: 25px;
+  height: 21px;
+}
+/* The motto is two sentences in parallel: one line each, wrapping inside itself only on the narrowest screens. */
+.motto {
+  margin-top: 18px;
+  max-width: 24em;
+  font-size: 17px;
+  color: var(--color-ink);
+}
+.motto span {
+  display: block;
+}
+
+/* The link groups: the heading in ink, the links in mute, one size. */
+.groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px 32px;
+  align-items: start;
+}
+.groups h2 {
+  margin-bottom: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-ink);
+}
+.groups ul,
+.legal ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.groups ul {
+  display: grid;
+  gap: 8px;
+}
+
+/*
+ * The base row: the fine print, then the legal pages. Once the row stacks, 1.5 + 14/14 = 2.5em from the top of the
+ * note's last line to the top of the links (WCAG 1.4.8).
+ */
+.base {
+  margin-top: clamp(40px, 5vw, 64px);
+  padding-block: 20px max(28px, env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--color-line);
+  align-items: baseline;
+  row-gap: 14px;
+  font-size: 14px;
+}
+.note {
+  min-width: 0;
+}
+/* The note's one link sits inside a sentence, so it is underlined, not told apart by colour alone (WCAG 1.4.1). */
+.note a {
+  text-decoration-line: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  white-space: nowrap;
+}
+.legal ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+}
+/* 3px above and below: targets about 27px tall. */
+.legal a {
+  display: inline-block;
+  padding-block: 3px;
+}
+
+@media (max-width: 960px) {
+  .top,
+  .base {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 620px) {
+  .top {
+    row-gap: 36px;
+  }
+  .groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "product dev"
+      "product follow";
+    gap: 28px 24px;
+  }
+  .product {
+    grid-area: product;
+  }
+  .dev {
+    grid-area: dev;
+  }
+  .follow {
+    grid-area: follow;
+  }
+  .groups ul {
+    gap: 10px;
+  }
+}

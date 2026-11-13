@@ -2526,6 +2526,64 @@ describe("the footer columns", () => {
     ]);
     expect(FOOTER.legal.map((i) => i.route)).toEqual(["/terms", "/privacy", "/security"]);
   });
+
+  const footer = () => renderToStaticMarkup(createElement(SiteFooter));
+  /** The footer's text as a visitor reads it: each ↗ (with the no-break space that joins it) and the new-tab words dropped. */
+  const footerText = (html: string) =>
+    textContent(
+      html
+        .replace(/ <span aria-hidden="true">↗<\/span>/g, "")
+        .replace(/<span class="sr-only">[^<]*<\/span>/g, ""),
+    );
+
+  it("reads the motto and the beta and license note word for word, the motto one sentence a line", () => {
+    const html = footer();
+    expect(footerText(html)).toContain(FOOTER.motto);
+    expect(footerText(html)).toContain(FOOTER.note);
+    // Both periods stay, with a real space between the two lines, so that a copy reads "data. The contract".
+    expect(html).toContain(
+      "<span>TEE protects the data.</span> <span>The contract protects the money.</span>",
+    );
+  });
+
+  it("links the note's license words to the repository's LICENSE file", () => {
+    expect(FOOTER.note).toContain(FOOTER.license.label);
+    expect(FOOTER.license.href).toBe(`${LINKS.github}/blob/main/LICENSE`);
+    expect(text(ROOT, "LICENSE").startsWith("MIT License")).toBe(true);
+    const html = footer();
+    const link = new RegExp(`<a href="${FOOTER.license.href}"[^>]*>([\\s\\S]*?)</a>`).exec(html);
+    expect(footerText(link?.[1] ?? "")).toBe(FOOTER.license.label);
+  });
+
+  it("keeps Follow to the X link, and the legal pages in their own nav after the note", () => {
+    const html = footer();
+    const follow = html.slice(html.indexOf("<h2>Follow</h2>"));
+    expect(hrefs(follow.slice(0, follow.indexOf("</ul>")))).toEqual([LINKS.x]);
+    const legal = /<nav aria-label="Legal"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? "";
+    expect(hrefs(legal)).toEqual(["/terms", "/privacy", "/security"]);
+    expect(html.indexOf('aria-label="Legal"')).toBeGreaterThan(html.indexOf(FOOTER.license.href));
+    // No legal page anywhere else in the footer.
+    const rest = html.replace(/<nav aria-label="Legal"[\s\S]*?<\/nav>/, "");
+    for (const route of ["/terms", "/privacy", "/security"])
+      expect(hrefs(rest)).not.toContain(route);
+  });
+
+  it("ends every link that leaves the site in ↗ and its new-tab words, and no link to a page of the site", () => {
+    const links = [...footer().matchAll(/<a ([^>]*)>([\s\S]*?)<\/a>/g)];
+    const away = links.filter(([, attrs]) => /\shref="https:/.test(` ${attrs}`));
+    expect(away.length).toBe(FOOTER.developers.length + FOOTER.follow.length + 1);
+    for (const [, attrs, inner] of away) {
+      expect(attrs, attrs).toContain('target="_blank"');
+      expect(inner, attrs).toMatch(
+        / <span aria-hidden="true">↗<\/span><span class="sr-only"> \(opens in a new tab\)<\/span>$/,
+      );
+    }
+    const home = links.filter(([, a]) => /(?:^|\s)href="\//.test(a ?? ""));
+    expect(home.length).toBe(1 + FOOTER.product.length + FOOTER.legal.length);
+    for (const [, attrs, inner] of home) {
+      expect(inner, attrs).not.toContain("↗");
+    }
+  });
 });
 
 describe("the beta strip", () => {

@@ -116,6 +116,8 @@ const FOOTER_PRODUCT: readonly string[] = ["/usage"];
 export const FOOTER = {
   motto: "TEE protects the data. The contract protects the money.",
   note: "Unaudited beta. Built for the NEAR Hackathon 2026. MIT license.",
+  /** The words of `note` that link to the repository's LICENSE file. */
+  license: { label: "MIT license", href: blob("LICENSE") },
   /** Internal links: SITE_NAV and FOOTER_NAV stay the source of the routes. */
   product: listed([
     ...SITE_NAV,

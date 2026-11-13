@@ -1091,38 +1091,7 @@ a.netPill:hover {
   font-size: 17px;
 }
 
-/* Footer */
-.footer {
-  border-top: 1px solid var(--color-line);
-  padding-block: 40px 56px;
-  font-size: 14px;
-  color: var(--color-mute);
-}
-.foot {
-  display: grid;
-  grid-template-columns: minmax(0, 4fr) repeat(3, minmax(0, 2fr));
-  gap: 32px;
-}
-.foot h2 {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-ink);
-  margin-bottom: 10px;
-}
-.foot ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 6px;
-}
-.foot a:hover {
-  color: var(--color-ink);
-  text-decoration: underline;
-}
-.footNote {
-  margin-top: 1em;
-}
+/* The site footer is in footer.module.css. */
 
 /* /proof with no vault: the site's full wrap, so that its left edge matches the header and the footer. */
 .proofIndex {

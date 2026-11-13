@@ -31,6 +31,7 @@ const MODULES: Readonly<Record<string, string>> = {
   tamper: "src/components/site/tamper.module.css",
   chain: "src/components/site/chain.module.css",
   live: "src/components/site/live.module.css",
+  footer: "src/components/site/footer.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -531,14 +532,14 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["live", ".injLine", "margin-top", 15, "live", ".inj"],
       // The hero: one step of the Canary's rehearsal under the next.
       ["hero", ".steps li + li", "margin-top", 14, "hero", ".steps"],
+      // The site footer, outside .site: its base row's note over the legal links, once the row stacks at 960px and below.
+      ["footer", ".base", "row-gap", 14, "footer", ".footer"],
     ];
     for (const [file, selector, prop, px, lhFile, lhSelector] of cases) {
       const lh = Number(decl(lhFile, lhSelector, "line-height"));
       const total = lh + em(decl(file, selector, prop), px);
       expect(total + 1e-9, `${file} ${selector}`).toBeGreaterThanOrEqual(2.5);
     }
-    // The footer is outside .site: its line height is the page's 1.5.
-    expect(1.5 + em(decl("site", ".footNote", "margin-top"), 14)).toBeGreaterThanOrEqual(2.5);
   });
 
   it("caps reading text at about 71 characters a line on average, from Hanken Grotesk's own average width", () => {
