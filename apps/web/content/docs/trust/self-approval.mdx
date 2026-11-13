@@ -39,7 +39,7 @@ No passcode approves a payment or raises a limit in Probarion. What the paper's 
 | Change the owner, the approvers, the daily backstop or the hold time | Nothing does: only `new` writes them, and it runs once | near-sdk, which refuses a second `new` |
 | Sign in to the console | A NEP-413 message signed by a full-access key of the account. No code is emailed | The console's server |
 
-The agent holds a function-call key on the vault itself, and its one method is `spend`. NEAR refuses, before the vault runs, any transaction that key signs for another method, with a deposit, to another contract, or with any action but one function call. Owner alerts, which are Preview, are notices: none of them can approve or move anything.
+The agent holds a function-call key on the vault itself, and its one method is `spend`. NEAR refuses, before the vault runs, any transaction that key signs for another method, with a deposit, to another contract, or with any action but one function call. Owner alerts (Telegram tried on testnet on 2026-11-11, email not yet) are notices: none of them can approve or move anything.
 
 In the paper's terms, the service is the vault, and the gate is a signature from the full-access key of the owner's or an approver's account. The vault knows which account signed, not where that key lives, and NEAR checks no attestation of the device that holds it. So Probarion is not an I-HITL construction as the paper defines one. What it takes away is the agent's own way through the gate: the key the agent holds cannot approve or raise anything, and no code that approves a payment or raises a limit travels through a channel the agent reads. The alert email's stop link is a credential of another kind, covered [below](#what-this-does-not-do).
 

@@ -11,6 +11,8 @@ import { BOARD_GROUPS, BOARD_TX } from "@/lib/site/facts";
 import { ROOT, readMdx } from "./docs-helpers";
 
 const text = (...parts: string[]) => readFileSync(join(ROOT, ...parts), "utf8");
+// Evidence READMEs wrap at about 115 characters, and a checkout may use CRLF: compare on single spaces.
+const flat = (s: string) => s.replace(/\s+/g, " ");
 const blob = (path: string) => `https://github.com/probarion/probarion/blob/main/${path}`;
 
 const MAINNET_VERIFY = "docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt";
@@ -33,8 +35,8 @@ describe("the docs' status words", () => {
     expect(verify).toContain("8 passed, 0 failed, 0 unproven, 1 skipped");
     expect(verify).toContain("RESULT: PASS");
     // The kit ran the SDK of this repository, outside it, and signed the entries with the anchor-only ledger key.
-    expect(text(S1)).toContain("runs the\nSDK of this repository");
-    expect(text(S1)).toContain("runs the SDK's `Probarion.process()` with no proposer");
+    expect(flat(text(S1))).toContain("runs the SDK of this repository");
+    expect(flat(text(S1))).toContain("runs the SDK's `Probarion.process()` with no proposer");
     const page = readMdx("concepts/ledger-and-anchors");
     for (const link of [blob(MAINNET_VERIFY), blob(S1), blob(S2)]) expect(page).toContain(link);
     expect(page).toContain("anchored them 4 times");
@@ -87,12 +89,15 @@ describe("the docs' status words", () => {
       const page = readMdx(path);
       expect(page, path).toMatch(/email alerts and the Base top-up/i);
     }
+    // The architecture page names every Preview part behind the console, as What works today lists them.
+    expect(readMdx("operate/architecture")).toContain(
+      "error reports to Sentry and the browser extension's server half (`/api/ext`)",
+    );
   });
 
   it("repeat none of the sentences that called a recorded flow unrun", () => {
     const retired = [
       "A ledger kept by an agent of your own with the SDK is not recorded yet, so this page is Preview.",
-      "so this page is Preview.",
       "The smoke run proves the contract path, not the SDK's ledger on a live vault, which is Preview.",
       "No rules-only run of `process()` that pays",
       "The Keys tab is Preview",
@@ -103,6 +108,8 @@ describe("the docs' status words", () => {
       "no run of that loop in an agent of your own is recorded",
       "their flows have not yet run end to end with real wallets",
       "The faucet is Preview",
+      // A Base payout burns USDC into Intents; the S1 and S2 records say burned, not paid.
+      "paid 1.00 USDC and the fourth",
       "The testnet faucet is Preview",
       "| [Test USDC on testnet](#test-usdc-on-testnet) | Preview |",
     ];
@@ -112,6 +119,9 @@ describe("the docs' status words", () => {
       for (const s of retired) if (page.includes(s)) found.push(`${p.path || "index"}: ${s}`);
     }
     expect(found).toEqual([]);
+    // A page that really is Preview may say so; these two said it against their records.
+    for (const p of ["concepts/ledger-and-anchors", "concepts/holds-and-approvals"])
+      expect(readMdx(p), p).not.toContain("so this page is Preview.");
     // The faucet's run is the board's "Money in and out" evidence.
     expect(readMdx("start/what-works-today")).toContain(BOARD_TX.demoFaucet.hash);
   });
