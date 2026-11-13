@@ -496,6 +496,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["docs", ".prose li > :is(p, ul, ol) + :is(p, ul, ol)", "margin-top", 16.5, "docs", ".prose"],
       ["status", ".gaps li + li", "margin-top", 15, "site", ".site"],
       ["status", ".untriedList", "gap", 15, "site", ".site"],
+      ["status", ".limit", "margin-top", 15, "site", ".site"],
+      ["status", ".where", "margin-top", 15, "site", ".site"],
       ["status", ".note + .note", "margin-top", 15, "site", ".site"],
       ["site", ".whoControl", "margin-top", 14, "site", ".site"],
       ["site", ".whoProof", "margin-top", 14, "site", ".site"],
@@ -547,6 +549,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["status", ".what"],
       ["status", ".limit"],
       ["status", ".untriedList"],
+      ["status", ".sumText"],
+      ["status", ".keyMeans"],
       ["status", ".gapsHead p"],
       ["status", ".gaps"],
       ["site", ".closeNote"],
@@ -646,6 +650,13 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     // A long status pill wraps inside itself rather than run past a 320px column (1.4.10).
     expect(decl("site", ".pillInline", "white-space")).toBe("normal");
     expect(decl("site", ".pillInline", "max-width")).toBe("100%");
+    // A status mark wraps too: its word may break onto a second line, and its glyph, which never shrinks, stays by it.
+    for (const sel of [".mark", ".marks", ".marks > li:first-child"]) {
+      for (const d of declsOf("status", sel)) expect(d["white-space"], sel).toBeUndefined();
+    }
+    expect(decl("status", ".marks", "flex-wrap")).toBe("wrap");
+    expect(decl("status", ".glyph", "flex")).toBe("none");
+    expect(decl("status", ".mark", "align-items")).toBe("flex-start");
   });
 
   it("positions every sideways scroller, so screen-reader text inside cannot widen the page (1.4.10)", () => {
@@ -708,7 +719,14 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     expect(inForced("docs", ".gold")[0]?.color).toBe("CanvasText");
     expect(inForced("docs", ".chipDot")[0]?.background).toBe("CanvasText");
     // A status mark keeps its shape: the glyph is drawn in the text colour of the theme.
-    expect(inForced("status", ".glyph")[0]?.color).toBe("CanvasText");
+    expect(inForced("status", ".mark .glyph")[0]?.color).toBe("CanvasText");
+    // The console's hairline and the rules between its parts are borders, which forced colours keep; fills are dropped.
+    expect(decl("status", ".parts::before", "border-left")).toBe("1px solid var(--color-line)");
+    expect(decl("status", ".part + .part::before", "border-top")).toBe(
+      "1px solid var(--color-line)",
+    );
+    for (const sel of [".parts::before", ".part + .part", ".part + .part::before"])
+      for (const d of declsOf("status", sel)) expect(d.background, sel).toBeUndefined();
   });
 
   it("declares one light scheme and asks browsers not to darken it on their own", () => {

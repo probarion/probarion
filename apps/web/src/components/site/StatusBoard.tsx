@@ -11,6 +11,7 @@ import {
   type ProofMark,
   proofSummary,
   REAL_MONEY_KINDS,
+  RESULT_KINDS,
   STATUS,
   STATUS_BOARD,
   STATUS_KEY,
@@ -25,6 +26,12 @@ import b from "./status.module.css";
  * list semantics (as in BuiltOn.tsx). Spread from here because Biome's noRedundantRoles reads the markup.
  */
 const LIST = { role: "list" } as const;
+/**
+ * A list of the key, named by its label: a `dl` takes no name of its own in ARIA in HTML, so its box is a named group.
+ * Spread from here too: Biome's useSemanticElements would make it a fieldset, which is for form controls.
+ */
+const namedGroup = (labelledBy: string) =>
+  ({ role: "group", "aria-labelledby": labelledBy }) as const;
 
 type Mark = ProofMark | UseMark;
 
@@ -88,7 +95,7 @@ function MarkWord({ mark }: { mark: Mark }) {
   return (
     <span className={`${b.mark} ${MARK_CLASS[mark]}`}>
       <Glyph mark={mark} />
-      {WORD[mark]}
+      <span>{WORD[mark]}</span>
     </span>
   );
 }
@@ -154,8 +161,8 @@ function Parts({ parts }: { parts: readonly CopyPart[] }) {
   );
 }
 
+/** A row's records: what kind each is, the link, then its amount or result (a check's result in ink). */
 function Evidence({ list }: { list: readonly BoardEvidence[] }) {
-  if (list.length === 0) return <p className={b.evNone}>{STATUS_BOARD.noEvidence}</p>;
   return (
     <ul className={b.ev} aria-label={STATUS_BOARD.evidenceLabel} {...LIST}>
       {list.map((e) => (
@@ -172,7 +179,7 @@ function Evidence({ list }: { list: readonly BoardEvidence[] }) {
               {e.label}
             </Href>
             {e.note === undefined ? null : (
-              <span className={b.evNote}>
+              <span className={`${b.evNote} ${RESULT_KINDS.includes(e.kind) ? b.evResult : ""}`}>
                 <span className="sr-only">, </span>
                 {e.note}
               </span>
@@ -194,10 +201,18 @@ function Limit({ text }: { text: string }) {
 
 function Part({ part }: { part: BoardPart }) {
   return (
-    <li className={b.part} id={part.id} data-row={part.id} data-status={part.status}>
-      <h5 className={b.partTitle}>{part.name}</h5>
+    <li
+      className={`${b.part} ${part.untried === undefined ? "" : b.partUntried}`}
+      id={part.id}
+      data-row={part.id}
+      data-status={part.status}
+    >
+      {/* The date sits beside the name, in the part's title line, not in a paragraph of its own. */}
+      <div className={b.partHead}>
+        <h5 className={b.partTitle}>{part.name}</h5>
+        {part.tried === undefined ? null : <span className={b.tried}>{part.tried}</span>}
+      </div>
       <Marks proof={part.proof} />
-      {part.tried === undefined ? null : <p className={b.tried}>{part.tried}</p>}
       {part.what === undefined ? null : (
         <p className={b.what}>
           <Rich text={part.what} />
@@ -221,6 +236,8 @@ function Part({ part }: { part: BoardPart }) {
 }
 
 function Row({ item }: { item: BoardItem }) {
+  // A row with real USDC says so in its Where line too, in bold: no new colour.
+  const real = item.evidence.some((e) => REAL_MONEY_KINDS.includes(e.kind));
   return (
     <li className={b.row} id={item.id} data-row={item.id} data-status={item.status}>
       <h4 className={b.rowTitle}>{item.name}</h4>
@@ -229,11 +246,12 @@ function Row({ item }: { item: BoardItem }) {
         <Rich text={item.what} />
       </p>
       {item.limit === undefined ? null : <Limit text={item.limit} />}
-      <p className={b.where}>
-        <span className="sr-only">{STATUS_BOARD.whereLabel} </span>
-        {item.where.place}
+      <p className={b.where} data-real={real ? "true" : undefined}>
+        <span className={b.whereLabel}>{STATUS_BOARD.whereLabel}</span>{" "}
+        <span className={real ? b.whereReal : undefined}>{item.where.place}</span>
         {item.where.detail === undefined ? null : (
           <span className={b.whereDetail}>
+            <span className="sr-only">, </span>
             <Rich text={item.where.detail} />
           </span>
         )}
@@ -250,42 +268,63 @@ function Row({ item }: { item: BoardItem }) {
   );
 }
 
-/** The key: what each mark means, and for the proof marks, which rows hold it, computed from the board. */
+/**
+ * The answer first: one line a proof mark, computed from the board. Verified gives its count; the other two name each
+ * row, which links to it, and what it misses.
+ */
+function Summary() {
+  return (
+    <ul className={b.summary} aria-label={STATUS_BOARD.summaryLabel} {...LIST}>
+      {proofSummary().map((line) => (
+        <li key={line.mark} className={b.sumLine} data-mark={line.mark}>
+          <span className={b.sumMark}>
+            <MarkWord mark={line.mark} />
+            <span className="sr-only">: </span>
+          </span>
+          <span className={b.sumText}>
+            {line.rows.length === 0
+              ? `${line.count}.`
+              : line.rows.map((r) => (
+                  <span key={r.id} className={b.sumRow}>
+                    <a className={s.link} href={`#${r.id}`}>
+                      {r.name}
+                    </a>
+                    : {r.missing}
+                    {". "}
+                  </span>
+                ))}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The key: what each mark means, in two short lists. */
 function Key() {
-  const which = proofSummary();
   return (
     <div className={b.key}>
-      <div className={b.keyGroup}>
-        <p className={b.keyLabel} id="status-key-proof">
-          {STATUS_KEY.proof.label} <span>{STATUS_KEY.proof.note}</span>
-        </p>
-        <dl className={b.keyList} aria-labelledby="status-key-proof">
-          {STATUS_KEY.proof.marks.map((m) => (
-            <div key={m.id} className={b.keyRow} data-mark={m.id}>
-              <dt>
-                <MarkWord mark={m.id} />
-              </dt>
-              <dd className={b.keyMeans}>{m.means}</dd>
-              <dd className={b.keyWhich}>{which[m.id]}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-      <div className={b.keyGroup}>
-        <p className={b.keyLabel} id="status-key-use">
-          {STATUS_KEY.use.label} <span>{STATUS_KEY.use.note}</span>
-        </p>
-        <dl className={b.keyList} aria-labelledby="status-key-use">
-          {STATUS_KEY.use.marks.map((m) => (
-            <div key={m.id} className={b.keyRow} data-mark={m.id}>
-              <dt>
-                <MarkWord mark={m.id} />
-              </dt>
-              <dd className={b.keyMeans}>{m.means}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
+      {(["proof", "use"] as const).map((k) => {
+        const group = STATUS_KEY[k];
+        const id = `status-key-${k}`;
+        return (
+          <div key={k} className={b.keyGroup} {...namedGroup(id)}>
+            <p className={b.keyLabel} id={id}>
+              {group.label} <span>{group.note}</span>
+            </p>
+            <dl className={b.keyList}>
+              {group.marks.map((m) => (
+                <div key={m.id} className={b.keyRow} data-mark={m.id}>
+                  <dt>
+                    <MarkWord mark={m.id} />
+                  </dt>
+                  <dd className={b.keyMeans}>{m.means}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -321,9 +360,9 @@ function KnownGaps() {
 }
 
 /**
- * What works today, and what does not: the key, four groups of rows on one set of columns, what else is built, and
- * the known gaps, which close the section. Each
- * row answers two questions, was it tried for real (proof) and can you reach it now (use), and links its record.
+ * What works today, and what does not: the summary, the key, four groups of rows on one set of columns, what else is
+ * built, and the known gaps, which close the section. Each row answers two questions, was it tried for real (proof)
+ * and can you reach it now (use), and links its record.
  */
 export function StatusBoard() {
   return (
@@ -334,6 +373,7 @@ export function StatusBoard() {
           <h2 className={s.h2}>{STATUS.title}</h2>
           <p>{STATUS_BOARD.lede}</p>
         </div>
+        <Summary />
         <Key />
         {BOARD_GROUPS.map((g) => (
           <div key={g.id} className={b.group} data-group={g.id}>
@@ -360,12 +400,15 @@ export function StatusBoard() {
             </ul>
           </div>
         ))}
-        <p className={b.note}>
-          <Parts parts={STATUS_BOARD.footer} />
-        </p>
-        <p className={b.note}>
-          <Rich text={STATUS.checked} />
-        </p>
+        <div className={b.notes}>
+          <h3 className={b.notesTitle}>{STATUS_BOARD.notesTitle}</h3>
+          <p className={b.note}>
+            <Parts parts={STATUS_BOARD.footer} />
+          </p>
+          <p className={b.note}>
+            <Rich text={STATUS.checked} />
+          </p>
+        </div>
         <KnownGaps />
       </div>
     </section>

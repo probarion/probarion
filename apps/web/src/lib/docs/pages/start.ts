@@ -365,8 +365,8 @@ export const START: readonly DocPage[] = [
     path: "start/what-works-today",
     title: "What works today",
     description:
-      "What is live, in preview or planned in Probarion today, from the same status list as the home page, plus more parts that list leaves out.",
-    lede: "The same list as the home page, from one source. Each row is Live (works in this deployment), Preview (built, not yet run end to end with real wallets or providers, or not yet open) or Planned (not built).",
+      "What is live, in preview or planned in Probarion today, from the status rows the home page groups and marks, plus more parts those rows leave out.",
+    lede: "The status rows of the home page, from one source. Each row is Live (works in this deployment), Preview (built, not yet run end to end with real wallets or providers, or not yet open) or Planned (not built).",
     type: "reference",
     audiences: ["beginner", "user", "developer", "partner"],
     sources: [

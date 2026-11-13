@@ -62,6 +62,11 @@ export const LINKS = {
   nearAiCloud: "https://cloud.near.ai",
   /** The online check of the demo vault's four attested decisions, 2026-11-12. */
   demoVerifyOnline: blob("docs/evidence/demo-vault/verify-online-2026-11-12.txt"),
+  /**
+   * The later online check of 2026-11-12, at 16:13 UTC, with the invoices: O1, O2 and A8 on all five attested decisions,
+   * entry 15 included. The README and JUDGES.md cite it for O1 and O2 on the demo vault.
+   */
+  demoVerifyOnlineA8: blob("docs/evidence/demo-vault/verify-online-a8-2026-11-12.txt"),
 } as const;
 
 // --- metadata -------------------------------------------------------------------------------------
@@ -783,6 +788,12 @@ const GAP_AUDIT = {
   link: "threat model",
   after: " says what `verify` does not prove yet.",
 } as const;
+/** A list of the known gaps: its own heading, then each gap, a short bold lead and the rest of its sentence. */
+export interface GapList {
+  id: string;
+  title: string;
+  items: readonly { lead: string; parts: readonly CopyPart[] }[];
+}
 const GAP_V0 =
   "`v0.probarion.testnet`, the vault of the 2026-11-01 smoke run, sent its spends with the agent key alone, without a ledger, so a live `verify --vault` on it fails checks d and h. It also runs a build from before the 2026-11-03 `set_ledger_key` fix. The vaults the testnet factory creates, the demo vault among them, run the fixed build recorded in `contracts/code-hashes.json`.";
 
@@ -843,7 +854,7 @@ export const STATUS = {
     },
   ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
   checked:
-    "The numbers, transactions and status rows on this page are checked against the repository by tests (`apps/web/test/site-facts.test.ts`).",
+    "The numbers, transactions and status rows on this page are checked against the repository by tests (`apps/web/test/site-facts.test.ts` and `apps/web/test/status-board.test.ts`).",
   /**
    * What is not proven, not done or not built yet across the product, said once (audit P1-10): a limit of one part is
    * on its own row of the board instead. The beta strip links `id`. Each item starts with a short bold lead.
@@ -852,10 +863,6 @@ export const STATUS = {
     id: "known-gaps",
     title: "Known gaps",
     sub: "What is not proven, not done or not built yet across the product. Each row above says its own limits.",
-    auditBefore: GAP_AUDIT.before,
-    auditLink: GAP_AUDIT.link,
-    auditAfter: GAP_AUDIT.after,
-    v0: GAP_V0,
     lists: [
       {
         id: "gaps-proof",
@@ -878,7 +885,7 @@ export const STATUS = {
           {
             lead: "No outside users yet.",
             parts: [
-              `On ${STATUS_AS_OF}, \`/usage\` on testnet showed 0 external owners, 0 Canary participants and 0 pilots, beside 2 team vaults.`,
+              `As of ${STATUS_AS_OF}, \`/usage\` on testnet showed 0 external owners, 0 Canary participants and 0 pilots, beside 2 team vaults.`,
             ],
           },
         ],
@@ -923,7 +930,7 @@ export const STATUS = {
           { lead: "No pricing.", parts: ["There is no price list and no paid plan."] },
         ],
       },
-    ],
+    ] satisfies readonly GapList[] as readonly GapList[],
   },
 } as const;
 
@@ -994,11 +1001,14 @@ export const BASE_TX: TxFact = {
   url: `https://basescan.org/tx/${BASE_PAYOUT_HASH}`,
 };
 
-/** The records and pages the board links that LINKS does not hold. The test checks each file and heading exists. */
+/**
+ * The records and pages the board links that LINKS does not hold. The test checks each file and heading exists, and
+ * holds each address outside the repository to the README or JUDGES.md, which link the same address.
+ */
 export const BOARD_LINKS = {
   /** The MCP server's npm page, as the README's release row links it. */
   npmMcp: "https://www.npmjs.com/package/@probarion/mcp",
-  /** The verifier's npm page: the README names the package on npm, and the test holds it to LINKS.npmSdk's form. */
+  /** The verifier's npm page, as the README's `@probarion/core` row links it. */
   npmCore: "https://www.npmjs.com/package/@probarion/core",
   codeHashes: blob("contracts/code-hashes.json"),
   trialVault: blob("docs/evidence/trial-vault/README.md"),
@@ -1025,7 +1035,7 @@ export type ProofMark = "verified" | "part" | "untried";
 /** Can you reach it now? Said only where it applies: deployed and running, or published for you to install. */
 export type UseMark = "running" | "released";
 
-/** The key above the board. A mark is a shape and a word; colour only repeats it. */
+/** The key under the summary. A mark is a shape and a word; colour only repeats it. */
 export const STATUS_KEY = {
   proof: {
     label: "Proof",
@@ -1073,9 +1083,14 @@ export const STATUS_KEY = {
   };
 };
 
-/** What an evidence line links: its label, in small capitals, says where the link goes. */
+/**
+ * What an evidence line links: its label, in small capitals, says what the reader finds there. `try` is something to
+ * do on this site now, `page` a page of this site that shows a record, `verify` the output of a verify run or of the
+ * TEE check, and `record` a run's write-up or a file in the repository.
+ */
 export type EvidenceKind =
-  | "site"
+  | "try"
+  | "page"
   | "docs"
   | "testnet"
   | "mainnet"
@@ -1083,10 +1098,11 @@ export type EvidenceKind =
   | "npm"
   | "registry"
   | "store"
-  | "log"
+  | "verify"
   | "record";
 export const EVIDENCE_KINDS: Readonly<Record<EvidenceKind, string>> = {
-  site: "Site",
+  try: "Try",
+  page: "Page",
   docs: "Docs",
   testnet: "Testnet",
   mainnet: "Mainnet",
@@ -1094,31 +1110,32 @@ export const EVIDENCE_KINDS: Readonly<Record<EvidenceKind, string>> = {
   npm: "npm",
   registry: "Registry",
   store: "Store",
-  log: "Log",
+  verify: "Verify",
   record: "Record",
 };
 /** The kinds that record real USDC: set in ink and bold, so mainnet proof stands out with no new colour. */
 export const REAL_MONEY_KINDS: readonly EvidenceKind[] = ["mainnet", "base"];
+/** The kinds whose note is a check's result: set in ink, not in mute, so a pass reads at a glance. */
+export const RESULT_KINDS: readonly EvidenceKind[] = ["verify"];
 /** The longest evidence label, in mono characters: longer ones would break the column's alignment. */
 export const EVIDENCE_LABEL_MAX = 26;
 
 export interface BoardEvidence {
   kind: EvidenceKind;
-  /** A short verb and the record. */
+  /** A short verb and the record. A transaction is named by its hash's first 8 characters and its last 4. */
   label: string;
   /** `#id` stays on this page and a path opens in this tab; a full URL opens in a new one. */
   href: string;
-  /** After the link, in mute: the amount, the invoice or the result. */
+  /** After the link: the amount, the invoice or the result. */
   note?: string;
 }
 
 /** One thing a part of the console has not been tried for, under the name of the part it belongs to. */
 export interface BoardUntried {
+  /** The part it belongs to, by that part's own name. */
   area: string;
   what: string;
   why: string;
-  /** Its words in the key's list of what is not tried yet. */
-  short: string;
 }
 
 export type StatusRowId = (typeof STATUS.rows)[number]["id"];
@@ -1131,14 +1148,14 @@ export interface BoardPart {
   name: string;
   proof: ProofMark;
   what?: string;
-  /** When it was tried, in one quiet line under the name. */
+  /** When it was tried, beside the name. */
   tried?: string;
   untried?: readonly BoardUntried[];
   evidence: readonly BoardEvidence[];
 }
 
 export interface BoardItem {
-  /** Its element id. For a status row, the row's id: the docs link it. */
+  /** Its element id. For a status row, the row's id: the docs and the status pills link it. */
   id: string;
   /** The status row it stands for. None for a part the row list leaves out, held to the README by the test. */
   status?: StatusRowId;
@@ -1151,10 +1168,11 @@ export interface BoardItem {
   where: { place: string; detail?: string };
   evidence: readonly BoardEvidence[];
   parts?: readonly BoardPart[];
-  /** Its words in the key's lists, for a row marked "In part" or "Not tried yet". */
-  short?: string;
-  /** For a row with untried parts: where they are, after their list in the key. */
-  partsIn?: string;
+  /**
+   * For a row marked "In part" or "Not tried yet" that has no parts: what is missing, in a few words after its name in
+   * the summary. A row with parts says how many things its parts leave to try instead.
+   */
+  missing?: string;
 }
 
 export interface BoardGroup {
@@ -1164,28 +1182,40 @@ export interface BoardGroup {
   items: readonly BoardItem[];
 }
 
-const testnetTx = (verb: string, fact: TxFact, note?: string): BoardEvidence => ({
-  kind: "testnet",
-  label: `${verb} ${fact.label}`,
+/** A transaction on its network's explorer, named by a verb and its short hash, with its amount or result after it. */
+const chainTx = (
+  kind: "testnet" | "mainnet" | "base",
+  verb: string,
+  fact: TxFact,
+  note?: string,
+): BoardEvidence => ({
+  kind,
+  label: `${verb} ${shortHash(fact.hash)}`,
   href: fact.url,
   ...(note === undefined ? {} : { note }),
 });
+const testnetTx = (verb: string, fact: TxFact, note?: string) =>
+  chainTx("testnet", verb, fact, note);
 
 /**
- * The landing's status section: four groups in the order an evaluator asks (does the contract hold real money, can I
- * install it, can I use it, how far is the model trusted). Every row stands on a STATUS row, keeps its id and name, and
- * marks only what its row and the README say; test/status-board.test.ts holds each mark and link to its record.
+ * The landing's status section: a summary, the key, then four groups in the order an evaluator asks (does the contract
+ * hold real money, can I install it, can I use it, how far is the model trusted). Every row stands on a STATUS row,
+ * keeps its id and name, and marks only what its row and the README say; test/status-board.test.ts holds each mark and
+ * link to its record.
  */
 export const STATUS_BOARD = {
   eyebrow: `Status as of ${STATUS_AS_OF}`,
   lede: "Each row says whether it was tried for real, and links the record. What runs is on NEAR testnet, plus one small mainnet vault with real USDC.",
+  /** The summary under the lede: how many rows each proof mark holds, and what the others miss (proofSummary). */
+  summaryLabel: "In short",
   /** The column labels a group's title line shows on a wide screen. Each row says them to a screen reader itself. */
   columns: { proof: "Proof", use: "Use", where: "Where", evidence: "Evidence" },
-  whereLabel: "Where:",
+  whereLabel: "Where",
   evidenceLabel: "Evidence",
   marksLabel: "Status",
   limitLabel: "Not yet",
-  noEvidence: "No run recorded yet",
+  /** Said after a status pill elsewhere on the page, which links its row here. */
+  pillSuffix: ", see its status row",
   groups: [
     {
       id: "on-chain",
@@ -1206,7 +1236,7 @@ export const STATUS_BOARD = {
             detail: "`v0.probarion.testnet` and the factory's vaults",
           },
           evidence: [
-            { kind: "site", label: "ask the vault now", href: "#try" },
+            { kind: "try", label: "ask the vault now", href: "#try" },
             testnetTx("paid", TX.nearPayment, "1 test USDC"),
             testnetTx("Base burn", TX.baseBurn, "1 test USDC, memo from the mandate"),
             testnetTx("refused", TX.noMandate, "NoMandate"),
@@ -1224,30 +1254,10 @@ export const STATUS_BOARD = {
           where: { place: "Mainnet, real USDC" },
           evidence: [
             { kind: "mainnet", label: "v0.probarion.near", href: BOARD_LINKS.mainnetAccount },
-            {
-              kind: "mainnet",
-              label: `paid ${MAINNET_TX.payment.label}`,
-              href: MAINNET_TX.payment.url,
-              note: "1 USDC, 2026-11-11",
-            },
-            {
-              kind: "mainnet",
-              label: `refused ${MAINNET_TX.refusal.label}`,
-              href: MAINNET_TX.refusal.url,
-              note: "NoMandate",
-            },
-            {
-              kind: "mainnet",
-              label: `Base payout ${BOARD_TX.basePayout.label}`,
-              href: BOARD_TX.basePayout.url,
-              note: "1.00 USDC burned, 2026-11-13",
-            },
-            {
-              kind: "base",
-              label: `arrived ${BASE_TX.label}`,
-              href: BASE_TX.url,
-              note: "0.9976 USDC on Base",
-            },
+            chainTx("mainnet", "paid", MAINNET_TX.payment, "1 USDC, 2026-11-11"),
+            chainTx("mainnet", "refused", MAINNET_TX.refusal, "NoMandate"),
+            chainTx("mainnet", "Base payout", BOARD_TX.basePayout, "1.00 USDC burned, 2026-11-13"),
+            chainTx("base", "arrived", BASE_TX, "0.9976 USDC on Base"),
             { kind: "record", label: "the S1 run, 2026-11-13", href: BOARD_LINKS.mainnetRun },
           ],
         },
@@ -1278,6 +1288,12 @@ export const STATUS_BOARD = {
           where: { place: "CI, in Docker" },
           evidence: [
             { kind: "record", label: "code-hashes.json", href: BOARD_LINKS.codeHashes },
+            {
+              kind: "verify",
+              label: "mainnet run, 2026-11-13",
+              href: BOARD_LINKS.mainnetVerify,
+              note: "check f: recorded build",
+            },
             { kind: "docs", label: "rebuild it yourself", href: "/docs/trust/reproducible-builds" },
           ],
         },
@@ -1299,16 +1315,16 @@ export const STATUS_BOARD = {
             "It does not run the policy again, so a host with the ledger key can sign an allowing decision and `verify` still passes. Check h names the address and the amount; it does not prove the money arrived.",
           where: { place: "npm 0.1.1", detail: "`@probarion/core` and `probarion`" },
           evidence: [
-            { kind: "site", label: "run it on a sample", href: "#verify" },
+            { kind: "try", label: "run it on a sample", href: "#verify" },
             { kind: "npm", label: "@probarion/core", href: BOARD_LINKS.npmCore },
             {
-              kind: "log",
+              kind: "verify",
               label: "testnet run, 2026-11-09",
               href: BOARD_LINKS.demoVerify,
               note: "9 passed",
             },
             {
-              kind: "log",
+              kind: "verify",
               label: "mainnet run, 2026-11-13",
               href: BOARD_LINKS.mainnetVerify,
               note: "8 passed, check i skipped",
@@ -1374,7 +1390,7 @@ export const STATUS_BOARD = {
           evidence: [
             { kind: "store", label: "Chrome Web Store listing", href: LINKS.chromeWebStore },
           ],
-          short: "the Chrome extension end to end",
+          missing: "no end-to-end run recorded yet",
         },
       ],
     },
@@ -1389,16 +1405,15 @@ export const STATUS_BOARD = {
           name: "Web console",
           proof: "part",
           use: "running",
-          what: "The owner's app: set up a vault, fund it, sign mandates, pay invoices, hold, freeze and publish. The owner tried it with a real wallet on testnet; on 2026-11-11 and 2026-11-12 Claude drove the console and the owner signed.",
+          what: "The owner's app: set up a vault, fund it, sign mandates, pay invoices, approve or reject held payments, freeze and publish. The owner tried it with a real wallet on testnet; on 2026-11-11 and 2026-11-12 Claude drove the console and the owner signed.",
           limit:
-            "One person has tried it: the owner, who is also an approver. Vaults cannot be created on mainnet yet.",
+            "One person has tried it: the owner, who is also an approver of the trial vault. Vaults cannot be created on mainnet yet.",
           where: { place: "probarion.xyz, testnet" },
           evidence: [
-            { kind: "site", label: "open the console", href: CONSOLE_ROUTE },
+            { kind: "try", label: "open the console", href: CONSOLE_ROUTE },
             { kind: "record", label: "trial vault runs", href: BOARD_LINKS.trialVault },
             { kind: "record", label: "demo vault runs", href: BOARD_LINKS.demoVault },
           ],
-          partsIn: "in the console",
           parts: [
             {
               id: "web-console-set-up",
@@ -1452,6 +1467,9 @@ export const STATUS_BOARD = {
               ],
             },
             {
+              // The alerts stand on the README's row "Owner alerts by Telegram and email" (on 2026-11-11 the bot sent
+              // real messages), not on the web-console row's text, which does not list them; the proof page on the
+              // console's own row. The part takes the web-console row's tone because the Alerts tab is in the console.
               id: "web-console-alerts",
               status: "web-console",
               name: "Alerts and publishing",
@@ -1465,7 +1483,7 @@ export const STATUS_BOARD = {
                   href: BOARD_LINKS.trialTelegram,
                   note: "Approval needed, then Paid",
                 },
-                { kind: "site", label: "demo vault proof page", href: DEMO_PROOF },
+                { kind: "page", label: "demo vault proof page", href: DEMO_PROOF },
               ],
             },
             {
@@ -1475,28 +1493,24 @@ export const STATUS_BOARD = {
               proof: "untried",
               untried: [
                 {
-                  area: "Alerts",
+                  area: "Alerts and publishing",
                   what: "Email alerts.",
                   why: "No email has been sent yet. It needs `RESEND_API_KEY` and a verified domain.",
-                  short: "email alerts",
                 },
                 {
-                  area: "Money",
+                  area: "Money in and out",
                   what: "The Base top-up through 1Click, a mainnet feature.",
                   why: "Not tried with a live quote. The 2026-11-13 top-up of the mainnet vault used the owner's own kit, not this tab.",
-                  short: "the Base top-up",
                 },
                 {
                   area: "Payments and holds",
                   what: "The approval page on a phone.",
                   why: "Every step so far ran in a desktop browser.",
-                  short: "the approval page on a phone",
                 },
                 {
                   area: "Set up",
                   what: "Two guards on the ledger key.",
                   why: "No run shows the Keys tab asking before a new ledger key replaces one, or the Agent (MCP) tab withholding the ledger key.",
-                  short: "two ledger key guards",
                 },
               ],
               evidence: [
@@ -1520,10 +1534,10 @@ export const STATUS_BOARD = {
             "One public proof page so far, the testnet demo vault's. The mainnet vault has none, since no mainnet address of the app is served.",
           where: { place: "probarion.xyz, testnet", detail: "`demo.vaults.probarion.testnet`" },
           evidence: [
-            { kind: "site", label: "demo vault proof page", href: DEMO_PROOF },
-            { kind: "site", label: "run the TEE check", href: `${DEMO_PROOF}#tee-check` },
+            { kind: "page", label: "demo vault proof page", href: DEMO_PROOF },
+            { kind: "try", label: "run the TEE check", href: `${DEMO_PROOF}#tee-check` },
             {
-              kind: "log",
+              kind: "verify",
               label: "TEE check, 2026-11-12",
               href: BOARD_LINKS.teeCheck,
               note: "all four passed",
@@ -1556,7 +1570,7 @@ export const STATUS_BOARD = {
               note: "a changed payee",
             },
             testnetTx("on its own", BOARD_TX.payablesOwn, "INV-2009, 2.00 test USDC"),
-            { kind: "site", label: "proof page, entry 13", href: `${DEMO_PROOF}#seq-13` },
+            { kind: "page", label: "proof page, entry 13", href: `${DEMO_PROOF}#seq-13` },
           ],
         },
         {
@@ -1569,7 +1583,7 @@ export const STATUS_BOARD = {
           limit: `No visitor attempt yet: as of ${STATUS_AS_OF}, all 6 attempts are the team's own.`,
           where: { place: "probarion.xyz, testnet", detail: "`canary.vaults.probarion.testnet`" },
           evidence: [
-            { kind: "site", label: "try to make it pay you", href: HERO.refused.tryIt.href },
+            { kind: "try", label: "try to make it pay you", href: HERO.refused.tryIt.href },
             testnetTx("refused", HERO.refused.tx, "OverPerPayment"),
             {
               kind: "record",
@@ -1586,42 +1600,43 @@ export const STATUS_BOARD = {
           what: "NEAR AI Cloud's private model, in a TEE, proposes a payment, and code decides. 7 attested decisions are published on testnet, and each passes A1 to A7 offline. On mainnet, code refused the 2 attested proposals of 2026-11-13.",
           limit:
             "The TEE measurement is not pinned, so no check shows which model image ran. O1 and O2 have not run on the 2 mainnet decisions, and A8 was not run on the Canary's 2.",
-          where: { place: "NEAR AI Cloud, testnet" },
+          where: { place: "NEAR AI Cloud, testnet and mainnet" },
           evidence: [
-            { kind: "site", label: "proof page, entry 15", href: `${DEMO_PROOF}#seq-15` },
+            { kind: "page", label: "proof page, entry 15", href: `${DEMO_PROOF}#seq-15` },
             {
-              kind: "log",
+              kind: "verify",
               label: "online check, 2026-11-12",
-              href: LINKS.demoVerifyOnline,
-              note: "O1 and O2, entries 10 to 13",
+              href: LINKS.demoVerifyOnlineA8,
+              note: "O1 and O2 on all 5",
             },
             {
-              kind: "log",
+              kind: "verify",
               label: "Canary online check",
               href: BOARD_LINKS.canaryVerifyOnline,
               note: "O1 and O2, 2026-11-11",
             },
             {
-              kind: "log",
+              kind: "verify",
               label: "A8 check, 2026-11-12",
               href: BOARD_LINKS.demoVerifyA8,
               note: "the demo vault's 5",
             },
           ],
-          short: "the attested model run, whose TEE image is not pinned",
+          missing: "TEE image not pinned",
         },
       ],
     },
   ] satisfies readonly BoardGroup[],
-  /** Before the known gaps: what else is built, and where the same status is kept. */
+  /** After the last group, under its own small heading: what else is built, and where the same status is kept. */
+  notesTitle: "Also built and tested",
   footer: [
-    "Also built and tested, as the ",
+    "As the ",
     { label: "README Status table", href: BOARD_LINKS.readmeStatus },
     " says: the ",
     { label: "eval", href: BOARD_LINKS.eval },
-    ", run offline with no model asked, one deployment for both networks, `/usage`, the watcher, health checks and `/status`, error reports to Sentry and the Docs Center. The docs page ",
+    ", run offline with no model asked (its model replay is not recorded yet), one deployment for both networks, `/usage`, the watcher, health checks and `/status`, error reports to Sentry and the Docs Center. The docs page ",
     { label: "What works today", href: "/docs/start/what-works-today" },
-    " lists the same rows as Live, Preview or Planned.",
+    " gives each status row, and the parts this board leaves out, one word: Live, Preview or Planned.",
   ] satisfies readonly CopyPart[],
 } as const;
 
@@ -1641,35 +1656,40 @@ export function proofOfParts(parts: readonly BoardPart[]): ProofMark {
   return "part";
 }
 
-const joinList = (words: readonly string[]) =>
-  words.length <= 1
-    ? (words[0] ?? "")
-    : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
-const sentence = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
+/** One line of the summary: a proof mark, how many rows hold it, and for the marks short of Verified, which rows. */
+export interface SummaryLine {
+  mark: ProofMark;
+  count: string;
+  /** Each row by its name, which links it, and what it is missing. */
+  rows: readonly { id: string; name: string; missing: string }[];
+}
+
+/** What a row short of Verified is missing: its parts' count of things left to try, or its own few words. */
+function missingOf(item: BoardItem): string {
+  const left = (item.parts ?? []).flatMap((p) => p.untried ?? []).length;
+  if (left > 0) return `${left} ${left === 1 ? "thing" : "things"} left to try`;
+  if (item.missing === undefined) throw new Error(`${item.id}: the summary needs what it misses`);
+  return item.missing;
+}
 
 /**
- * Which rows each proof mark covers, in the key: computed from the board, so it cannot drift from the rows. A row
- * with untried parts is named through those parts, with where they are.
+ * The summary under the lede, one line a proof mark: computed from the board, so it cannot drift from the rows. A
+ * visitor reads in a few seconds what is verified and what is not, and each row it names links to its place below.
  */
-export function proofSummary(): Readonly<Record<ProofMark, string>> {
-  const items = BOARD_ITEMS;
-  const verified = items.filter((i) => i.proof === "verified").length;
-  const part = items
-    .filter((i) => i.proof === "part")
-    .map((i) => i.short ?? `the ${i.name.toLowerCase()}`);
-  const untried: string[] = [];
-  for (const i of items) {
-    if (i.proof === "untried") untried.push(i.short ?? `the ${i.name.toLowerCase()}`);
-    const shorts = (i.parts ?? []).flatMap((p) =>
-      p.proof === "untried" ? (p.untried ?? []).map((u) => u.short) : [],
-    );
-    if (shorts.length > 0) untried.push(`${i.partsIn ?? ""}, ${joinList(shorts)}`);
-  }
-  return {
-    verified: `${verified} of the ${items.length} rows.`,
-    part: sentence(joinList(part)),
-    untried: sentence(untried.join("; ")),
+export function proofSummary(): readonly SummaryLine[] {
+  const total = BOARD_ITEMS.length;
+  const line = (mark: ProofMark): SummaryLine => {
+    const items = BOARD_ITEMS.filter((i) => i.proof === mark);
+    return {
+      mark,
+      count: `${items.length} of the ${total} rows`,
+      rows:
+        mark === "verified"
+          ? []
+          : items.map((i) => ({ id: i.id, name: i.name, missing: missingOf(i) })),
+    };
   };
+  return [line("verified"), line("part"), line("untried")];
 }
 
 // --- built on -------------------------------------------------------------------------------------
@@ -1743,14 +1763,14 @@ export const BUILT_ON = {
       body: "An optional private model, run in a TEE, reads the invoice and proposes. Code decides, and the contract has the last word.",
       checks: [
         "7 published attested decisions on testnet: 2 on the Canary, 5 by Payables",
-        "All 7 pass A1 to A7 offline, and 6 passed O1 and O2 online",
+        "All 7 pass A1 to A7 offline, and all 7 passed O1 and O2 online",
         "On 2026-11-12 Payables paid two invoices on its own with it: 2 test USDC each",
       ],
       note: "The TEE image is not pinned yet, so this does not show which model image ran.",
       links: [
         { label: "Entry 13 on the proof page", href: `${DEMO_PROOF}#seq-13` },
         { label: "Entry 15 on the proof page", href: `${DEMO_PROOF}#seq-15` },
-        { label: "Online check, 2026-11-12", href: LINKS.demoVerifyOnline },
+        { label: "Online check, 2026-11-12", href: LINKS.demoVerifyOnlineA8 },
       ],
     },
   ] satisfies readonly BuiltOnRow[],

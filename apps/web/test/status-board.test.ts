@@ -10,7 +10,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import { StatusBoard } from "@/components/site/StatusBoard";
+import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { explorerTxUrl } from "@/lib/config";
+import { REPO_URL } from "@/lib/proof/cli";
 import {
   BASE_TX,
   BOARD_GROUPS,
@@ -19,6 +21,7 @@ import {
   type BoardItem,
   type BoardPart,
   boardEntries,
+  COMPARE,
   CONSOLE_ROUTE,
   DEMO_PROOF,
   EVIDENCE_KINDS,
@@ -31,12 +34,15 @@ import {
   proofOfParts,
   proofSummary,
   REAL_MONEY_KINDS,
+  RESULT_KINDS,
   STATUS,
   STATUS_AS_OF,
   STATUS_BOARD,
   STATUS_KEY,
   STORY,
+  statusOf,
   TX,
+  type TxFact,
   type UseMark,
 } from "@/lib/site/facts";
 import { linkProblem } from "./docs-helpers";
@@ -179,8 +185,11 @@ const BACKING: Readonly<Record<string, { proof: readonly Quote[]; use?: readonly
       ["readme", "Freeze and Unfreeze on the demo vault"],
     ],
   },
+  // The alerts stand on the README's own row for them, not on the web-console row, whose text does not list them; the
+  // proof page on the console's run of 2026-11-09.
   "web-console-alerts": {
     proof: [
+      ["readme", "| Owner alerts by Telegram and email | **Built** and tested"],
       ["readme", "the bot sent real messages"],
       ["readme", "the faucet, a mandate, four Payables invoices and a public proof page"],
     ],
@@ -307,25 +316,79 @@ describe("the status board's rows", () => {
     expect(ext?.evidence.map((e) => e.href)).toEqual([LINKS.chromeWebStore]);
   });
 
-  it("names, in the key, the rows of each proof mark, computed from the board", () => {
-    const which = proofSummary();
-    const verified = ITEMS.filter((i) => i.proof === "verified").length;
-    expect(which.verified).toBe(`${verified} of the ${ITEMS.length} rows.`);
-    expect(which.verified).toBe("10 of the 13 rows.");
-    expect(which.part).toBe(
-      "The web console and the attested model run, whose TEE image is not pinned.",
-    );
-    expect(which.untried).toBe(
-      "The Chrome extension end to end; in the console, email alerts, the Base top-up, the approval page on a phone and two ledger key guards.",
-    );
-    // Every untried thing on the board is named there.
-    for (const u of PARTS.flatMap((p) => p.untried ?? [])) expect(which.untried).toContain(u.short);
-    const out = visibleText(board());
-    for (const m of STATUS_KEY.proof.marks) {
-      expect(out).toContain(m.means);
-      expect(out).toContain(which[m.id]);
+  it("opens with a summary computed from the board: how many rows are verified, and what each other row misses", () => {
+    const summary = proofSummary();
+    expect(summary.map((l) => l.mark)).toEqual(["verified", "part", "untried"]);
+    for (const l of summary) {
+      const rows = ITEMS.filter((i) => i.proof === l.mark);
+      expect(l.count, l.mark).toBe(`${rows.length} of the ${ITEMS.length} rows`);
+      expect(
+        l.rows.map((r) => r.id),
+        l.mark,
+      ).toEqual(l.mark === "verified" ? [] : rows.map((i) => i.id));
     }
-    for (const m of STATUS_KEY.use.marks) expect(out).toContain(m.means);
+    expect(summary[0]?.count).toBe("10 of the 13 rows");
+    // A row with parts names how many things they leave to try; any other row says what it misses in its own words.
+    const left = PARTS.flatMap((p) => p.untried ?? []).length;
+    expect(left).toBe(4);
+    expect(summary.flatMap((l) => l.rows)).toEqual([
+      { id: "web-console", name: "Web console", missing: `${left} things left to try` },
+      {
+        id: "attested-model-run",
+        name: "Live attested model run",
+        missing: "TEE image not pinned",
+      },
+      {
+        id: "chrome-extension",
+        name: "Chrome extension",
+        missing: "no end-to-end run recorded yet",
+      },
+    ]);
+    // Each of those words stands on the row's own Not yet line.
+    expect(ITEMS.find((i) => i.id === "attested-model-run")?.limit).toContain(
+      "The TEE measurement is not pinned",
+    );
+    expect(ITEMS.find((i) => i.id === "chrome-extension")?.limit).toContain(
+      "No end-to-end run with a real wallet against this deployment is recorded yet",
+    );
+    for (const i of ITEMS) {
+      expect(i.missing === undefined, i.id).toBe(
+        i.proof === "verified" || (i.parts?.some((p) => p.untried !== undefined) ?? false),
+      );
+    }
+    // On the page: above the key, at the top of the section, each named row linked to its place below.
+    const html = board();
+    const out = visibleText(html);
+    expect(out).toContain("Verified: 10 of the 13 rows.");
+    expect(out).toContain(
+      "In part: Web console: 4 things left to try. Live attested model run: TEE image not pinned.",
+    );
+    expect(out).toContain("Not tried yet: Chrome extension: no end-to-end run recorded yet.");
+    expect(out.indexOf("10 of the 13 rows")).toBeLessThan(
+      out.indexOf(STATUS_KEY.proof.marks[0].means),
+    );
+    expect(html.indexOf(`aria-label="${STATUS_BOARD.summaryLabel}"`)).toBeLessThan(
+      html.indexOf('id="status-key-proof"'),
+    );
+    for (const r of summary.flatMap((l) => l.rows)) {
+      expect(anchors(html).filter((a) => hrefOf(a) === `#${r.id}`).length, r.id).toBe(1);
+    }
+    for (const m of [...STATUS_KEY.proof.marks, ...STATUS_KEY.use.marks]) {
+      expect(out).toContain(m.means);
+    }
+    // The key names each of its two lists by its label, on a group: a dl takes no name of its own.
+    for (const k of ["proof", "use"]) {
+      expect(html).toMatch(new RegExp(`<div[^>]*role="group" aria-labelledby="status-key-${k}"`));
+      expect(html).not.toMatch(new RegExp(`<dl[^>]*aria-labelledby="status-key-${k}"`));
+    }
+  });
+
+  it("names each thing left to try in the console under the part it belongs to, by that part's name", () => {
+    const console = ITEMS.find((i) => i.id === "web-console");
+    const names = (console?.parts ?? []).filter((p) => p.untried === undefined).map((p) => p.name);
+    const left = (console?.parts ?? []).flatMap((p) => p.untried ?? []);
+    expect(left.length).toBeGreaterThan(0);
+    for (const u of left) expect(names, u.area).toContain(u.area);
   });
 
   it("dates the board by the day of JUDGES.md's Not yet list", () => {
@@ -450,15 +513,6 @@ describe("the status board's evidence", () => {
       const fact = Object.values(BOARD_TX).find((f) => f.hash === t.hash);
       if (fact) expect(fact.url, t.hash).toBe(explorerTxUrl(t.network as "testnet", t.hash));
     }
-    // Where the record holds an amount, the note says the same amount.
-    const byHash = new Map(Object.values(proof.txs).map((t) => [t.hash, t.amount_usdc]));
-    for (const ev of evidence) {
-      const fact = Object.values(BOARD_TX).find((f) => f.url === ev.href);
-      const amount = fact ? byHash.get(fact.hash) : undefined;
-      if (!amount) continue;
-      const said = /(\d+(?:\.\d+)?) (?:test )?USDC/.exec(ev.note ?? "")?.[1];
-      expect(Number(said), `${ev.label}: ${ev.note}`).toBe(Number(amount));
-    }
     // The Base side of the payout, on Base's explorer, as the README and JUDGES.md link it.
     expect(BASE_TX.hash).toBe(mainnet.proof.first_base_payout_base_tx);
     expect(BASE_TX.label).toBe(`${BASE_TX.hash.slice(0, 10)}…${BASE_TX.hash.slice(-4)}`);
@@ -468,25 +522,153 @@ describe("the status board's evidence", () => {
     expect(SOURCES.judges).toContain("spend 2 burned 1.00 USDC");
   });
 
-  it("holds the npm pages and the logs' results to their records", () => {
+  it("holds every amount, invoice and refusal a transaction's note gives to the record of that transaction", () => {
+    const proof = JSON.parse(text(ROOT, "docs", "mainnet-proof.json")) as {
+      txs: Record<string, { hash: string; amount_usdc: string | null; error_code: string | null }>;
+    };
+    const testnet = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
+      smoke: Record<string, string>;
+      demo_vault: { spends: { invoice: string; amount: string; spend_tx: string }[] };
+    };
+    // What each record says of a transaction: its amount in USDC, its invoice, its refusal code.
+    const record = new Map<string, { amount?: number; invoice?: string; code?: string }>();
+    for (const t of Object.values(proof.txs)) {
+      record.set(t.hash, {
+        ...(t.amount_usdc === null ? {} : { amount: Number(t.amount_usdc) }),
+        ...(t.error_code === null ? {} : { code: t.error_code }),
+      });
+    }
+    for (const sp of testnet.demo_vault.spends) {
+      record.set(sp.spend_tx, { amount: Number(sp.amount) / 1e6, invoice: sp.invoice });
+    }
+    // Every other transaction the deployment records name (create a vault, a mandate, the faucet), with no amount.
+    const named = (value: unknown, key = ""): string[] =>
+      typeof value === "string"
+        ? key.endsWith("_tx")
+          ? [value]
+          : []
+        : value !== null && typeof value === "object"
+          ? Object.entries(value).flatMap(([k, v]) => named(v, k))
+          : [];
+    for (const hash of named(testnet)) if (!record.has(hash)) record.set(hash, {});
+    // The faucet's amount, in the README's words for that run.
+    const minted =
+      /on 2026-11-09 it added (\d+) test USDC to `demo\.vaults\.probarion\.testnet`/.exec(
+        SOURCES.readme,
+      )?.[1];
+    record.set(BOARD_TX.demoFaucet.hash, { amount: Number(minted) });
+    // The smoke run's transactions: testnet.json names them, and the README's table of the run gives what each did.
+    for (const hash of Object.values(testnet.smoke)) {
+      const line = SOURCES.readme.split("|").findIndex((cell) => cell.includes(`/txns/${hash})`));
+      const said = SOURCES.readme.split("|")[line + 1] ?? "";
+      const amount = /(\d+(?:\.\d+)?) test USDC/.exec(said)?.[1];
+      const code = /PROBARION:([A-Za-z]+)/.exec(said)?.[1];
+      record.set(hash, {
+        ...(amount === undefined ? {} : { amount: Number(amount) }),
+        ...(code === undefined ? {} : { code }),
+      });
+    }
+    // The Canary's raw spend (lib/canary/rehearsal.ts, held to its evidence by rehearsal.test.ts).
+    record.set(REHEARSAL.txHash, { code: REHEARSAL.contractCode });
+    // The Base side of the payout: JUDGES.md's words for what the bridge released.
+    const released = /the POA bridge released (\d+\.\d+) USDC on Base/.exec(SOURCES.judges)?.[1];
+    record.set(BASE_TX.hash, { amount: Number(released) });
+
+    const facts: TxFact[] = [
+      ...Object.values(TX),
+      ...Object.values(MAINNET_TX),
+      ...Object.values(BOARD_TX),
+      BASE_TX,
+      HERO.paid.tx,
+      HERO.refused.tx,
+    ];
+    const onBoard = evidence.filter((e) => facts.some((f) => f.url === e.href));
+    expect(onBoard.length).toBeGreaterThanOrEqual(20);
+    const codes = new Set(
+      Object.values(proof.txs).flatMap((t) => (t.error_code ? [t.error_code] : [])),
+    );
+    for (const ev of onBoard) {
+      const fact = facts.find((f) => f.url === ev.href);
+      const r = fact ? record.get(fact.hash) : undefined;
+      expect(r, `${ev.label}: no record of ${fact?.hash}`).toBeDefined();
+      const note = ev.note ?? "";
+      const amount = /(\d+(?:\.\d+)?) (?:test )?USDC/.exec(note)?.[1];
+      if (amount !== undefined) expect(Number(amount), `${ev.label}: ${note}`).toBe(r?.amount);
+      const invoice = /INV-\d+/.exec(note)?.[0];
+      if (invoice !== undefined && r?.invoice !== undefined) {
+        expect(invoice, `${ev.label}: ${note}`).toBe(r.invoice);
+      }
+      const code = /^[A-Z][a-z]+(?:[A-Z][a-z]+)+$/.exec(note)?.[0];
+      if (code !== undefined || codes.has(note) || note === REHEARSAL.contractCode) {
+        expect(note, ev.label).toBe(r?.code);
+      }
+      // Testnet money is test USDC, and mainnet money is real USDC, said as USDC alone.
+      if (amount !== undefined) {
+        expect(note.includes("test USDC"), `${ev.label}: ${note}`).toBe(ev.kind === "testnet");
+      }
+    }
+    // The invoices the notes name that the deployments do not hold: INV-2009 in mainnet-proof.json's own words.
+    expect(proof.txs.demo_payables_spend_4?.hash).toBe(BOARD_TX.payablesOwn.hash);
+    expect(JSON.stringify(proof.txs.demo_payables_spend_4)).toContain("Payables paid INV-2009");
+  });
+
+  it("holds the npm pages, the explorer pages and the logs' results to their records", () => {
     expect(SOURCES.readme).toContain(BOARD_LINKS.npmMcp);
     expect(SOURCES.readme).toContain(LINKS.npmSdk);
-    // The verifier's page has the form of the SDK's, for the package the README says is on npm.
+    // The verifier's page: the README's row for `@probarion/core` links it, and it has the form of the SDK's.
+    expect(SOURCES.readme).toContain(
+      "**Shipped**, on npm as `@probarion/core` 0.1.1 | [`packages/core`](packages/core), [npm](https://www.npmjs.com/package/@probarion/core) |",
+    );
     expect(BOARD_LINKS.npmCore).toBe(LINKS.npmSdk.replace("@probarion/sdk", "@probarion/core"));
-    expect(SOURCES.readme).toContain("**Shipped**, on npm as `@probarion/core` 0.1.1");
-    const logs: [string, string, string][] = [
-      [BOARD_LINKS.demoVerify, "9 passed", "9 passed, 0 failed, 0 unproven"],
+    // Every address outside the repository is one the README or JUDGES.md links too: none is made up here.
+    for (const [name, href] of Object.entries(BOARD_LINKS)) {
+      if (href.startsWith(REPO_URL)) continue;
+      expect(SOURCES.readme.includes(href) || SOURCES.judges.includes(href), name).toBe(true);
+    }
+    const logs: [string, string, string, string][] = [
+      ["offline-verifier", BOARD_LINKS.demoVerify, "9 passed", "9 passed, 0 failed, 0 unproven"],
       [
+        "offline-verifier",
         BOARD_LINKS.mainnetVerify,
         "8 passed, check i skipped",
         "8 passed, 0 failed, 0 unproven, 1 skipped",
       ],
+      [
+        "reproducible-builds",
+        BOARD_LINKS.mainnetVerify,
+        "check f: recorded build",
+        "code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build",
+      ],
+      [
+        "attested-model-run",
+        LINKS.demoVerifyOnlineA8,
+        "O1 and O2 on all 5",
+        "online: 5 DCAP-genuine TDX quotes bound to this request",
+      ],
+      [
+        "attested-model-run",
+        BOARD_LINKS.canaryVerifyOnline,
+        "O1 and O2, 2026-11-11",
+        "online: 2 DCAP-genuine TDX quotes bound to this request",
+      ],
     ];
-    for (const [href, note, line] of logs) {
-      expect(evidence.find((e) => e.href === href)?.note).toBe(note);
+    for (const [id, href, note, line] of logs) {
+      expect(evidence.find((e) => e.id === id && e.href === href)?.note, `${id} ${href}`).toBe(
+        note,
+      );
       const file = href.replace(/^https:\/\/github\.com\/probarion\/probarion\/blob\/main\//, "");
       expect(text(ROOT, file), file).toContain(line);
     }
+    // The later online check covers entry 15, which the row's proof page link opens, as JUDGES.md cites it.
+    expect(
+      text(ROOT, "docs", "evidence", "demo-vault", "verify-online-a8-2026-11-12.txt"),
+    ).toContain("(seq 10, 11, 12, 13, 15)");
+    expect(SOURCES.judges).toContain(
+      "O1 and O2 in a live run at 16:13 UTC on 2026-11-12 ([output](docs/evidence/demo-vault/verify-online-a8-2026-11-12.txt))",
+    );
+    expect(text(ROOT, "contracts", "code-hashes.json")).toContain(
+      "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+    );
     expect(text(ROOT, "docs", "evidence", "tee-check", "live-2026-11-12.json")).toContain(
       "all four checks pass",
     );
@@ -506,6 +688,61 @@ describe("the status board's evidence", () => {
     expect(new Set(real.map((e) => e.id))).toEqual(new Set(["mainnet-vault"]));
     const html = board();
     expect(html.match(/data-kind="(?:mainnet|base)"/g)).toHaveLength(real.length);
+    // Its Where line is set apart too: the one place in bold.
+    expect(html.match(/data-real="true"/g)).toHaveLength(1);
+    expect(ITEMS.find((i) => i.id === "mainnet-vault")?.where.place).toBe("Mainnet, real USDC");
+  });
+
+  it("gives every row and part a record, and names each transaction by the same short hash", () => {
+    for (const e of ENTRIES) expect(e.evidence.length, e.id).toBeGreaterThan(0);
+    const facts: TxFact[] = [
+      ...Object.values(TX),
+      ...Object.values(MAINNET_TX),
+      ...Object.values(BOARD_TX),
+      BASE_TX,
+      HERO.paid.tx,
+      HERO.refused.tx,
+    ];
+    let named = 0;
+    for (const ev of evidence) {
+      const fact = facts.find((f) => f.url === ev.href);
+      if (!fact) {
+        expect(ev.label, ev.label).not.toContain("…");
+        continue;
+      }
+      // Its first 8 characters (10 with the 0x of a Base hash) and its last 4, after a short verb.
+      const head = fact.hash.slice(0, fact.hash.startsWith("0x") ? 10 : 8);
+      const short = `${head}…${fact.hash.slice(-4)}`;
+      expect(ev.label.endsWith(` ${short}`), ev.label).toBe(true);
+      expect(ev.label.slice(0, -short.length - 1), ev.label).toMatch(/^[A-Za-z][a-z -]*$/);
+      named++;
+    }
+    expect(named).toBeGreaterThanOrEqual(20);
+  });
+
+  it("says by its kind what each record is: something to try, a page, a verify output, a transaction or a file", () => {
+    const tries = evidence.filter((e) => e.kind === "try").map((e) => e.href);
+    expect(tries).toEqual([
+      "#try",
+      "#verify",
+      CONSOLE_ROUTE,
+      `${DEMO_PROOF}#tee-check`,
+      HERO.refused.tryIt.href,
+    ]);
+    for (const e of evidence.filter((x) => x.kind === "page")) {
+      expect(e.href === DEMO_PROOF || e.href.startsWith(`${DEMO_PROOF}#seq-`), e.label).toBe(true);
+    }
+    // A verify output is a log or a result file in the evidence, and its note is the result, set in ink.
+    const verify = evidence.filter((e) => e.kind === "verify");
+    expect(verify.length).toBe(7);
+    for (const e of verify) {
+      expect(e.href.startsWith(`${REPO_URL}/blob/main/docs/evidence/`), e.label).toBe(true);
+      expect(e.href.endsWith(".txt") || e.href.endsWith(".json"), e.label).toBe(true);
+      expect(e.note, e.label).toBeDefined();
+    }
+    expect(RESULT_KINDS).toEqual(["verify"]);
+    expect(Object.values(EVIDENCE_KINDS)).not.toContain("Site");
+    expect(Object.values(EVIDENCE_KINDS)).not.toContain("Log");
   });
 
   it("opens this site's pages in this tab and every other address in a new one", () => {
@@ -533,7 +770,10 @@ describe("the status board's page structure and copy", () => {
     for (let i = 1; i < levels.length; i++) {
       expect((levels[i] ?? 0) - (levels[i - 1] ?? 0), `heading ${i}`).toBeLessThanOrEqual(1);
     }
-    expect(levels.filter((l) => l === 3)).toHaveLength(BOARD_GROUPS.length + 1);
+    // The groups, then the closing note's own heading, so it does not read as a part of the last group, then the gaps.
+    expect(levels.filter((l) => l === 3)).toHaveLength(BOARD_GROUPS.length + 2);
+    const h3 = [...html.matchAll(/<h3\b[^>]*>([^<]*)</g)].map((m) => m[1]);
+    expect(h3.slice(-2)).toEqual([STATUS_BOARD.notesTitle, STATUS.gaps.title]);
     expect(levels.filter((l) => l === 5)).toHaveLength(PARTS.length);
   });
 
@@ -556,13 +796,48 @@ describe("the status board's page structure and copy", () => {
     expect(footer).toBeGreaterThan(out.indexOf("Live attested model run"));
     expect(checked).toBeGreaterThan(footer);
     expect(gaps).toBeGreaterThan(checked);
-    expect(out.replace(/ \(opens in a new tab\)/g, "")).toContain(
-      `${STATUS.gaps.auditBefore}${STATUS.gaps.auditLink}${STATUS.gaps.auditAfter.replace(/`/g, "")}`,
+    // Every gap is said in full, its link's words included.
+    const plain = out.replace(/ \(opens in a new tab\)/g, "");
+    for (const g of STATUS.gaps.lists.flatMap((l) => l.items)) {
+      const said = g.parts.map((p) => (typeof p === "string" ? p : p.label)).join("");
+      expect(plain).toContain(`${g.lead} ${said.replace(/`/g, "")}`);
+    }
+    expect(plain).toContain(
+      "No outside review yet. No third party has audited this code. The threat model says what verify does not prove yet.",
     );
-    expect(out).toContain(STATUS.gaps.v0.replace(/`/g, ""));
     for (const l of STATUS.gaps.lists) {
       expect(out).toContain(l.title);
       for (const g of l.items) expect(out).toContain(g.lead);
+    }
+  });
+
+  it("links each status pill elsewhere on the page to its row here, so one key explains them all", () => {
+    const page = landing();
+    for (const id of ["compare", "integrate"]) {
+      const at = page.indexOf(`id="${id}"`);
+      const section = page.slice(at, page.indexOf("</section>", at));
+      const pills = anchors(section).filter((a) => a.includes(STATUS_BOARD.pillSuffix));
+      expect(pills.length, id).toBeGreaterThan(0);
+      for (const a of pills) {
+        const href = hrefOf(a);
+        expect(href.startsWith("#"), href).toBe(true);
+        // The row exists on the board, and the pill says that row's own pill.
+        expect(board(), href).toContain(`id="${href.slice(1)}"`);
+        const row = STATUS.rows.find((r) => `#${r.id}` === href);
+        expect(a, href).toContain(row?.pill ?? "no row");
+      }
+    }
+    const rows = [
+      ...COMPARE.rows.map((r) => r.status),
+      ...INTEGRATE.cards.map((c) => c.status),
+      ...INTEGRATE.who.map((w) => w.status),
+    ];
+    for (const r of rows) expect(page).toContain(`href="#${statusOf(r).id}"`);
+    // The comparison and the integrate cards draw no pill of their own any more.
+    for (const file of ["Compare.tsx", "Integrate.tsx"]) {
+      const tsx = text(WEB, "src", "components", "site", file);
+      expect(tsx, file).not.toContain("s.pill");
+      expect(tsx, file).toContain("<StatusPill row=");
     }
   });
 
@@ -616,6 +891,15 @@ describe("the status board's page structure and copy", () => {
     expect(tsx).toMatch(/<section className=\{`\$\{s\.section\} \$\{s\.flush\}`\} id="status">/);
     // The column labels repeat what every row says to a screen reader, so they are hidden from it.
     expect(tsx.match(/className=\{`?\$?\{?b\.colLabel[^>]*aria-hidden="true"/g)?.length).toBe(3);
+    // Below 1280px no column header shows, so each Where line names itself; from 1280px its label is for a screen
+    // reader only, since the header says it.
+    expect(css).toMatch(/\.whereLabel {\s*color: var\(--color-mute\);/);
+    expect(css).toMatch(
+      /@media \(min-width: 1280px\) {[\s\S]*?\.whereLabel {\s*position: absolute;[\s\S]*?clip-path: inset\(50%\);/,
+    );
+    expect(visibleText(board())).toContain(
+      `${STATUS_BOARD.whereLabel} Testnet, v0.probarion.testnet and the factory's vaults`,
+    );
     expect(css).toMatch(/\.colLabel {\s*display: none;/);
     expect(css).toMatch(/@media \(min-width: 1280px\) {[\s\S]*?\.colLabel {\s*display: block;/);
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);

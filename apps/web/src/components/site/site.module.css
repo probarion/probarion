@@ -935,8 +935,8 @@ a.netPill:hover {
   align-items: center;
   gap: 6px 12px;
 }
-/* A long status pill wraps inside itself rather than run past a narrow card. */
-.whoProof > span {
+/* A long status pill (a link to its status row) wraps inside itself rather than run past a narrow card. */
+.whoProof > a {
   max-width: 100%;
 }
 /* Under the code: the docs pages and the example a developer opens next. */
@@ -1578,6 +1578,20 @@ a.netPill:hover {
   display: inline-block;
   max-width: 100%;
   white-space: normal;
+}
+/*
+ * A pill that links its row on the status board (StatusPill.tsx), whose key says what the row's marks mean: a light
+ * underline says it is a link, and it is 24px tall at least (WCAG 2.5.8).
+ */
+.pillLink {
+  min-height: 24px;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+}
+.pillLink:hover {
+  text-decoration-color: currentColor;
 }
 /* A footnote to the status section, not a chapter: the heading of the integrations it is built on stays small. */
 .boTitle {

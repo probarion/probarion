@@ -1,17 +1,19 @@
 /*
- * The status section (components/site/StatusBoard.tsx): a key, four groups of rows on one set of columns, two notes
- * and the known gaps. Each row has two marks, proof (always) and use (where it applies), each a shape and a word: colour
- * only repeats them. Mobile first: one column in reading order; from 700px a row's name and marks share a line and
- * where and evidence sit side by side; from 1280px four columns line up across every group and every part. The site's
- * tokens only; no motion. test/typography-aaa.test.ts reads this file with the other modules.
+ * The status section (components/site/StatusBoard.tsx): a summary, a key, four groups of rows on one set of columns,
+ * a closing note and the known gaps. Each row has two marks, proof (always) and use (where it applies), each a shape
+ * and a word: colour only repeats them. Mobile first: one column in reading order; from 700px a row's name and marks
+ * share a line and where and evidence sit side by side; from 1280px four columns line up across every group and every
+ * part. The site's tokens only; no motion. test/typography-aaa.test.ts reads this file with the other modules.
  */
 
 .board {
   /* The four desktop columns: the part, its marks, where it runs, its evidence. */
   --st-cols: minmax(0, 4fr) 204px minmax(0, 3fr) minmax(0, 3.8fr);
   --st-gap: clamp(20px, 2.4vw, 34px);
-  /* The marks: the proof mark's own column, then the use mark. */
-  --st-marks: 112px auto;
+  /* The proof mark's place: a use mark after it lines up from row to row while both fit. */
+  --st-mark: 112px;
+  /* The mark column of the summary and the key. */
+  --st-key: 136px;
   /* The console's parts sit this far in, beside a hairline. */
   --st-indent: 18px;
   /* An evidence line's kind label, in small capitals. */
@@ -20,18 +22,22 @@
 
 /* --- Marks ---------------------------------------------------------------------------------------------------- */
 
+/*
+ * A mark may wrap (WCAG 1.4.12: with wider letter and word spacing "Not tried yet" outgrows its place): the glyph
+ * never shrinks and stays beside the first line of its word.
+ */
 .mark {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 7px;
   font-size: 14.5px;
-  white-space: nowrap;
   color: var(--color-ink);
 }
 .glyph {
   flex: none;
   width: 14px;
   height: 14px;
+  margin-top: calc((1.55em - 14px) / 2);
 }
 .mVerified,
 .mPart,
@@ -58,22 +64,56 @@
   color: var(--color-wait);
 }
 
+/* A row's marks: the proof mark keeps its place, and a use mark that no longer fits beside it moves to a new line. */
 .marks {
-  display: grid;
-  grid-template-columns: var(--st-marks);
-  column-gap: 10px;
-  align-content: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  /* The marks' cell can be taller than they are (it spans the row's text): their lines stay at its top. */
+  align-content: flex-start;
+  gap: 2px 10px;
   margin: 6px 0 0;
   padding: 0;
   list-style: none;
 }
+.marks > li:first-child {
+  min-width: min(var(--st-mark), 100%);
+}
 
-/* --- The key: what each mark means, and which rows hold each proof mark ---------------------------------------- */
+/* --- The summary: the answer first, one line a proof mark -------------------------------------------------------- */
+
+.summary {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+}
+.sumLine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px 16px;
+  align-items: start;
+}
+.sumMark .mark {
+  font-size: 16px;
+}
+/* The text is the lede's size, in ink: it is what the section says, not a definition. */
+.sumText {
+  font-size: 17px;
+  color: var(--color-ink);
+  max-width: var(--container-measure);
+}
+.sumRow {
+  display: block;
+}
+
+/* --- The key: what each mark means ---------------------------------------------------------------------------- */
 
 .key {
   display: grid;
-  gap: 22px;
-  padding-block: 20px 22px;
+  gap: 18px var(--st-gap);
+  padding-block: 18px 20px;
   border-block: 1px solid var(--color-line);
   margin-bottom: clamp(40px, 5vw, 64px);
 }
@@ -81,7 +121,7 @@
   min-width: 0;
 }
 .keyLabel {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
@@ -104,8 +144,9 @@
 .keyRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 2px 24px;
-  padding-block: 10px;
+  gap: 2px 16px;
+  align-items: start;
+  padding-block: 7px;
   border-top: 1px solid var(--color-line);
 }
 .keyRow:first-child {
@@ -117,10 +158,7 @@
 .keyMeans {
   font-size: 15px;
   color: var(--color-mute);
-}
-.keyWhich {
-  font-size: 15.5px;
-  color: var(--color-ink);
+  max-width: var(--container-measure);
 }
 
 /* --- A group: its title line, which on a wide screen also names the columns, then its rows ---------------------- */
@@ -208,27 +246,42 @@
   color: var(--color-mute);
   max-width: var(--container-measure);
 }
+/* Each paragraph that follows another starts 1em down: with the 1.55 line height, 2.5em from line to line (1.4.8). */
 .limit {
   grid-area: limit;
-  margin: 8px 0 0;
+  margin: 0;
+  margin-top: 15px;
   font-size: 15px;
   color: var(--color-mute);
   max-width: var(--container-measure);
 }
-.limitLabel {
+.limitLabel,
+.whereLabel {
   margin-right: 4px;
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+.limitLabel {
   color: var(--color-gold-ink);
+}
+/* Below 1280px no column header names the Where line, so it names itself. */
+.whereLabel {
+  color: var(--color-mute);
 }
 .where {
   grid-area: where;
-  margin: 12px 0 0;
+  position: relative;
+  margin: 0;
+  margin-top: 15px;
   font-size: 15px;
   min-width: 0;
+}
+/* Real USDC: the place is set in bold, as its evidence labels are. */
+.whereReal {
+  font-weight: 600;
 }
 .whereDetail {
   display: block;
@@ -250,7 +303,7 @@
   display: grid;
   gap: 6px;
   align-content: start;
-  margin-top: 12px;
+  margin-top: 15px;
   min-width: 0;
 }
 .ev li {
@@ -297,12 +350,9 @@
   font-size: 14px;
   color: var(--color-mute);
 }
-.evNone {
-  grid-area: ev;
-  margin: 12px 0 0;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--color-mute);
+/* A check's result (9 passed, all four passed) reads in ink, beside its log. */
+.evResult {
+  color: var(--color-ink);
 }
 
 /* --- The parts of a row (the web console): indented beside a hairline, on the row's columns -------------------- */
@@ -312,47 +362,57 @@
   position: relative;
   margin-top: 16px;
 }
+/* Borders, not fills, draw the hairline and the rules between parts, so they stay in forced colours. */
 .parts::before {
   content: "";
   position: absolute;
   left: 0;
   top: 0;
   bottom: 14px;
-  width: 1px;
-  background: var(--color-line);
+  width: 0;
+  border-left: 1px solid var(--color-line);
 }
 .part {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "title marks" "tried tried" "what what" "untried untried" "ev ev";
-  column-gap: var(--st-gap);
+  grid-template-areas: "head marks" "what what" "untried untried" "ev ev";
+  column-gap: 16px;
   padding-block: 12px 14px;
   padding-left: var(--st-indent);
   min-width: 0;
 }
 /* The rule between two parts starts after the hairline's indent. */
-.part + .part {
-  background:
-    linear-gradient(var(--color-line), var(--color-line)) var(--st-indent) 0 /
-    calc(100% - var(--st-indent)) 1px no-repeat;
+.part + .part::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--st-indent);
+  right: 0;
+  border-top: 1px solid var(--color-line);
+}
+/* The part's name, and the days it was tried beside it. */
+.partHead {
+  grid-area: head;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 12px;
+  min-width: 0;
 }
 .partTitle {
-  grid-area: title;
   margin: 0;
   font-size: 16px;
   font-weight: 500;
   line-height: 1.45;
 }
+.tried {
+  font-size: 14px;
+  color: var(--color-mute);
+}
 .part > .marks {
   grid-area: marks;
   margin-top: 1px;
-  grid-template-columns: auto;
-}
-.tried {
-  grid-area: tried;
-  margin: 0;
-  font-size: 14px;
-  color: var(--color-mute);
 }
 .part .what {
   margin-top: 4px;
@@ -375,15 +435,28 @@
 .untriedWhy {
   color: var(--color-mute);
 }
-.part .ev,
-.part .evNone {
+.part .ev {
   margin-top: 8px;
 }
 
-/* --- What else is built, and what the tests check, above the gaps ---------------------------------------------- */
+/* --- What else is built and what the tests check: it closes the last group, above the gaps ------------------ */
 
+.notes {
+  padding-top: 24px;
+  border-top: 1px solid var(--color-line);
+}
+.notesTitle {
+  margin: 0 0 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold-ink);
+}
 .note {
-  margin: 36px 0 0;
+  margin: 0;
   font-size: 15px;
   color: var(--color-mute);
   max-width: var(--container-measure);
@@ -449,13 +522,22 @@
   font-weight: 600;
 }
 
+/* --- From 360px: the summary and the key put each mark in a column of its own ------------------------------ */
+
+@media (min-width: 360px) {
+  .sumLine,
+  .keyRow {
+    grid-template-columns: var(--st-key) minmax(0, 1fr);
+  }
+  /* The mark's line is shorter than the text's: it moves down to sit on the text's first line. */
+  .sumMark {
+    padding-top: 1px;
+  }
+}
+
 /* --- From 700px: a row's name and marks share a line, and where and evidence sit side by side ----------------- */
 
 @media (min-width: 700px) {
-  .keyRow {
-    grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1.25fr);
-    align-items: baseline;
-  }
   .row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas: "title marks" "what what" "limit limit" "where ev" "parts parts";
@@ -466,26 +548,37 @@
   /* A part spans the row, so its columns start where the row's do; only its first column steps in. */
   .part {
     padding-left: 0;
+    column-gap: var(--st-gap);
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "title marks" "tried ev" "what ev" "untried ev";
-    grid-template-rows: auto auto auto 1fr;
+    grid-template-areas: "head marks" "what ev" "untried ev";
+    grid-template-rows: auto auto 1fr;
   }
-  .partTitle,
-  .tried,
+  .partHead,
   .part .what,
   .untriedList {
     padding-left: var(--st-indent);
   }
-  .part > .marks {
-    grid-template-columns: var(--st-marks);
-  }
-  .part .ev,
-  .part .evNone {
+  .part .ev {
     margin-top: 2px;
   }
 }
 
+/* Between 700 and 1279px the list of what is left to try takes the part's whole width, and its record goes under it. */
+@media (min-width: 700px) and (max-width: 1279.98px) {
+  .partUntried {
+    grid-template-areas: "head marks" "untried untried" "ev ev";
+    grid-template-rows: auto auto auto;
+  }
+  .partUntried .ev {
+    margin-top: 12px;
+    padding-left: var(--st-indent);
+  }
+}
+
 @media (min-width: 1024px) {
+  .key {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
   .gapCols {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -494,16 +587,6 @@
 /* --- From 1280px: four columns that line up across every group and every part ---------------------------------- */
 
 @media (min-width: 1280px) {
-  .key {
-    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-    column-gap: var(--st-gap);
-  }
-  .keyRow {
-    grid-template-columns: 136px minmax(0, 1fr);
-  }
-  .keyWhich {
-    grid-column: 2;
-  }
   .groupHead {
     grid-template-columns: var(--st-cols);
   }
@@ -512,7 +595,7 @@
   }
   .colMarks {
     display: grid;
-    grid-template-columns: var(--st-marks);
+    grid-template-columns: var(--st-mark) auto;
     column-gap: 10px;
   }
   .row {
@@ -526,27 +609,35 @@
   }
   .row > .marks,
   .where,
-  .ev,
-  .evNone {
+  .ev {
     margin-top: 3px;
+  }
+  /* The column header names the Where line now: its own label stays for a screen reader only. */
+  .whereLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
   .part {
     grid-template-columns: var(--st-cols);
-    grid-template-rows: auto auto auto 1fr;
+    grid-template-rows: auto auto 1fr;
     grid-template-areas:
-      "title marks . ev"
-      "tried marks . ev"
+      "head marks . ev"
       "what marks . ev"
       "untried untried untried ev";
   }
-  .part .ev,
-  .part .evNone {
+  .part .ev {
     margin-top: 2px;
   }
 }
 
 @media (forced-colors: active) {
-  .glyph {
+  .mark .glyph {
     color: CanvasText;
   }
   .groupHead,
