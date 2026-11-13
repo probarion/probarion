@@ -115,8 +115,14 @@ describe("loadBurnTxHints (R7 source 1: docs/mainnet-proof.json)", () => {
     // Spend 1 (2026-11-11, paid to a NEAR account) and spend 2 (2026-11-13, burned for the Base payout).
     expect(new Map(hints)).toEqual(
       new Map([
-        [2, [{ hash: "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9", signer: "v0.probarion.near" }]],
-        [1, [{ hash: "22oqhgruo7JqdpPg5Cb2ts25mLK2fto8y1YAxNA56ieE", signer: "v0.probarion.near" }]],
+        [
+          2,
+          [{ hash: "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9", signer: "v0.probarion.near" }],
+        ],
+        [
+          1,
+          [{ hash: "22oqhgruo7JqdpPg5Cb2ts25mLK2fto8y1YAxNA56ieE", signer: "v0.probarion.near" }],
+        ],
       ]),
     );
     const testnet = await loadBurnTxHints(file, { vault: "v0.probarion.near", network: "testnet" });
