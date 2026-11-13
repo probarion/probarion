@@ -15,6 +15,18 @@ The software is an unaudited beta.
 
 ### Added
 
+- A no-clone check of the mainnet vault. The site serves `v0.probarion.near`'s signed ledger after S2, the recorded
+  transactions, spend 1's pre-ledger decision and the two invoice texts under `/samples/mainnet/`, each a byte copy
+  of its source in `docs/` (`apps/web/test/samples-mainnet.test.ts` compares them). In an empty folder, one `curl`
+  that fetches three of them and `npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near
+  --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json` print checks a to h PASS, i SKIP and
+  `RESULT: PASS`. Verify reads the chain with read-only RPC requests (views, and `tx` lookups of the burns) and
+  signs nothing. 0.1.1 has no `--invoice`, so A8 does not run. Without `--online`, check e does not verify the TEE
+  quotes (O1 and O2), and the TEE measurement is not pinned. On 2026-11-13 UTC this ran on Node 24.12.0 in Git Bash
+  and Windows PowerShell 5.1, against local copies and raw.githubusercontent.com
+  (`docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt`). `.github/workflows/no-clone-verify.yml` is set to
+  run the same block on Node 24, which 0.1.1 declares, and on Node 22 to learn whether 0.1.1 also works there, with
+  no checkout and no secret. It had not run on GitHub when this entry was written.
 - The online check of the mainnet vault's attested decisions, kept as evidence. On 2026-11-13, from 17:51:48 to
   17:52:19 UTC, after the computer's clock was synced, a read-only `verify --online` of `v0.probarion.near` on
   mainnet ran with S2's ledger of 6 entries, the two committed invoice texts, `--evidence docs/evidence`,
@@ -50,18 +62,6 @@ The software is an unaudited beta.
   2026-11-13. The integrate section is in three parts (the ways in, the code with the accounts and statuses beside
   it, and the uses with what ran on each network). A test checks that every CSS module class the landing uses is
   defined, and the colour test reads every module of the site and the docs.
-- A no-clone check of the mainnet vault. The site serves `v0.probarion.near`'s signed ledger after S2, the recorded
-  transactions, spend 1's pre-ledger decision and the two invoice texts under `/samples/mainnet/`, each a byte copy
-  of its source in `docs/` (`apps/web/test/samples-mainnet.test.ts` compares them). In an empty folder, one `curl`
-  that fetches three of them and `npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near
-  --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json` print checks a to h PASS, i SKIP and
-  `RESULT: PASS`. Verify reads the chain with read-only RPC requests (views, and `tx` lookups of the burns) and
-  signs nothing. 0.1.1 has no `--invoice`, so A8 does not run. Without `--online`, check e does not verify the TEE
-  quotes (O1 and O2), and the TEE measurement is not pinned. On 2026-11-13 UTC this ran on Node 24.12.0 in Git Bash
-  and Windows PowerShell 5.1, against local copies and raw.githubusercontent.com
-  (`docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt`). `.github/workflows/no-clone-verify.yml` is set to
-  run the same block on Node 24, which 0.1.1 declares, and on Node 22 to learn whether 0.1.1 also works there, with
-  no checkout and no secret. It had not run on GitHub when this entry was written.
 - A second mainnet payout to Base, decided by an attested model and the code rules, kept as evidence. On
   2026-11-13, from 11:39 to 11:41 UTC, the owner ran S2 on `v0.probarion.near` from their own terminal, with a kit
   copied from S1's and changed for round 2, which runs the SDK at commit `c85f41b`: the owner signed mandate 3
@@ -1191,6 +1191,19 @@ The software is an unaudited beta.
   rules-only, as the SDK does). See `eval/README.md`.
 
 ### Changed
+
+- The front door. The README's top is a 30-second story with S2's mainnet test payment (0.25 USDC sent, 0.2476
+  arrived on the owner's own Base address), the worst case today read live from `v0.probarion.near` at 19:01 UTC on
+  2026-11-13 (`docs/evidence/mainnet-v0/worst-case-2026-11-13.json`) with what a leaked ledger key or the owner's
+  account could do, the re-check of every decision with the no-clone mainnet verify block in Bash and PowerShell and
+  O1 and O2 on mainnet, an install table, a 60-second check, a by-track table, a sourced and dated answer to "why not
+  a policy on NEAR's Agent API or OutLayer?" and who it is for. JUDGES.md is rewritten: the worst case first with a
+  read-only Node command that needs no clone, five links in order (the first with the same verify block), one Node 24
+  setup, one CLI convention and today's `pnpm judge` summaries. The README's "For judges: start here" block and
+  JUDGES' "Worst case, priced" give way to these sections. The new `docs/TRACKS.md` answers each track brief in its
+  own words with "Brief asks | Probarion | Evidence" tables and honest "Not built" rows, and `check-claims` now reads
+  it. The README's dated package test counts are those of 2026-11-13, and `pnpm judge` quotes them. Check:
+  `node scripts/check-claims.mjs` and `pnpm judge --offline --quick`.
 
 - The landing's "What works today, and what does not" is a status board. A summary computed from
   the rows comes first: how many are Verified, and what each row marked In part or Not tried yet
