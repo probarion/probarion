@@ -15,6 +15,24 @@ The software is an unaudited beta.
 
 ### Added
 
+- A second mainnet payout to Base, decided by an attested model and the code rules, kept as evidence. On
+  2026-11-13, from 11:39 to 11:42 UTC, the owner ran S2 on `v0.probarion.near` from their own terminal, with a kit
+  that runs the SDK at commit `c85f41b`: the owner signed mandate 3 (0.25 USDC once, to the same Base address, the
+  owner's own), `z-ai/glm-5.3-flash` on NEAR AI Cloud proposed paying INV-M003, every code rule passed (ledger
+  entry 4, `model+rules`), and spend 3 burned 0.25 USDC with `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`.
+  The POA bridge released 0.2476 USDC on Base and kept a fee of 0.0024. INV-M003 is a labeled test, not a customer
+  payment. At decision time the SDK checked the model's evidence with A1 to A7 and A8; `verify --online` (O1 and
+  O2) has not run on it. The model's payee hint named no NEAR account, so the payee rule changes of PR #142 and
+  PR #144 did not run on mainnet. Two testnet rehearsals came before it. `docs/evidence/mainnet-v0/s2-2026-11-13`
+  holds the whole signed ledger byte for byte (6 entries, 4 anchors; its leading bytes are S1's file), the
+  snapshot, the live `verify` output of 11:41:26 UTC (8 passed, 0 failed, 0 unproven, 1 skipped), the outcome,
+  the spend decision, the burn, the POA bridge status, the Base receipt, the order of every transaction, the gas
+  of spend 3 read from an archival node, the invoice and purchase order texts, and a README that says how to
+  check it again. `docs/mainnet-proof.json` records mandate 3, spend 3 with its Base transfer and anchor 4, and
+  `contracts/deployments/mainnet.json` records mandate 3, spend 3 and the Base transfer. The judge holds the
+  run's snapshot to its committed verifier output, and `scripts/mainnet-runbook.test.mjs` holds the records,
+  the ledger and the runbook's S2 gate to each other.
+
 - A mainnet payout to Base through NEAR Intents, kept as evidence. On 2026-11-13 the owner ran spike S1 on
   `v0.probarion.near` from their own terminal: a 1Click swap credited 1.499823 Base USDC to the vault inside
   `intents.near`, the owner set a ledger key and signed mandate 2 (1.00 USDC once, to the owner's own Base
@@ -1066,6 +1084,22 @@ The software is an unaudited beta.
   rules-only, as the SDK does). See `eval/README.md`.
 
 ### Changed
+
+- After S2, the judge's `live-verify-mainnet-v0` step verifies `v0.probarion.near` with S2's copy of the ledger
+  (`docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl`, 6 entries, since the chain's anchors now
+  cover 6 and S1's copy of 4 fails checks c and d) and both invoice texts (`--invoice` for INV-M002 and for
+  INV-M003), and expects c, d, e and h to say what the chain now holds: 4 anchors, A8 on 3 of 3 attested
+  decisions and 2 burn pairs. A SKIPPED row now prints up to 500 characters, so that command prints whole. The
+  README (the sub line, the "For judges" block, the beta notice, the Real-World Money row, the status rows, the
+  NEAR Intents row, the live verify command and a section for S2, with the list of what did not run on mainnet
+  moved after it), `JUDGES.md` (a fifth link, the payout rows of what is proven, the worst case read again
+  after S2, the gas and bridge fee rows and what is not done yet), `AGENTS.md`, `SECURITY.md`,
+  `docs/THREAT_MODEL.md`, the mainnet runbook (an S2 paragraph, its done line and an S2 gate, with the S1 gate
+  in the past tense), the web deploy runbook's ledger path, the landing page's mainnet pill and NEAR facts, the
+  terms page's status line, the rules for agents and the docs pages that told one Base payout now tell both,
+  each as a test to the owner's own Base address: 1.00 USDC decided by code rules alone, then 0.25 USDC decided
+  by an attested model and the code rules. The docs tests now also refuse pages that still say one Base payout
+  or no mainnet payment on a model's proposal, and the SDK's evidence test reads spend 3 from the proof file.
 
 - The judge's `live-verify-mainnet-v0` step verifies `v0.probarion.near` with its committed ledger
   (`--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl`) and the run's invoice text
