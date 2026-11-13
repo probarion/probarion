@@ -201,8 +201,9 @@ snapshot of the ledger and the chain:
   ([evidence of the second](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)).
   On NEAR mainnet, the ledger of `v0.probarion.near` holds 3 attested decisions of 2026-11-13,
   which pass A1 to A7 and, with the two invoice texts, A8 offline
-  ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)). `verify --online` has
-  not run on them, so O1 and O2 have not checked their TDX quotes or GPU evidence. Code refused the
+  ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)). A later live run with
+  `--online` the same day, at 17:52 UTC, passed O1 and O2 on all three
+  ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)). Code refused the
   two of S1, and the third, entry 4, led to a payment in real USDC: spend 3, a 0.25 USDC test to the
   owner's own Base address, of which 0.2476 USDC arrived after the bridge fee
   ([the run](docs/evidence/mainnet-v0/s2-2026-11-13/README.md)).

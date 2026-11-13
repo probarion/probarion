@@ -226,7 +226,7 @@ const BACKING: Readonly<Record<string, { proof: readonly Quote[]; use?: readonly
         "judges",
         "On mainnet, the 3 of `v0.probarion.near` of 2026-11-13, entries 0, 1 and 4, pass A1 to A7",
       ],
-      ["judges", "O1 and O2 have not run on them"],
+      ["judges", "and O1 and O2 in a live run at 17:52 UTC on 2026-11-13"],
     ],
   },
 };
@@ -439,11 +439,13 @@ describe("the status board's rows", () => {
     expect(what).toContain(
       "The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed.",
     );
-    // What is still not done after S2: no customer payment, and no online check of the mainnet decisions.
+    // What is still not done after S2: no customer payment, and spend 1 without the SDK. The online check of the
+    // mainnet decisions ran on 2026-11-13 at 17:52 UTC, so the row no longer says it has not.
     expect(row?.limit).toContain("No customer payment yet");
-    expect(row?.limit).toContain("`verify --online` (O1 and O2) has not run");
+    expect(row?.limit).toContain("Spend 1 was sent without the SDK");
+    expect(row?.limit).not.toMatch(/has not run|not been checked online/);
     expect(row?.limit).not.toMatch(/No payment on a model's proposal/);
-    // Its evidence: spend 3 on NEAR, what arrived on Base, and the S2 run beside the S1 run.
+    // Its evidence: spend 3 on NEAR, what arrived on Base, the S2 run beside the S1 run, and the online check.
     const hrefs = row?.evidence.map((e) => e.href) ?? [];
     for (const href of [
       BOARD_TX.basePayout.url,
@@ -452,6 +454,7 @@ describe("the status board's rows", () => {
       BASE_TX.attestedPayout.url,
       BOARD_LINKS.mainnetRunS1,
       BOARD_LINKS.mainnetRunS2,
+      BOARD_LINKS.mainnetVerifyOnline,
     ]) {
       expect(hrefs, href).toContain(href);
     }
@@ -459,21 +462,66 @@ describe("the status board's rows", () => {
     const s2 = flat(text(ROOT, "docs", "evidence", "mainnet-v0", "s2-2026-11-13", "README.md"));
     expect(s2).toContain("**Decided by an attested model and the code rules.**");
     expect(s2).toContain("verdict `allow`, `decided_by` `model+rules`");
-    expect(s2).toContain("which has not run on this decision");
+    // The S2 record kept what it said at the time of the run, and its dated section gives the later online check.
+    expect(s2).toContain("which had not run on this decision when this record was written");
+    expect(s2).toContain("## The online check, 2026-11-13");
+    expect(s2).toContain("passed O1 and O2 for all three attested decisions, entries 0, 1 and 4");
+    expect(s2).toContain("[output](verify-online-2026-11-13.txt)");
+    expect(s2).not.toContain("which has not run on this decision");
     expect(SOURCES.judges).toContain(
       "spend 3 paid it to the owner's own Base address, a test: 0.25 USDC sent, 0.2476 USDC arrived",
     );
-    // The model run's row tells the 3 mainnet decisions, and that O1 and O2 have not run on them.
+    // The model run's row tells the 3 mainnet decisions; O1 and O2 passed on them, and the image is still not pinned.
     const model = ITEMS.find((i) => i.id === "attested-model-run");
     expect(model?.what).toContain("On mainnet, the 3 of 2026-11-13 pass A1 to A8 offline.");
     expect(model?.what).toContain("Code refused 2 of them and allowed the third");
-    expect(model?.limit).toContain("has not run on the 3 mainnet decisions");
+    expect(model?.limit).toContain("The TEE measurement is not pinned");
+    expect(model?.limit).not.toMatch(/has not run on the 3 mainnet decisions/);
+    expect(model?.evidence.map((e) => e.href)).toContain(BOARD_LINKS.mainnetVerifyOnline);
     // On the page, word for word.
     const out = visibleText(board());
     expect(out).toContain(
       "The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed.",
     );
-    expect(out).toContain("verify --online (O1 and O2) has not run on the 3 mainnet decisions");
+    expect(out).not.toContain("has not run on the 3 mainnet decisions");
+    expect(out).not.toContain("has not run on the vault's 3 attested decisions");
+  });
+
+  it("cites the online check of the mainnet vault's 3 attested decisions, and the file says they passed", () => {
+    const row = ITEMS.find((i) => i.id === "mainnet-vault");
+    const online = row?.evidence.find((e) => e.href === BOARD_LINKS.mainnetVerifyOnline);
+    expect(online?.kind).toBe("verify");
+    expect(online?.label).toBe("online check, 2026-11-13");
+    expect(online?.note).toBe("O1 and O2 pass, 3 of 3");
+    expect(BOARD_LINKS.mainnetVerifyOnline).toBe(
+      `${REPO_URL}/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt`,
+    );
+    const log = text(
+      ROOT,
+      "docs",
+      "evidence",
+      "mainnet-v0",
+      "s2-2026-11-13",
+      "verify-online-2026-11-13.txt",
+    );
+    expect(log).toContain("Probarion verify: v0.probarion.near (mainnet)");
+    expect(log).toContain("entries 6, anchors 4");
+    expect(log).toContain("8 passed, 0 failed, 0 unproven, 1 skipped");
+    expect(log).toContain("\nRESULT: PASS");
+    expect(log).toContain(
+      "A8 (request binding and mandate match) passes for 3 of 3 attested decisions (seq 0, 1, 4)",
+    );
+    expect(log).toContain("online: 3 DCAP-genuine TDX quotes bound to this request");
+    expect(log).toContain("3 GPU payloads bound to the request nonce and verified by NRAS (O2)");
+    // O1 does not pin the measurement: the file says so, and the row next to it keeps that limit.
+    expect(log).toContain("measurement not pinned, so quote_verified stays false");
+    expect(ITEMS.find((i) => i.id === "attested-model-run")?.limit).toContain(
+      "so no check shows which model image ran",
+    );
+    // On the page, the link is there with its note.
+    const html = board();
+    expect(html).toContain(BOARD_LINKS.mainnetVerifyOnline);
+    expect(visibleText(html)).toContain("O1 and O2 pass, 3 of 3");
   });
 });
 
@@ -756,6 +804,18 @@ describe("the status board's evidence", () => {
         "A1 to A8 on all 3",
         "A8 (request binding and mandate match) passes for 3 of 3 attested decisions (seq 0, 1, 4)",
       ],
+      [
+        "attested-model-run",
+        BOARD_LINKS.mainnetVerifyOnline,
+        "O1 and O2 on all 3",
+        "online: 3 DCAP-genuine TDX quotes bound to this request",
+      ],
+      [
+        "mainnet-vault",
+        BOARD_LINKS.mainnetVerifyOnline,
+        "O1 and O2 pass, 3 of 3",
+        "3 GPU payloads bound to the request nonce and verified by NRAS (O2)",
+      ],
     ];
     for (const [id, href, note, line] of logs) {
       expect(evidence.find((e) => e.id === id && e.href === href)?.note, `${id} ${href}`).toBe(
@@ -765,7 +825,7 @@ describe("the status board's evidence", () => {
       expect(text(ROOT, file), file).toContain(line);
     }
     // The mainnet verify is the live run after S2, on the whole ledger: its 3 attested decisions pass A1 to A7 too, and
-    // it ran without --online, so O1 and O2 are still to run on mainnet.
+    // it ran without --online. O1 and O2 ran later, in their own file, which the logs above and a test of the rows hold.
     const mainnetLog = text(
       ROOT,
       BOARD_LINKS.mainnetVerify.replace(
@@ -852,7 +912,7 @@ describe("the status board's evidence", () => {
     }
     // A verify output is a log or a result file in the evidence, and its note is the result, set in ink.
     const verify = evidence.filter((e) => e.kind === "verify");
-    expect(verify.length).toBe(8);
+    expect(verify.length).toBe(10);
     for (const e of verify) {
       expect(e.href.startsWith(`${REPO_URL}/blob/main/docs/evidence/`), e.label).toBe(true);
       expect(e.href.endsWith(".txt") || e.href.endsWith(".json"), e.label).toBe(true);
