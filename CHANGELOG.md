@@ -15,6 +15,14 @@ The software is an unaudited beta.
 
 ### Added
 
+- A read-only live smoke for the judging days: `node scripts/smoke-live.mjs` prints PASS, WARN, FAIL or SKIP per
+  row for the deployed commit against main, the pages, the no-clone mainnet verify of `/samples/mainnet/`,
+  `npx -y @probarion/mcp@0.1.1 demo`, `check_spend` on mainnet and testnet mandate 1, mainnet mandate 1's uses, the
+  agent and ledger keys' gas allowances (WARN under 0.2 NEAR), active mandate expiries, `/canary` and the site's
+  NEAR AI and RPC probes. It needs no key and signs nothing; `/api/tee/check` runs only with `--tee`, since it
+  spends NEAR AI credit. `docs/ops/judging-days.md` holds the run schedule, the owner-only checks and the first
+  run's output (2026-11-13 19:53 UTC: 14 PASS, 1 WARN, the samples not deployed yet). Check: `node --test
+  scripts/smoke-live.test.mjs` runs its rules against a fake fetch and a fake exec.
 - A second mainnet payout to Base, decided by an attested model and the code rules, kept as evidence. On
   2026-11-13, from 11:39 to 11:41 UTC, the owner ran S2 on `v0.probarion.near` from their own terminal, with a kit
   copied from S1's and changed for round 2, which runs the SDK at commit `c85f41b`: the owner signed mandate 3
