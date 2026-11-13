@@ -44,11 +44,11 @@ pnpm judge                     # also the live read-only steps on testnet and ma
 ```
 
 It needs Node.js 24 and pnpm 10, prints one row per step with the README line it proves, and exits 0 when no step
-failed. On 2026-11-13 an offline quick run at commit 6f7444b ended so (the time varies; the EXPECTED-FAIL is the
+failed. On 2026-11-13 an offline quick run at commit 53a726e ended so (the time varies; the EXPECTED-FAIL is the
 Canary's snapshot of 2026-11-10, which has no ledger):
 
 ```text
-judge: 18 PASS, 1 EXPECTED-FAIL, 14 SKIPPED, 0 FAIL in 42.9 s. Nothing was signed or sent. Report: judge-report.json. Exit 0.
+judge: 19 PASS, 1 EXPECTED-FAIL, 14 SKIPPED, 0 FAIL in 108.7 s. Nothing was signed or sent. Report: judge-report.json. Exit 0.
 ```
 
 - `verify --online`, which runs O1 and O2, uses `@nearai/inference-sdk`, whose `engines` field declares Node.js 24.22.1
