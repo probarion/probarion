@@ -828,32 +828,7 @@ a.netPill:hover {
   font-size: 15px;
 }
 
-/* Integrate */
-.ways {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 28px;
-}
-.way {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border: 1px solid var(--color-line);
-  border-radius: 16px;
-  padding: 20px;
-  background: var(--color-surface);
-  min-width: 0;
-}
-.way h3 {
-  font-size: 16px;
-  font-weight: 600;
-}
-.way p {
-  flex: 1;
-  font-size: 14.5px;
-  color: var(--color-mute);
-}
+/* The integrate section's code box: the section lays it out in integrate.module.css. */
 .codeBox {
   border-radius: 16px;
   background: var(--color-band);
@@ -876,12 +851,6 @@ a.netPill:hover {
   font-size: 12.5px;
   color: var(--color-band-mute);
 }
-.codeMeta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-}
 /* Every sideways scroller is positioned, so absolutely positioned screen-reader text inside stays inside it. */
 .codeBody {
   position: relative;
@@ -896,62 +865,6 @@ a.netPill:hover {
   font-family: var(--font-mono);
   font-size: 13.5px;
   line-height: 1.65;
-}
-.codeNote {
-  /* 14px over 14px text: 2.55em between two notes with the 1.55 line (WCAG 1.4.8). */
-  margin-top: 14px;
-  max-width: var(--container-measure);
-  font-size: 14px;
-  color: var(--color-mute);
-}
-.who {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 28px;
-}
-.who > div {
-  border-top: 1px solid var(--color-ink);
-  padding-top: 12px;
-  font-size: 15px;
-}
-.who b {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.whoBody {
-  color: var(--color-mute);
-}
-/* 14px over 14px text: with the 1.55 line, 2.55em from one paragraph's last line to the next one's first (WCAG 1.4.8). */
-.whoControl,
-.whoProof {
-  margin-top: 14px;
-  font-size: 14px;
-}
-.whoProof {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-}
-/* A long status pill wraps inside itself rather than run past a narrow card. */
-.whoProof > span {
-  max-width: 100%;
-}
-/* Under the code: the docs pages and the example a developer opens next. */
-.devLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 20px;
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: 14px;
-}
-.devLinks a {
-  display: inline-block;
-  padding-block: 3px;
 }
 
 /* A panel's lines: the journey lays its panels out in journey.module.css. */
@@ -1908,12 +1821,6 @@ a.netPill:hover {
   .vs {
     grid-template-columns: 1fr;
   }
-  .ways {
-    grid-template-columns: 1fr 1fr;
-  }
-  .who {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .compareHead {
     display: none;
   }
@@ -2015,10 +1922,6 @@ a.netPill:hover {
     grid-template-columns: minmax(0, 1fr);
   }
   .scenarios {
-    grid-template-columns: 1fr;
-  }
-  .ways,
-  .who {
     grid-template-columns: 1fr;
   }
   .field {

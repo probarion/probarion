@@ -5,7 +5,7 @@
 import type { CheckId } from "@probarion/core";
 import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { withVia } from "@/lib/canary/via";
-import { explorerTxUrl } from "@/lib/config";
+import { explorerAccountUrl, explorerTxUrl } from "@/lib/config";
 import { CLI_ON_NPM, cli, REPO_URL } from "@/lib/proof/cli";
 import { FOOTER_NAV, isBuilt, type NavItem, SITE_NAV } from "@/lib/routes";
 import type { TamperResult } from "./tamper";
@@ -1289,10 +1289,38 @@ const outcome = await probarion.process({
 
 console.log(outcome.status, outcome.code, outcome.spendId, outcome.txHash);`;
 
+/** One use on one network: what happened, the record to check, and the STATUS row whose pill it carries. */
+interface IntegrateRun {
+  network: "Testnet" | "Mainnet";
+  outcome: string;
+  /** Named in full: it follows the status pill, and it is read out alone as a link. */
+  evidence: { label: string; url: string };
+  /** A STATUS row by its name: a name that is not a row fails the typecheck. */
+  status: StatusRow["row"];
+}
+const integrateRun = (run: IntegrateRun): IntegrateRun => run;
+/** A transaction as evidence: what it is, then its short hash. */
+const txEvidence = (what: string, t: TxFact) => ({ label: `${what}, tx ${t.label}`, url: t.url });
+/** An account to point an agent at, on its own network's explorer, whatever network the page is opened at. */
+const integrateAccount = (network: Parameters<typeof explorerAccountUrl>[0], id: string) => ({
+  id,
+  url: explorerAccountUrl(network, id),
+});
+
 export const INTEGRATE = {
   eyebrow: "Plug in your agent",
   title: "Your agent keeps its brain. Your vault holds the money.",
   sub: "You keep your model and your prompts. The owner creates a vault and a mandate from their own wallet, gives the agent a key that can only call `spend`, and the agent pays through the SDK.",
+  /** The section's three parts, each an h3: the ways in, the code with its reference, the uses with their evidence. */
+  parts: {
+    ways: "Four ways in",
+    code: "The SDK in one call",
+    /** SDK_SNIPPET is the SDK README's quick start, shortened: the test holds each code line to the README. */
+    codeNote: "The quick start of the SDK README, shortened.",
+    uses: "Three uses, with their evidence",
+  },
+  /** Read before every pill of the section, by a screen reader only. */
+  statusPrefix: "Status: ",
   cards: [
     {
       title: "TypeScript SDK",
@@ -1322,6 +1350,40 @@ export const INTEGRATE = {
   ],
   fileName: "agent.ts",
   codeLabel: "@probarion/sdk",
+  /**
+   * Beside the code: the accounts to point an agent at, from contracts/deployments/testnet.json and mainnet.json. Each
+   * links its own network's explorer; `explorer` is said after the account, to a screen reader.
+   */
+  addresses: {
+    title: "Addresses",
+    networks: [
+      {
+        name: "Testnet",
+        explorer: " on the testnet explorer",
+        rows: [
+          { term: "Factory", account: integrateAccount("testnet", "vaults.probarion.testnet") },
+          {
+            term: "Demo vault",
+            account: integrateAccount("testnet", "demo.vaults.probarion.testnet"),
+          },
+        ],
+      },
+      {
+        name: "Mainnet",
+        explorer: " on the mainnet explorer",
+        rows: [
+          { term: "Factory", none: "None yet" },
+          {
+            term: "Vault",
+            account: integrateAccount("mainnet", "v0.probarion.near"),
+            after: ", the one vault",
+          },
+        ],
+      },
+    ],
+    link: { route: "/docs/start/testnet-and-mainnet", label: "Networks and addresses" },
+  },
+  statusesTitle: "Outcome statuses",
   statusesLead: "`outcome.status` is one of:",
   /** After the statuses: the docs page that says what each one means and what to do next. */
   statusesLink: { route: "/docs/build/spend-outcomes", label: "What each status means" },
@@ -1334,57 +1396,101 @@ export const INTEGRATE = {
     "failed",
     "unconfirmed",
   ],
-  /** Under the code: where a developer goes next. Docs pages by route; the example and the repository on GitHub. */
-  devLinksLabel: "For developers",
-  devLinks: [
-    { route: "/docs/start/developer-quickstart", label: "Quickstart (testnet)" },
-    { route: "/docs/build/sdk-reference", label: "SDK reference" },
-    { route: "/docs/build/contract-reference", label: "Contract reference" },
-    { route: "/docs/build/cli-reference", label: "CLI reference" },
-    { href: tree("examples/402"), label: "Example: pay per call" },
-    { route: "/docs/start/testnet-and-mainnet", label: "Networks and addresses" },
-    { href: LINKS.github, label: "GitHub" },
-  ],
-  /** The accounts to point an agent at, from contracts/deployments/testnet.json and mainnet.json. */
-  addresses:
-    "On testnet, the factory is `vaults.probarion.testnet` and the demo vault is `demo.vaults.probarion.testnet`. On mainnet there is one vault, `v0.probarion.near`, and no factory yet.",
   /**
-   * Each use, with what a mandate controls in it, what that did on testnet, the evidence and its status row. The
-   * evidence label names its record in full: it follows the status pill, and it is read out alone as a link.
+   * Under the code: where a developer goes next, grouped by what they open it for. Docs pages by route; the example,
+   * the repository and the SDK's npm page elsewhere. `after` is said after a link's label, to a screen reader.
    */
+  docs: {
+    title: "Docs and source",
+    groups: [
+      {
+        name: "Start",
+        links: [{ route: "/docs/start/developer-quickstart", label: "Quickstart (testnet)" }],
+      },
+      {
+        name: "Reference",
+        links: [
+          { route: "/docs/build/sdk-reference", label: "SDK reference" },
+          { route: "/docs/build/contract-reference", label: "Contract reference" },
+          { route: "/docs/build/cli-reference", label: "CLI reference" },
+        ],
+      },
+      {
+        name: "Example",
+        links: [{ href: tree("examples/402"), label: "Pay per call", after: " example" }],
+      },
+      {
+        name: "Source",
+        links: [
+          { href: LINKS.github, label: "GitHub" },
+          { href: LINKS.npmSdk, label: "@probarion/sdk on npm" },
+        ],
+      },
+    ],
+  },
+  /** The uses' column heads, shown above the rows on a wide screen. The second also labels its cell when they stack. */
+  usesHead: ["Use", "The mandate controls", "What happened", "Evidence"],
+  /** Each use, with what a mandate controls in it, and per network what happened, the evidence and its status row. */
   who: [
     {
       title: "Teams paying invoices with an agent",
       body: "Accounts payable in USDC, where a person signs the limits once and approves only the big ones.",
       control: "Payee fixed by the mandate",
-      outcome:
-        "INV-2002 asked to pay `new-account.testnet`. Code refused it with `mandate.payee_mismatch`, and nothing was sent.",
-      evidence: { label: "INV-2002 in the demo vault's ledger, entry 3", url: demoLedger("L4") },
-      status: "Payables agent",
+      runs: [
+        integrateRun({
+          network: "Testnet",
+          outcome:
+            "INV-2002 asked to pay `new-account.testnet`. Code refused it with `mandate.payee_mismatch`, and nothing was sent.",
+          evidence: {
+            label: "INV-2002 in the demo vault's ledger, entry 3",
+            url: demoLedger("L4"),
+          },
+          status: "Payables agent",
+        }),
+      ],
     },
     {
       title: "Pay per API call",
       body: "An agent pays an endpoint's 402 through the MCP server, under a mandate with a set number of uses. Our own 402 format, not x402.",
       control: "20 uses of 0.01 test USDC",
-      outcome:
-        "20 calls paid, 0.01 test USDC each. The 21st was refused by code with `mandate.uses_exhausted`, before any transaction.",
-      evidence: {
-        label: "The 402 example's own agent on testnet, 2026-11-09",
-        url: blob("docs/evidence/402-vault/README.md"),
-      },
-      status: "MCP server",
+      runs: [
+        integrateRun({
+          network: "Testnet",
+          outcome:
+            "20 calls paid, 0.01 test USDC each. The 21st was refused by code with `mandate.uses_exhausted`, before any transaction.",
+          evidence: {
+            label: "The 402 example's own agent on testnet, 2026-11-09",
+            url: blob("docs/evidence/402-vault/README.md"),
+          },
+          status: "MCP server",
+        }),
+      ],
     },
     {
       title: "Cross-chain payouts",
-      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate. On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR. On mainnet one payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate.",
       control: "Address fixed by the mandate",
-      outcome:
-        "On testnet the vault built the memo `WITHDRAW_TO:0x1111…1111` from the mandate and burned 1 test USDC.",
-      evidence: {
-        label: `The testnet burn for a Base address, tx ${TX.baseBurn.label}`,
-        url: TX.baseBurn.url,
-      },
-      status: "Vault contract",
+      runs: [
+        integrateRun({
+          network: "Testnet",
+          outcome:
+            "A stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR. The vault built the memo `WITHDRAW_TO:0x1111…1111` from the mandate and burned 1 test USDC.",
+          evidence: txEvidence("The testnet burn for a Base address", TX.baseBurn),
+          status: "Vault contract",
+        }),
+        integrateRun({
+          network: "Mainnet",
+          outcome:
+            "One payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+          // contracts/deployments/mainnet.json `proof.first_base_payout_tx`. Use MAINNET_TX.basePayout once
+          // feat/landing-mainnet-payout merges: that branch adds the same transaction there.
+          evidence: txEvidence(
+            "The mainnet payout to a Base address",
+            mainnetTx("BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9", "BdN7oB76…rSQ9"),
+          ),
+          status: "Mainnet vault",
+        }),
+      ],
     },
   ],
 } as const;

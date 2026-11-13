@@ -12,13 +12,15 @@ import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { BetaStrip, BetaStripView } from "@/components/site/BetaStrip";
 import { InkBand } from "@/components/site/InkBand";
+import ig from "@/components/site/integrate.module.css";
 import j from "@/components/site/journey.module.css";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
+import site from "@/components/site/site.module.css";
 import { CANARY_CHIPS } from "@/lib/canary/chips";
 import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { parseVia } from "@/lib/canary/via";
-import { explorerTxUrl } from "@/lib/config";
+import { explorerAccountUrl, explorerTxUrl } from "@/lib/config";
 import { docsHref, findPage, PAGES } from "@/lib/docs/registry";
 import { CLI_ON_NPM, cli } from "@/lib/proof/cli";
 import { PLANNED_ROUTES } from "@/lib/routes";
@@ -1558,10 +1560,13 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(prose).toContain("one function-call key that can call `spend` and nothing else");
   });
 
-  it("takes every pill of the comparison and the integrate cards from the status list", () => {
+  it("takes every pill of the comparison and the integrate section from the status list", () => {
     const rows = STATUS.rows.map((r) => r.row);
     for (const r of COMPARE.rows) expect(rows, r.question).toContain(r.status);
     for (const c of INTEGRATE.cards) expect(rows, c.title).toContain(c.status);
+    for (const w of INTEGRATE.who) {
+      for (const r of w.runs) expect(rows, `${w.title}, ${r.network}`).toContain(r.status);
+    }
   });
 
   it("gives the console card the pill of what was tried on testnet, and names only that (audit P1-10)", () => {
@@ -1681,10 +1686,163 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(integrateHtml()).toContain(`>${INTEGRATE.title}</h2>`);
   });
 
-  it("lists where a developer goes next under the code, each docs page in this tab", () => {
+  /** Text as a reader gets it: the markup's entities decoded. */
+  const decoded = (html: string) =>
+    textContent(html)
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<");
+
+  it("keeps its headings in order: an h3 per part, an h4 per card, reference block and use", () => {
     const html = integrateHtml();
-    expect(html).toContain(`aria-label="${INTEGRATE.devLinksLabel}"`);
-    for (const l of INTEGRATE.devLinks) {
+    const heads = [...html.matchAll(/<h([2-6])[^>]*>([\s\S]*?)<\/h\1>/g)].map(
+      (x) => `${x[1]} ${decoded(x[2] ?? "")}`,
+    );
+    expect(heads).toEqual([
+      `2 ${INTEGRATE.title}`,
+      `3 ${INTEGRATE.parts.ways}`,
+      ...INTEGRATE.cards.map((c) => `4 ${c.title}`),
+      `3 ${INTEGRATE.parts.code}`,
+      `4 ${INTEGRATE.addresses.title}`,
+      `4 ${INTEGRATE.statusesTitle}`,
+      `4 ${INTEGRATE.docs.title}`,
+      `3 ${INTEGRATE.parts.uses}`,
+      ...INTEGRATE.who.map((w) => `4 ${w.title}`),
+    ]);
+    expect(INTEGRATE.parts).toEqual({
+      ways: "Four ways in",
+      code: "The SDK in one call",
+      codeNote: "The quick start of the SDK README, shortened.",
+      uses: "Three uses, with their evidence",
+    });
+    expect(sdkReadme).toContain("## Quick start");
+    // The ways in get no note: the CLI's offline verify of a snapshot needs no vault and no mandate.
+    const read = decoded(html);
+    expect(read).not.toContain("behind each one");
+    // No arrow, middot or dash glyphs, and no name on a generic element.
+    expect(read).not.toMatch(/[→↗·–—]/);
+    expect(html).not.toMatch(/<div[^>]*aria-label=/);
+  });
+
+  it("draws every status of the section the one way the page does, its words and tone from the status list", () => {
+    const html = integrateHtml();
+    const pills = [
+      ...html.matchAll(
+        /<span class="([^"]*)"><span class="sr-only">Status: <\/span>([^<]*)<\/span>/g,
+      ),
+    ];
+    const rows = [
+      ...INTEGRATE.cards.map((c) => c.status),
+      ...INTEGRATE.who.flatMap((w) => w.runs.map((r) => r.status)),
+    ].map(statusOf);
+    expect(rows).toHaveLength(8);
+    expect(pills.map((p) => decoded(p[2] ?? ""))).toEqual(rows.map((r) => r.pill));
+    // The comparison's classes: site.module.css .pill, .pillInline and the row's tone.
+    expect(pills.map((p) => p[1])).toEqual(
+      rows.map((r) => `${site.pill} ${site.pillInline} ${site[r.tone]}`),
+    );
+    expect(html.split(`class="${site.pill} `).length - 1).toBe(rows.length);
+    expect(INTEGRATE.statusPrefix).toBe("Status: ");
+    // No pill's words are written into the component.
+    const src = text(SRC, "components", "site", "Integrate.tsx");
+    for (const r of STATUS.rows) expect(src, r.id).not.toContain(r.pill);
+    // A card's pill is not part of its heading.
+    for (const c of INTEGRATE.cards) expect(html).toContain(`>${c.title}</h4>`);
+  });
+
+  it("shows the snippet whole in the code box, its comments quieter, and no pill in its head", () => {
+    const html = integrateHtml();
+    const pre = /<pre>([\s\S]*?)<\/pre>/.exec(html)?.[1] ?? "";
+    expect(decoded(pre)).toBe(SDK_SNIPPET);
+    const comments = [
+      ...pre.matchAll(new RegExp(`<span class="${ig.comment}">([^<]*)</span>`, "g")),
+    ];
+    expect(comments.map((c) => decoded(c[1] ?? ""))).toEqual(
+      SDK_SNIPPET.split("\n")
+        .filter((l) => l.includes(" // "))
+        .map((l) => l.slice(l.indexOf(" // ") + 1)),
+    );
+    expect(comments.length).toBe(6);
+    expect(html).toContain(
+      `<span>${INTEGRATE.fileName}</span><span>${INTEGRATE.codeLabel}</span></div>`,
+    );
+    expect(html).toMatch(new RegExp(`<section[^>]*aria-label="${INTEGRATE.fileName}"`));
+  });
+
+  it("names the accounts an agent points at as the deployment records have them, each on its own network's explorer", () => {
+    const testnet = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
+      accounts: { factory: string };
+      demo_vault: { account: string };
+    };
+    const mainnet = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
+      vault_v0: { account_id: string };
+      factory: { deploy_tx: string | null };
+    };
+    const [tn, mn] = INTEGRATE.addresses.networks;
+    expect(tn.name).toBe("Testnet");
+    expect(tn.rows.map((r) => [r.term, r.account.id])).toEqual([
+      ["Factory", testnet.accounts.factory],
+      ["Demo vault", testnet.demo_vault.account],
+    ]);
+    expect(mn.name).toBe("Mainnet");
+    const [factory, vault] = mn.rows;
+    expect(factory).toEqual({ term: "Factory", none: "None yet" });
+    expect(mainnet.factory.deploy_tx).toBeNull();
+    expect(README).toContain("It is a standalone vault: no mainnet factory is deployed.");
+    expect([vault.term, vault.account.id, vault.after]).toEqual([
+      "Vault",
+      mainnet.vault_v0.account_id,
+      ", the one vault",
+    ]);
+    // The explorer of the account's own network, whatever network the page is opened at.
+    for (const r of tn.rows)
+      expect(r.account.url).toBe(explorerAccountUrl("testnet", r.account.id));
+    expect(vault.account.url).toBe(explorerAccountUrl("mainnet", vault.account.id));
+    expect(tn.rows[0].account.url).toBe(
+      "https://testnet.nearblocks.io/address/vaults.probarion.testnet",
+    );
+    expect(vault.account.url).toBe("https://nearblocks.io/address/v0.probarion.near");
+    for (const network of ["testnet", "mainnet"] as const) {
+      const html = landing(network);
+      const part = html.slice(html.indexOf('id="integrate"'), html.indexOf('id="payee"'));
+      const read = decoded(part);
+      for (const r of tn.rows) {
+        expect(part).toMatch(new RegExp(`<a[^>]*href="${r.account.url}" target="_blank"`));
+        expect(read).toContain(`${r.term}${r.account.id}${tn.explorer} (opens in a new tab)`);
+      }
+      expect(part).toMatch(new RegExp(`<a[^>]*href="${vault.account.url}" target="_blank"`));
+      expect(read).toContain(
+        `Vault${vault.account.id}${mn.explorer} (opens in a new tab), the one vault`,
+      );
+      expect(read).toContain("FactoryNone yet");
+    }
+    // The networks page sits under the addresses, in this tab.
+    const html = integrateHtml();
+    const block = html.slice(
+      html.indexOf(`>${INTEGRATE.addresses.title}</h4>`),
+      html.indexOf(`>${INTEGRATE.statusesTitle}</h4>`),
+    );
+    const { route, label } = INTEGRATE.addresses.link;
+    expect([route, label]).toEqual(["/docs/start/testnet-and-mainnet", "Networks and addresses"]);
+    expect(findPage(route.slice("/docs/".length))).toBeDefined();
+    const a = new RegExp(`<a[^>]*href="${route}"[^>]*>${label}<`).exec(block)?.[0] ?? "";
+    expect(a).not.toBe("");
+    expect(a).not.toContain('target="_blank"');
+  });
+
+  it("groups the docs and the source under the code: docs pages in this tab, the rest in a new one", () => {
+    const html = integrateHtml();
+    expect(INTEGRATE.docs.groups.map((g) => [g.name, g.links.map((l) => l.label)])).toEqual([
+      ["Start", ["Quickstart (testnet)"]],
+      ["Reference", ["SDK reference", "Contract reference", "CLI reference"]],
+      ["Example", ["Pay per call"]],
+      ["Source", ["GitHub", "@probarion/sdk on npm"]],
+    ]);
+    type DocLink =
+      | { route: string; label: string }
+      | { href: string; label: string; after?: string };
+    const links = INTEGRATE.docs.groups.flatMap((g): readonly DocLink[] => g.links);
+    for (const l of links) {
       if ("route" in l) {
         expect(findPage(l.route.slice("/docs/".length)), l.route).toBeDefined();
         const label = l.label.replace(/[()]/g, "\\$&");
@@ -1692,68 +1850,85 @@ describe("the problem, the comparison and the integrate section", () => {
         expect(a, l.route).not.toBe("");
         expect(a, l.route).not.toContain('target="_blank"');
       } else {
-        expect(l.href.startsWith(LINKS.github), l.label).toBe(true);
-        expect(html).toContain(`href="${l.href}"`);
+        expect(html, l.label).toMatch(new RegExp(`<a[^>]*href="${l.href}" target="_blank"`));
       }
     }
-    expect(INTEGRATE.devLinks.find((l) => l.label === "GitHub")).toEqual({
+    expect(links.find((l) => l.label === "GitHub")).toEqual({
       href: LINKS.github,
       label: "GitHub",
     });
-    const example = INTEGRATE.devLinks.find((l) => l.label === "Example: pay per call");
-    expect(example).toEqual({
+    expect(links.find((l) => l.label === "@probarion/sdk on npm")).toEqual({
+      href: LINKS.npmSdk,
+      label: "@probarion/sdk on npm",
+    });
+    expect(LINKS.npmSdk).toBe("https://www.npmjs.com/package/@probarion/sdk");
+    expect(JSON.parse(text(ROOT, "packages", "sdk", "package.json")).name).toBe("@probarion/sdk");
+    // The example's link says what it is, to a screen reader too.
+    expect(links.find((l) => l.label === "Pay per call")).toEqual({
       href: `${LINKS.github}/tree/main/examples/402`,
-      label: "Example: pay per call",
+      label: "Pay per call",
+      after: " example",
     });
     expect(existsSync(join(ROOT, "examples", "402", "README.md"))).toBe(true);
-    // The list comes after the code, not before it.
-    expect(html.indexOf(INTEGRATE.devLinksLabel)).toBeGreaterThan(html.indexOf(INTEGRATE.fileName));
+    expect(decoded(html)).toContain("Pay per call example (opens in a new tab)");
+    // The row comes after the code, and the networks page is under the addresses, not in it.
+    expect(html.indexOf(`>${INTEGRATE.docs.title}</h4>`)).toBeGreaterThan(html.indexOf("</pre>"));
+    expect(links.map((l) => l.label)).not.toContain(INTEGRATE.addresses.link.label);
   });
 
-  it("names the accounts an agent points at, as the deployment records have them", () => {
-    const testnet = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
-      accounts: { factory: string };
-      demo_vault: { account: string };
-    };
-    const mainnet = JSON.stringify(
-      JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")),
-    );
-    expect(INTEGRATE.addresses).toBe(
-      `On testnet, the factory is \`${testnet.accounts.factory}\` and the demo vault is \`${testnet.demo_vault.account}\`. On mainnet there is one vault, \`v0.probarion.near\`, and no factory yet.`,
-    );
-    expect(mainnet).toContain('"account_id":"v0.probarion.near"');
-    expect(README).toContain("It is a standalone vault: no mainnet factory is deployed.");
-    expect(textContent(integrateHtml())).toContain(INTEGRATE.addresses.replace(/`/g, ""));
-  });
-
-  it("gives each use a control, what it did on testnet, its evidence and its status pill", () => {
+  it("gives each use a control, and per network what happened, its status pill and its evidence", () => {
     expect(INTEGRATE.who.map((w) => w.title)).toEqual([
       "Teams paying invoices with an agent",
       "Pay per API call",
       "Cross-chain payouts",
     ]);
+    expect(INTEGRATE.who.map((w) => w.runs.map((r) => r.network))).toEqual([
+      ["Testnet"],
+      ["Testnet"],
+      ["Testnet", "Mainnet"],
+    ]);
+    expect(INTEGRATE.usesHead).toEqual([
+      "Use",
+      "The mandate controls",
+      "What happened",
+      "Evidence",
+    ]);
     const html = integrateHtml();
-    const read = textContent(html);
+    // The column heads are for the eye; the control's cell carries its own head.
+    expect(html).toContain(
+      `<div class="${ig.useHead} ${ig.lab}" aria-hidden="true">${INTEGRATE.usesHead.map((h) => `<span>${h}</span>`).join("")}</div>`,
+    );
+    const read = decoded(html);
     for (const w of INTEGRATE.who) {
-      const row = statusOf(w.status);
-      expect(read, w.title).toContain(`${w.control} →: ${w.outcome.replace(/`/g, "")}`);
-      expect(html, w.title).toContain(`href="${w.evidence.url}"`);
-      expect(read, w.title).toContain(`${row.pill}${w.evidence.label} (opens in a new tab)`);
+      expect(read, w.title).toContain(`${w.title}${w.body.replace(/`/g, "")}`);
+      expect(read, w.title).toContain(`${INTEGRATE.usesHead[1]}: ${w.control}`);
+      for (const r of w.runs) {
+        const row = statusOf(r.status);
+        expect(read, w.title).toContain(`${r.network}: ${r.outcome.replace(/`/g, "")}`);
+        expect(html, w.title).toContain(`href="${r.evidence.url}"`);
+        expect(read, w.title).toContain(
+          `Status: ${row.pill}${r.evidence.label} (opens in a new tab)`,
+        );
+        // The label's end (an entry, a date, a transaction) stays whole on its line.
+        const tail = r.evidence.label.slice(r.evidence.label.lastIndexOf(", ") + 2);
+        expect(html, w.title).toContain(`<span class="${ig.keep}">${tail}</span>`);
+      }
     }
   });
 
   it("tells the invoice use as the demo vault's ledger and evidence have it", () => {
     const w = INTEGRATE.who[0];
+    const [r] = w.runs;
     const demo = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")).demo_vault as {
       account: string;
       refusals: { invoice: string; rule: string; ledger_seq: number }[];
     };
-    const refusal = demo.refusals.find((r) => r.invoice === "INV-2002");
+    const refusal = demo.refusals.find((x) => x.invoice === "INV-2002");
     expect(refusal?.rule).toBe("mandate.payee_mismatch");
-    expect(w.outcome).toContain(`\`${refusal?.rule}\``);
+    expect(r.outcome).toContain(`\`${refusal?.rule}\``);
     // The label names the invoice and the ledger: it is read out alone as a link, and it follows the status pill.
     expect(demo.account).toBe("demo.vaults.probarion.testnet");
-    expect(w.evidence.label).toBe(
+    expect(r.evidence.label).toBe(
       `${refusal?.invoice} in the demo vault's ledger, entry ${refusal?.ledger_seq}`,
     );
     // Entry seq 3 is line 4 of the ledger file, and it refused for that rule.
@@ -1767,22 +1942,24 @@ describe("the problem, the comparison and the integrate section", () => {
     };
     expect(body.seq).toBe(refusal?.ledger_seq);
     expect(JSON.stringify(body.rules)).toContain(refusal?.rule ?? "?");
-    expect(w.evidence.url).toBe(
+    expect(r.evidence.url).toBe(
       `${LINKS.github}/blob/main/docs/evidence/demo-vault/ledger-2026-11-09.jsonl#L4`,
     );
     expect(text(ROOT, "docs", "evidence", "demo-vault", "README.md")).toContain(
       '"We changed banks": 2 USDC to `new-account.testnet` | Refused by code, rule `mandate.payee_mismatch`. Nothing was sent.',
     );
-    expect(w.outcome).toContain("`new-account.testnet`");
-    expect(w.status).toBe("Payables agent");
+    expect(r.outcome).toContain("`new-account.testnet`");
+    expect(w.control).toBe("Payee fixed by the mandate");
+    expect([r.network, r.status]).toEqual(["Testnet", "Payables agent"]);
   });
 
   it("tells the pay-per-call use as the 402 run's evidence has it, and does not call it x402", () => {
     const w = INTEGRATE.who[1];
+    const [r] = w.runs;
     const evidence = text(ROOT, "docs", "evidence", "402-vault", "README.md");
-    expect(w.evidence.url).toBe(`${LINKS.github}/blob/main/docs/evidence/402-vault/README.md`);
+    expect(r.evidence.url).toBe(`${LINKS.github}/blob/main/docs/evidence/402-vault/README.md`);
     // The run the label names, by the example and its date: the MCP server pill before it is of a later release.
-    expect(w.evidence.label).toBe("The 402 example's own agent on testnet, 2026-11-09");
+    expect(r.evidence.label).toBe("The 402 example's own agent on testnet, 2026-11-09");
     expect(evidence).toContain("# The 402 example on testnet, 2026-11-09");
     expect(evidence).toContain(
       "[`agent-run-2026-11-09.txt`](agent-run-2026-11-09.txt) is what the agent printed.",
@@ -1795,41 +1972,61 @@ describe("the problem, the comparison and the integrate section", () => {
       "| 21 | Refused by code, rule `mandate.uses_exhausted`, at 18:16:25. Nothing was sent",
     );
     expect(w.control).toBe("20 uses of 0.01 test USDC");
-    expect(w.outcome).toContain("`mandate.uses_exhausted`, before any transaction");
+    expect(r.outcome).toContain("`mandate.uses_exhausted`, before any transaction");
     expect(prose).toContain(
       "The example is not an implementation of x402 or of any other payment protocol.",
     );
     expect(text(ROOT, "examples", "402", "README.md")).toContain("Not x402");
     expect(w.body).toContain("Our own 402 format, not x402.");
-    expect(w.status).toBe("MCP server");
+    expect([r.network, r.status]).toEqual(["Testnet", "MCP server"]);
   });
 
-  it("tells the cross-chain use as the smoke run had it, and says what testnet and mainnet have done", () => {
+  it("tells the cross-chain use as the smoke run and the mainnet payout had it, one run per network", () => {
     const w = INTEGRATE.who[2];
-    expect(w.evidence.url).toBe(TX.baseBurn.url);
-    expect(w.evidence.label).toBe(`The testnet burn for a Base address, tx ${TX.baseBurn.label}`);
+    const [t, mn] = w.runs;
+    expect(w.body).toBe(
+      "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate.",
+    );
+    expect(prose).toContain("a Base or Solana address paid out through NEAR Intents");
+    expect(w.control).toBe("Address fixed by the mandate");
+    // Testnet: a stand-in takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR.
+    expect(t.network).toBe("Testnet");
+    expect(t.evidence.url).toBe(TX.baseBurn.url);
+    expect(t.evidence.label).toBe(`The testnet burn for a Base address, tx ${TX.baseBurn.label}`);
     expect(CHAIN.rows[1].title).toBe("Withdrawal for a Base address");
     expect(README).toContain(
       "Spend 2 `burned`: 1 test USDC, `mt_burn` and `ft_burn` with the memo `WITHDRAW_TO:0x1111111111111111111111111111111111111111` the vault built from the mandate",
     );
-    expect(w.outcome).toContain("`WITHDRAW_TO:0x1111…1111`");
-    expect(w.outcome).toContain("burned 1 test USDC");
-    // The caveat: a stand-in on testnet, and on mainnet one payout, to a Base address.
-    expect(w.body).toContain(
-      "On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR.",
+    expect(t.outcome).toContain(
+      "A stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR.",
     );
     expect(prose).toContain(
       "On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR.",
     );
-    expect(w.body).toContain(
-      "On mainnet one payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+    expect(t.outcome).toContain(
+      "The vault built the memo `WITHDRAW_TO:0x1111…1111` from the mandate and burned 1 test USDC.",
+    );
+    expect(t.status).toBe("Vault contract");
+    // Mainnet: the one payout through NEAR Intents so far, its transaction as the deployment record has it.
+    const mainnet = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
+      proof: { first_base_payout_tx: string };
+    };
+    const hash = mainnet.proof.first_base_payout_tx;
+    expect(mn.network).toBe("Mainnet");
+    expect(mn.evidence.url).toBe(explorerTxUrl("mainnet", hash));
+    expect(mn.evidence.url).toBe(`https://nearblocks.io/txns/${hash}`);
+    expect(mn.evidence.label).toBe(
+      `The mainnet payout to a Base address, tx ${hash.slice(0, 8)}…${hash.slice(-4)}`,
+    );
+    expect(mn.outcome).toBe(
+      "One payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
     );
     expect(prose).toContain(
       "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to the owner's own Base address this way, a test decided by code rules alone",
     );
     expect(prose).toContain("the POA bridge released 0.9976 USDC on Base, keeping a fee of 0.0024");
-    expect(prose).toContain("a Base or Solana address paid out through NEAR Intents");
-    expect(w.status).toBe("Vault contract");
+    expect(mn.status).toBe("Mainnet vault");
+    expect(statusOf(mn.status).pill).toContain("1 to Base, rules-only");
   });
 
   it("links the full comparison, with its date and what Probarion lacks", () => {

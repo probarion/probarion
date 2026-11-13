@@ -24,6 +24,7 @@ const MODULES: Readonly<Record<string, string>> = {
   usage: "src/components/site/usage.module.css",
   head: "src/components/site/head.module.css",
   journey: "src/components/site/journey.module.css",
+  integrate: "src/components/site/integrate.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -496,9 +497,6 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["docs", ".agents > * + *", "margin-top", 16.5, "docs", ".prose"],
       ["docs", ".prose li > :is(p, ul, ol) + :is(p, ul, ol)", "margin-top", 16.5, "docs", ".prose"],
       ["site", ".gaps li + li", "margin-top", 15, "site", ".site"],
-      ["site", ".whoControl", "margin-top", 14, "site", ".site"],
-      ["site", ".whoProof", "margin-top", 14, "site", ".site"],
-      ["site", ".codeNote", "margin-top", 14, "site", ".site"],
       ["site", ".boFine p + p", "margin-top", 13, "site", ".site"],
       ["site", ".shot .shotMeta", "margin-top", 15, "site", ".site"],
       ["canary", ".column p + p", "margin-top", 17, "site", ".site"],
@@ -514,6 +512,9 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["journey", ".recHead", "row-gap", 16, "site", ".site"],
       ["journey", ".invRow", "row-gap", 15, "site", ".site"],
       ["journey", ".attFoot", "gap", 15, "journey", ".attFoot"],
+      // Integrate: a use's control over its runs when the columns stack, and a run's outcome over its evidence.
+      ["integrate", ".use", "row-gap", 15, "site", ".site"],
+      ["integrate", ".run", "row-gap", 15, "site", ".site"],
     ];
     for (const [file, selector, prop, px, lhFile, lhSelector] of cases) {
       const lh = Number(decl(lhFile, lhSelector, "line-height"));
@@ -551,7 +552,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["site", ".statusNote"],
       ["site", ".gaps"],
       ["site", ".closeNote"],
-      ["site", ".codeNote"],
+      ["integrate", ".partNote"],
+      ["integrate", ".useBody"],
       ["site", ".duelNote"],
       ["site", ".proofIntro"],
       ["site", ".compareMore"],
