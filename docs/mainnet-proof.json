@@ -28,7 +28,7 @@
       "kind": "base_payout",
       "network": "mainnet",
       "receiver_id": "v0.probarion.near",
-      "recorded_at": "2026-11-13T11:59:14.718Z",
+      "recorded_at": "2026-11-13T13:10:23.026Z",
       "signed_by": "agent_key",
       "signer_id": "v0.probarion.near",
       "spend_id": 3,
@@ -568,11 +568,11 @@
       "kind": "anchor",
       "network": "mainnet",
       "receiver_id": "v0.probarion.near",
-      "recorded_at": "2026-11-13T11:59:15.718Z",
+      "recorded_at": "2026-11-13T13:10:23.026Z",
       "signed_by": "ledger_key",
       "signer_id": "v0.probarion.near",
       "spend_id": null,
-      "what": "S2: the ledger signer anchored v0's ledger after spend 3 (anchor 4, 6 entries)"
+      "what": "S2: the ledger key anchored v0's ledger after spend 3 (anchor 4, 6 entries)"
     },
     "v0_deploy": {
       "amount_usdc": null,
@@ -658,7 +658,7 @@
       "kind": "mandate_created",
       "network": "mainnet",
       "receiver_id": "v0.probarion.near",
-      "recorded_at": "2026-11-13T11:59:13.718Z",
+      "recorded_at": "2026-11-13T13:10:23.026Z",
       "signed_by": "owner",
       "signer_id": "probarion.near",
       "spend_id": null,
@@ -710,7 +710,7 @@
       "what": "The owner's Meteor wallet, the vault's approver, sent 3 native USDC to the vault (ft_transfer)"
     }
   },
-  "updated_at": "2026-11-13T11:59:16.718Z",
+  "updated_at": "2026-11-13T13:10:23.026Z",
   "v": 1,
   "verify": {},
   "versions": {}

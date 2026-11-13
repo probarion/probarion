@@ -827,3 +827,78 @@ test("S2 of 2026-11-13: the deployment record, the proof file, the committed led
     assert.ok(gate.includes(part), `the S2 gate lacks: ${part}`);
   }
 });
+
+test("S2 of 2026-11-13: the proof file and the deployment record hold the hashes of the run's own records", () => {
+  const dir = "docs/evidence/mainnet-v0/s2-2026-11-13";
+  const record = JSON.parse(read("contracts/deployments/mainnet.json"));
+  const proof = JSON.parse(read("docs/mainnet-proof.json"));
+  const payout = proof.txs.attested_base_payout;
+  const lines = read(`${dir}/ledger-2026-11-13.jsonl`)
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const poa = JSON.parse(read(`${dir}/poa-status.json`));
+  const receipt = JSON.parse(read(`${dir}/base-receipt.json`));
+  const outcome = JSON.parse(read(`${dir}/outcome-20261113T114028Z.json`));
+  const spendDecision = JSON.parse(read(`${dir}/spend-decision-20261113T114124Z.json`));
+  const snapshot = JSON.parse(read(`${dir}/snapshot-2026-11-13.json`));
+  // txs.log: one row per transaction the kit sent or saw, tab-separated, with a header row.
+  const [head, ...rows] = read(`${dir}/txs.log`).trim().split("\n");
+  assert.deepEqual(head.split("\t"), ["utc", "label", "hash", "signer", "receiver", "status"]);
+  const logged = Object.fromEntries(
+    rows.map((r) => r.split("\t")).map(([, label, hash, signer]) => [label, { hash, signer }]),
+  );
+  // The Base transfer: the bridge's status, the kit's Base receipt and both records name the same transaction.
+  assert.equal(poa.status, "COMPLETED");
+  assert.equal(poa.data.tx_hash, payout.hash);
+  assert.equal(poa.data.transfer_tx_hash, payout.base_tx);
+  assert.equal(poa.data.amount, 250000);
+  assert.equal(poa.data.withdrawal_fee, "2400");
+  assert.equal(poa.data.withdraw_amount, "247600");
+  assert.equal(receipt.tx, payout.base_tx);
+  assert.equal(receipt.status, "0x1");
+  assert.equal(receipt.match, true);
+  assert.deepEqual(
+    receipt.transfers.map((t) => [t.to, t.value]),
+    [["0xb22eacdf11177d6d635e8956bbbbdd54b3e6eb27", "247600"]],
+  );
+  assert.equal(record.proof.attested_base_payout_base_tx, receipt.tx);
+  assert.equal(logged.base_release.hash, payout.base_tx);
+  // The NEAR transactions: the mandate, the spend and the anchor, each as the kit logged it.
+  assert.deepEqual(logged.mandate_s2, {
+    hash: proof.txs.v0_mandate_base_s2.hash,
+    signer: proof.txs.v0_mandate_base_s2.signer_id,
+  });
+  assert.equal(record.setup.s2_base_mandate_tx, logged.mandate_s2.hash);
+  assert.deepEqual(logged.spend_3, { hash: payout.hash, signer: payout.signer_id });
+  assert.equal(record.proof.attested_base_payout_tx, logged.spend_3.hash);
+  assert.equal(outcome.spend_tx, payout.hash);
+  assert.deepEqual(logged.anchor_cycle, {
+    hash: proof.txs.v0_anchor_4.hash,
+    signer: proof.txs.v0_anchor_4.signer_id,
+  });
+  assert.equal(outcome.anchor_tx, proof.txs.v0_anchor_4.hash);
+  // The decision: entry 4's body hash is the hash the kit read from spend 3 and the one the chain holds.
+  assert.equal(spendDecision.spend_id, 3);
+  assert.equal(spendDecision.decision_seq, 4);
+  assert.equal(lines[4].body.seq, 4);
+  assert.equal(lines[4].body_hash, spendDecision.decision_hash);
+  assert.equal(lines[4].body_hash, outcome.decision_hash);
+  const spend3 = snapshot.chain.spends.find((s) => s.id === 3);
+  assert.equal(spend3.decision_hash, lines[4].body_hash);
+  assert.equal(spend3.status, "burned");
+  // The anchor: anchor 4 on chain covers the 6 entries, with the link of the last one as its root.
+  const anchor4 = snapshot.chain.anchors.find((a) => a.seq === 4);
+  assert.equal(anchor4.count, 6);
+  assert.equal(anchor4.root, lines[5].link);
+  // The purpose and the invoice: the sha256 of the committed texts are the hashes mandate 3 and spend 3 hold.
+  const sha = (path) =>
+    createHash("sha256")
+      .update(readFileSync(new URL(`../${path}`, import.meta.url)))
+      .digest("hex");
+  const mandate3 = snapshot.chain.mandates.find((m) => m.id === 3);
+  assert.equal(sha(`${dir}/po-PO-M003.txt`), mandate3.purpose_hash);
+  assert.equal(sha(`${dir}/invoice-INV-M003.txt`), spend3.invoice_hash);
+  assert.equal(mandate3.payee.address, "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27");
+  assert.equal(mandate3.max_per_payment, "250000");
+});

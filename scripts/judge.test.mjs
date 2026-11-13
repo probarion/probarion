@@ -3,6 +3,7 @@
 // the judge in step with README.md, docs/evidence and the workflow.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -10,7 +11,9 @@ import { after, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   A8_RUN,
+  A8_RUN_MAINNET_S2,
   ALL_PASS,
+  a8Args,
   a8Passes,
   CHECK_IDS,
   childEnv,
@@ -101,6 +104,29 @@ function a8Report({
   return r;
 }
 
+/** Check e's detail in the kit's JSON report of the S2 snapshot, as the CLI printed it with the two invoices. */
+const S2_CHECK_E = JSON.parse(
+  read("docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.json"),
+).checks.find((c) => c.id === "e").detail;
+
+/**
+ * The mainnet A8 run's report as the CLI prints it with --json: checks a to h pass and i skips, check e's detail,
+ * and the two invoice files, INV-M002 for entries 0 and 1 and INV-M003 for entry 4.
+ */
+function a8MainnetReport({ detail = S2_CHECK_E } = {}) {
+  const r = report(
+    { exit: 0, checks: A8_RUN_MAINNET_S2.checks },
+    parseVerifyText(read(A8_RUN_MAINNET_S2.committed)),
+  );
+  r.checks = r.checks.map((c) => (c.id === "e" ? { ...c, detail } : c));
+  const [m002, m003] = A8_RUN_MAINNET_S2.invoiceFiles;
+  r.invoices = [
+    { file: m002, sha256: "0".repeat(64), seqs: [0, 1, 2, 3], attested_seqs: [0, 1] },
+    { file: m003, sha256: "1".repeat(64), seqs: [4, 5], attested_seqs: [4] },
+  ];
+  return r;
+}
+
 // The marks vitest prints before a test: passed, skipped, todo, failed.
 const [OK, SKIP, TODO, FAILED] = [0x2713, 0x2193, 0x25a1, 0xd7].map((c) => String.fromCharCode(c));
 
@@ -141,6 +167,9 @@ function fakeExec(calls, overrides = {}) {
     }
     if (args.includes("verify") && args.includes("--offline") && args.includes("--invoices")) {
       return answer(0, JSON.stringify(a8Report()));
+    }
+    if (args.includes("verify") && args.includes("--offline") && args.includes("--invoice")) {
+      return answer(0, JSON.stringify(a8MainnetReport()));
     }
     if (args.includes("verify")) {
       const offline = args[args.indexOf("--offline") + 1];
@@ -985,6 +1014,84 @@ describe("A8 with the committed invoices", () => {
     assert.deepEqual(parseVerifyText(text), { checks: ALL_PASS, entries: 17, anchors: 12 });
     assert.ok(text.includes(a8Passes(A8_RUN.seqs)));
     assert.ok(text.includes("\nRESULT: PASS\n"));
+  });
+
+  test("the mainnet run: PASS when check e says A8 passes on the 3 attested decisions of S1 and S2", async () => {
+    const got = row(await judge(["--offline", "--quick"]), A8_RUN_MAINNET_S2.id);
+    assert.equal(got.result, "PASS", got.detail);
+    assert.equal(planSteps(ROOT).find((s) => s.id === A8_RUN_MAINNET_S2.id)?.kind, "offline");
+    assert.match(
+      got.detail,
+      /A8 \(request binding and mandate match\) passes for 3 of 3 attested decisions \(seq 0, 1, 4\), from 2 invoice files read; same as the committed run in docs\/evidence\/mainnet-v0\/s2-2026-11-13\/verify-2026-11-13\.txt$/,
+    );
+    // The two invoice files are named one by one, not as folders, so no other .txt of the folders is read.
+    assert.equal(
+      got.command,
+      "node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/s2-2026-11-13/snapshot-2026-11-13.json --invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt --invoice docs/evidence/mainnet-v0/s2-2026-11-13/invoice-INV-M003.txt --json",
+    );
+    assert.equal(got.readme_ref.file, "docs/evidence/mainnet-v0/s2-2026-11-13/README.md");
+    assert.ok(got.readme_ref.line > 0);
+    assert.deepEqual(a8Args(A8_RUN), ["--offline", A8_RUN.snapshot, "--invoices", A8_RUN.invoices]);
+  });
+
+  test("the mainnet run FAILs when A8 leaves a decision out, check i stops skipping or the committed run differs", async () => {
+    assert.ok(S2_CHECK_E.includes(a8Passes(A8_RUN_MAINNET_S2.seqs)));
+    const fewer = S2_CHECK_E.replace(
+      a8Passes(A8_RUN_MAINNET_S2.seqs),
+      `A8 (request binding and mandate match) passes for 2 of 3 attested decisions (seq 0, 1); A8 not run for seq 4 (no invoice text supplied for invoice_hash ${"0".repeat(64)})`,
+    );
+    const factory = a8MainnetReport();
+    factory.checks = factory.checks.map((c) => (c.id === "i" ? { ...c, status: "pass" } : c));
+    const answering = (rep) => ({
+      overrides: { "--invoice docs": () => answer(0, JSON.stringify(rep)) },
+    });
+    const cases = [
+      [answering(a8MainnetReport({ detail: fewer })), /check e does not say "A8 \(request binding/],
+      [answering(factory), /check i is pass, expected skip/],
+      [
+        {
+          readFile: (r) =>
+            r === A8_RUN_MAINNET_S2.committed
+              ? read(r).replace("entries 6, anchors 4", "entries 4, anchors 3")
+              : read(r),
+        },
+        /entries 6, anchors 4 now; entries 4, anchors 3 in the committed run/,
+      ],
+    ];
+    for (const [opts, why] of cases) {
+      const r = await judge(["--offline", "--quick"], opts);
+      assert.equal(row(r, A8_RUN_MAINNET_S2.id).result, "FAIL");
+      assert.match(row(r, A8_RUN_MAINNET_S2.id).detail, why);
+      assert.equal(r.code, 1);
+    }
+  });
+
+  test("the mainnet committed run read the same invoice texts: A8 on seq 0, 1 and 4, and the same sha256", () => {
+    const dir = "docs/evidence/mainnet-v0/s2-2026-11-13";
+    const text = read(A8_RUN_MAINNET_S2.committed);
+    assert.deepEqual(parseVerifyText(text), {
+      checks: A8_RUN_MAINNET_S2.checks,
+      entries: 6,
+      anchors: 4,
+    });
+    assert.ok(text.includes(a8Passes(A8_RUN_MAINNET_S2.seqs)));
+    assert.ok(text.includes("\nRESULT: PASS\n"));
+    // The kit read the invoices from its own folder; its JSON report of the same snapshot gives their sha256 and
+    // the attested decisions each one is the invoice of, and the committed copies have the same sha256.
+    const kit = JSON.parse(read(`${dir}/verify-2026-11-13.json`));
+    const sha = (rel) =>
+      createHash("sha256")
+        .update(readFileSync(join(ROOT, rel)))
+        .digest("hex");
+    assert.deepEqual(
+      kit.invoices.map((f) => [f.sha256, f.attested_seqs]),
+      [
+        [sha(A8_RUN_MAINNET_S2.invoiceFiles[0]), [0, 1]],
+        [sha(A8_RUN_MAINNET_S2.invoiceFiles[1]), [4]],
+      ],
+    );
+    assert.deepEqual(A8_RUN_MAINNET_S2.invoiceFiles, MAINNET_V0_INVOICES);
+    assert.equal(A8_RUN_MAINNET_S2.snapshot, `${dir}/snapshot-2026-11-13.json`);
   });
 });
 

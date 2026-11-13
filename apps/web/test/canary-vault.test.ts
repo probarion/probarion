@@ -513,16 +513,18 @@ describe("what SECURITY.md, the privacy page and the threat model say about the 
     expect(security).not.toMatch(/O1 and O2 are not recorded/);
   });
 
-  it("the privacy page: two of the Canary's and five of the payables agent's, checked offline and online, each dated", () => {
+  it("the privacy page: two of the Canary's and five of the payables agent's, checked offline and online, each dated, and three on mainnet", () => {
     const invoices = PRIVACY_PAGE.sections.find((s) => s.id === "invoices");
     const said = flat((invoices?.paragraphs ?? []).join(" "));
     expect(said).toContain(
-      "The attested decisions recorded in the repository so far are all on testnet: two of the Canary's, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, and five of the payables agent's on the demo vault, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. The TEE measurement is not pinned, and A8 was not run on the Canary's two; on the demo vault's five it passed on 2026-11-12, with the invoices committed in the repository.",
+      "The attested decisions recorded in the repository so far: on testnet, two of the Canary's, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, and five of the payables agent's on the demo vault, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. On mainnet, three on v0.probarion.near of 2026-11-13, which pass A1 to A7 and, with the invoice texts, A8 offline, and have not been checked online; one of them led to a 0.25 USDC test payout to the owner's own Base address. The TEE measurement is not pinned, and A8 was not run on the Canary's two; on the demo vault's five it passed on 2026-11-12, with the invoices committed in the repository.",
     );
     expect(said).not.toContain("offline and O1 and O2 online");
     expect(said).not.toContain("checked offline only");
     expect(said).not.toMatch(/no attested decision|none recorded/i);
     expect(said).not.toContain("none is the payables agent's");
+    // S2 committed three attested decisions on mainnet, so the list is no longer all on testnet.
+    expect(said).not.toMatch(/are all on testnet/);
   });
 
   it("the threat model: the app keeps the Canary's ledger private, and the team published its own entries", () => {

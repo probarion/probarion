@@ -139,7 +139,7 @@ now, add `--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.json
 
 ## 2026-11-13: S2, a Base payout decided by an attested model
 
-The S1 section above records round 1 and stays true for it. On 2026-11-13, from 11:39 to 11:42 UTC, the owner ran
+The S1 section above records round 1 and stays true for it. On 2026-11-13, from 11:39 to 11:41 UTC, the owner ran
 round 2 on this vault: the owner signed mandate 3 (0.25 USDC once, to the same Base address, the owner's own), and the
 SDK paid INV-M003, a labeled test, as spend 3. This time an attested model, `z-ai/glm-5.3-flash` on NEAR AI Cloud,
 proposed paying, and every code rule passed: ledger entry 4, `model+rules`. The vault burned 0.25 Base USDC with

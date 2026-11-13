@@ -16,22 +16,29 @@ The software is an unaudited beta.
 ### Added
 
 - A second mainnet payout to Base, decided by an attested model and the code rules, kept as evidence. On
-  2026-11-13, from 11:39 to 11:42 UTC, the owner ran S2 on `v0.probarion.near` from their own terminal, with a kit
-  that runs the SDK at commit `c85f41b`: the owner signed mandate 3 (0.25 USDC once, to the same Base address, the
-  owner's own), `z-ai/glm-5.3-flash` on NEAR AI Cloud proposed paying INV-M003, every code rule passed (ledger
-  entry 4, `model+rules`), and spend 3 burned 0.25 USDC with `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`.
-  The POA bridge released 0.2476 USDC on Base and kept a fee of 0.0024. INV-M003 is a labeled test, not a customer
-  payment. At decision time the SDK checked the model's evidence with A1 to A7 and A8; `verify --online` (O1 and
-  O2) has not run on it. The model's payee hint named no NEAR account, so the payee rule changes of PR #142 and
-  PR #144 did not run on mainnet. Two testnet rehearsals came before it. `docs/evidence/mainnet-v0/s2-2026-11-13`
-  holds the whole signed ledger byte for byte (6 entries, 4 anchors; its leading bytes are S1's file), the
-  snapshot, the live `verify` output of 11:41:26 UTC (8 passed, 0 failed, 0 unproven, 1 skipped), the outcome,
+  2026-11-13, from 11:39 to 11:41 UTC, the owner ran S2 on `v0.probarion.near` from their own terminal, with a kit
+  copied from S1's and changed for round 2, which runs the SDK at commit `c85f41b`: the owner signed mandate 3
+  (0.25 USDC once, to the same Base address, the owner's own), `z-ai/glm-5.3-flash` on NEAR AI Cloud proposed
+  paying INV-M003, every code rule passed (ledger entry 4, `model+rules`), and spend 3 burned 0.25 USDC with
+  `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`. The POA bridge released 0.2476 USDC on Base and kept a
+  fee of 0.0024. INV-M003 is a labeled test, not a customer payment. At decision time the SDK checked the model's
+  evidence with A1 to A7 and A8; `verify --online` (O1 and O2) has not run on it. The model's payee hint named no
+  NEAR account, so the payee rule changes of PR #142 and PR #144, which that SDK holds, were not exercised on
+  mainnet: the hint gave them nothing to read. Two testnet rehearsals came before it.
+  `docs/evidence/mainnet-v0/s2-2026-11-13` holds the whole signed ledger byte for byte (6 entries, 4 anchors; its
+  leading bytes are S1's file), the snapshot, the live `verify` output of 11:41:26 UTC (8 passed, 0 failed, 0 unproven, 1 skipped), the outcome,
   the spend decision, the burn, the POA bridge status, the Base receipt, the order of every transaction, the gas
   of spend 3 read from an archival node, the invoice and purchase order texts, and a README that says how to
-  check it again. `docs/mainnet-proof.json` records mandate 3, spend 3 with its Base transfer and anchor 4, and
+  check it again. `docs/mainnet-proof.json` records mandate 3, spend 3 with its Base transfer and anchor 4 (a
+  script wrote them in the format of `pnpm proof add-tx`, so they share the one `recorded_at` of that write), and
   `contracts/deployments/mainnet.json` records mandate 3, spend 3 and the Base transfer. The judge holds the
-  run's snapshot to its committed verifier output, and `scripts/mainnet-runbook.test.mjs` holds the records,
-  the ledger and the runbook's S2 gate to each other.
+  run's snapshot to its committed verifier output, and its new offline step `verify-mainnet-v0-a8-1113-s2` runs
+  A8 on the snapshot's 3 attested decisions (entries 0, 1 and 4) with the two committed invoice texts.
+  `scripts/mainnet-runbook.test.mjs` holds the records, the ledger and the runbook's S2 gate to each other, and
+  the hashes in the proof file and the deployment record to the run's own records: the POA bridge status, the
+  Base receipt, the outcome, the spend decision, the transaction log and the snapshot. `.gitleaksignore` skips
+  one finding of the secret scan in the Base receipt, whose field `token` holds the public USDC contract address
+  on Base.
 
 - A mainnet payout to Base through NEAR Intents, kept as evidence. On 2026-11-13 the owner ran spike S1 on
   `v0.probarion.near` from their own terminal: a 1Click swap credited 1.499823 Base USDC to the vault inside
@@ -1100,6 +1107,15 @@ The software is an unaudited beta.
   each as a test to the owner's own Base address: 1.00 USDC decided by code rules alone, then 0.25 USDC decided
   by an attested model and the code rules. The docs tests now also refuse pages that still say one Base payout
   or no mainnet payment on a model's proposal, and the SDK's evidence test reads spend 3 from the proof file.
+
+- After S2, the places that list the attested decisions recorded in the repository also give the 3 on mainnet:
+  the README's NEAR AI Cloud row, the "A1 to A8, O1 and O2" row of `JUDGES.md`, `SECURITY.md`,
+  `docs/THREAT_MODEL.md`, the privacy page and the docs pages that list them (SDK reference, Let an agent pay,
+  glossary, what works today, how one payment works, what is Probarion, architecture, security model and verifier
+  checks). The 3 are on `v0.probarion.near`, of 2026-11-13: they pass A1 to A7 and, with the two invoice texts,
+  A8 offline, and have not been checked online (O1 and O2). Code refused the two of S1, and the third, entry 4,
+  led to spend 3, a 0.25 USDC test to the owner's own Base address. The docs tests now also refuse a page that
+  says the recorded attested decisions are all on testnet.
 
 - The judge's `live-verify-mainnet-v0` step verifies `v0.probarion.near` with its committed ledger
   (`--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl`) and the run's invoice text

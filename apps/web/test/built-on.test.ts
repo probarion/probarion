@@ -232,7 +232,7 @@ describe("the built-on section", () => {
 describe("the built-on facts", () => {
   const prose = README.replace(/\s+/g, " ");
 
-  it("NEAR: the vault and the factory on testnet, one small vault on mainnet with a NEAR payment, a Base payout and a refusal", () => {
+  it("NEAR: the vault and the factory on testnet, one small vault on mainnet with a NEAR payment, two Base payouts and a refusal", () => {
     const [near] = BUILT_ON.rows;
     expect(near.body).toBe(
       "Each vault is a NEAR contract that holds its USDC and checks every payment against the owner's mandate.",

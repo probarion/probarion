@@ -199,6 +199,13 @@ snapshot of the ledger and the chain:
   ([output](docs/evidence/demo-vault/verify-online-a8-2026-11-12.txt)). The code allowed the last two
   of them, and the vault paid both invoices, 2.00 test USDC each
   ([evidence of the second](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)).
+  On NEAR mainnet, the ledger of `v0.probarion.near` holds 3 attested decisions of 2026-11-13,
+  which pass A1 to A7 and, with the two invoice texts, A8 offline
+  ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)). `verify --online` has
+  not run on them, so O1 and O2 have not checked their TDX quotes or GPU evidence. Code refused the
+  two of S1, and the third, entry 4, led to a payment in real USDC: spend 3, a 0.25 USDC test to the
+  owner's own Base address, of which 0.2476 USDC arrived after the bridge fee
+  ([the run](docs/evidence/mainnet-v0/s2-2026-11-13/README.md)).
   The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not
   run on the Canary's 2, since the ledger holds no invoice text; on the demo vault's 5 it passed on
   2026-11-12, with the invoices committed in the repository

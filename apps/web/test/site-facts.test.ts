@@ -1635,7 +1635,7 @@ describe("the problem, the comparison and the integrate section", () => {
     );
     expect(w.outcome).toContain("`WITHDRAW_TO:0x1111…1111`");
     expect(w.outcome).toContain("burned 1 test USDC");
-    // The caveat: a stand-in on testnet, and on mainnet one payout, to a Base address.
+    // The caveat: a stand-in on testnet, and on mainnet two payouts, to the owner's own Base address.
     expect(w.body).toContain(
       "On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR.",
     );

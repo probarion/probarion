@@ -257,14 +257,15 @@ describe("copy rules", () => {
     expect(found).toEqual([]);
   });
 
-  it("call no mainnet payment unmade on a model's proposal once contracts/deployments/mainnet.json records S2", () => {
+  it("refuse 'one Base payout', 'no mainnet payment on a model's proposal' and 'all on testnet' once mainnet.json records S2", () => {
     const record = JSON.parse(
       readFileSync(join(ROOT, "contracts", "deployments", "mainnet.json"), "utf8"),
     ) as { proof?: { attested_base_payout_tx?: string | null } };
-    // Before S2 ran on 2026-11-13 these words were true: one Base payout, decided by code rules alone.
-    if (!record.proof?.attested_base_payout_tx) return;
+    // Before S2 ran on 2026-11-13 these words were true: one Base payout, decided by code rules alone, and every
+    // attested decision recorded in the repository on testnet. S2 is recorded, so the guard always runs.
+    expect(record.proof?.attested_base_payout_tx).toBeTruthy();
     const stale =
-      /one Base payout|One Base payout|One such payout has run|one payout has run|one has run on mainnet|No mainnet payment has been made on a model's proposal|no payment on mainnet has been made on a model's proposal/i;
+      /one Base payout|One Base payout|One such payout has run|one payout has run|one has run on mainnet|No mainnet payment has been made on a model's proposal|no payment on mainnet has been made on a model's proposal|are all on testnet|recorded in the repository are all/i;
     const found: string[] = [];
     for (const p of PAGES) {
       const fields = [p.title, p.nav, p.description, p.lede, readMdx(p.path)];

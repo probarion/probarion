@@ -3,7 +3,7 @@
 Round 1 of 2026-11-13, [S1](../s1-2026-11-13/README.md), showed that `v0.probarion.near` can pay a Base address
 through NEAR Intents (the mandate, the burn and the POA bridge) with a decision made by the code rules alone. Round 2,
 S2, ran the same path with the decision made by an attested model on NEAR AI Cloud and the code rules together. On
-2026-11-13, between 11:39 and 11:42 UTC (block times), the vault paid invoice INV-M003, 0.25 USDC, under a new
+2026-11-13, between 11:39 and 11:41 UTC (block times), the vault paid invoice INV-M003, 0.25 USDC, under a new
 mandate 3 whose payee is the same Base address. `z-ai/glm-5.3-flash` proposed paying it, every code rule passed, and
 the vault burned 0.25 Base USDC inside NEAR Intents with the memo
 `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27`. The POA bridge released 0.2476 USDC on Base and kept
@@ -22,15 +22,15 @@ each other and with ledger position 4) and with A8 (the request rebuilt from the
 GPU evidence are checked by `verify --online` (O1 and O2), which has not run on this decision, and the TEE
 measurement is not pinned, so this does not show which model image ran.
 
-**The payee rule's later changes did not run.** Round 1's refusals came from a NEAR account in the model's payee
+**The payee rule's later changes were not exercised.** Round 1's refusals came from a NEAR account in the model's payee
 hint ([why round 1 was rules-only](../s1-2026-11-13/README.md#why-the-payout-was-decided-rules-only)). This hint
 had no `near_account`, so `mandate.payee_mismatch` passed on the Base address alone: neither the rule change of
 [PR #142](https://github.com/probarion/probarion/pull/142) nor the asset label of
 [PR #144](https://github.com/probarion/probarion/pull/144) was exercised on mainnet.
 
-**Who signed.** The owner ran the mainnet steps in their own terminal, with a kit kept outside this repository that
-runs the SDK of this repository at commit `c85f41b` (`dev` on 2026-11-13, with PR #144); the kit's digest was
-`b0b348ea…59c4`. The owner signed `create_mandate` with `probarion.near`. The kit signed the spend with the vault's
+**Who signed.** The owner ran the mainnet steps in their own terminal, with a second kit, copied from round 1's and
+changed for round 2, kept outside this repository, that runs the SDK of this repository at commit `c85f41b` (`dev`
+on 2026-11-13, with PR #144); the kit's digest was `b0b348ea…59c4`. The owner signed `create_mandate` with `probarion.near`. The kit signed the spend with the vault's
 spend-only agent key, and the ledger entries and the anchor with the vault's ledger key, which can call `anchor`
 alone; both key files stayed on the owner's machine. Claude signed nothing on mainnet. Round 2 added no USDC and no
 key: it paid from the 0.499823 Base USDC that round 1 left in `intents.near`, wrote on round 1's ledger with the same
@@ -116,7 +116,7 @@ Spend 3 burned 15.36 Tgas, 0.001424 NEAR, summed over the transaction and its re
 | --- | --- |
 | [`ledger-2026-11-13.jsonl`](ledger-2026-11-13.jsonl) | The vault's signed ledger, entries 0 to 5, byte for byte as the run wrote it |
 | [`snapshot-2026-11-13.json`](snapshot-2026-11-13.json) | The chain data and ledger the verifier read at 11:41:25 UTC |
-| [`verify-2026-11-13.txt`](verify-2026-11-13.txt), [`verify-2026-11-13.json`](verify-2026-11-13.json) | The verifier's live run at 11:41:26 UTC, with the ledger and the two invoice texts, as text and as JSON. Its invoices line names the files' paths on the owner's machine; the committed copies are [`../s1-2026-11-13/invoice-INV-M002.txt`](../s1-2026-11-13/invoice-INV-M002.txt) and [`invoice-INV-M003.txt`](invoice-INV-M003.txt), with the same sha256 (`bd45f232…` and `c2461348…`) |
+| [`verify-2026-11-13.txt`](verify-2026-11-13.txt), [`verify-2026-11-13.json`](verify-2026-11-13.json) | The verifier's output with the ledger and the two invoice texts: as text, the live run at 11:41:26 UTC, and as JSON, the kit's offline report on the snapshot that run wrote, at 11:41:27 UTC. The invoices line names the files' paths on the owner's machine; the committed copies are [`../s1-2026-11-13/invoice-INV-M002.txt`](../s1-2026-11-13/invoice-INV-M002.txt) and [`invoice-INV-M003.txt`](invoice-INV-M003.txt), with the same sha256 (`bd45f232…` and `c2461348…`) |
 | [`invoice-INV-M003.txt`](invoice-INV-M003.txt), [`po-PO-M003.txt`](po-PO-M003.txt) | The invoice and the purchase order, whose sha256 are on chain |
 | [`outcome-20261113T114028Z.json`](outcome-20261113T114028Z.json) | What the kit recorded for the cycle: `burned`, the model's proposal, its tokens and attempts, and the model rules |
 | [`spend-decision-20261113T114124Z.json`](spend-decision-20261113T114124Z.json) | The decision behind spend 3, as the kit read it: entry 4, `allow`, `model+rules`, attested |
