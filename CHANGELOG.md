@@ -1242,7 +1242,7 @@ The software is an unaudited beta.
 
 - The README, JUDGES.md, `docs/TRACKS.md` and the docs follow the other changes of 2026-11-13. They now say what
   the payee check is: `probarion payee check` and the `/check` page give allow, warn or block with reasons,
-  read-only, in this repository and not in npm 0.1.1, and `/check` is live only after the next deploy. On
+  read-only, in this repository and not in npm 0.1.1, and `/check` is live from the deploy that ships it. On
   2026-11-13 at 20:44:51 UTC, and again at 22:26 UTC, `probarion-payee.testnet` with `--vault v0.probarion.testnet`
   printed ALLOW, and at 22:26 UTC the owner's mainnet payees printed WARN. The live check's text follows the
   landing: "An inflated invoice" answers `OverPerPayment`, "A hijacked prompt" answers `ok` and the page says the
@@ -1254,19 +1254,38 @@ The software is an unaudited beta.
   "Payee check" (`/check`, so also the sitemap) and "Run a pilot", and `apps/web/e2e/a11y.spec.ts` checks `/check`.
   In the docs, Evaluate in 5 minutes gives the same live check answers, and the SDK reference and Install name the
   `./payee` entry point and `payee check`'s use of `NEAR_ARCHIVAL_RPC_URLS`. JUDGES.md's gas row says `/usage`
-  shows the mainnet gas after the next deploy, and the README counts 145 Playwright tests in `apps/web/e2e`
+  shows the mainnet gas from the deploy that ships it, and the README counts 145 Playwright tests in `apps/web/e2e`
   (`playwright test --list`). `check-claims` also reads `docs/agent-market-2026-11.md`, which `docs/TRACKS.md`
   links from track 07. The package test counts are re-measured, each with its package's own `test` script on
   Windows at 22:20 UTC on 2026-11-13: 888 in `@probarion/core`, 824 in `@probarion/sdk` (none skipped), 364 in the
   CLI and 197 in `@probarion/mcp`; `pnpm judge` quotes the first three. `docs/evidence/mainnet-v0/README.md` and
   `docs/measurement-pin-2026-11.md` add dated sections for the no-clone verify and the landing row's new words.
   Check: `node scripts/check-claims.mjs` and `pnpm judge --offline --quick`.
+- Review fixes for the integration. The no-clone verify blocks in the README and JUDGES.md say that probarion.xyz
+  serves `/samples/mainnet` from the deploy that ships this commit, and give the same files on
+  raw.githubusercontent.com as the fallback. Each "live after the next deploy" now reads "from the deploy that
+  ships this commit", which stays true after the deploy. The landing's new scenarios carry it too, with what the live
+  page showed at 23:17 UTC on 2026-11-13: its hijacked prompt asked 50 USDC and got `OverPerPayment`. The S2 claims
+  at the top of the README and in JUDGES.md carry the caveat that the TEE measurement is not pinned, and the README
+  calls S1's two refusals false refusals where it names them. The new `docs/evidence/payee-check/2026-11-13.txt`
+  holds five read-only payee checks of 23:10 UTC on 2026-11-13 with their exit codes: the testnet payee ALLOW,
+  `attacker-eval.testnet` BLOCK, `probarion-duonq.near` (one letter off mandate 1's payee on mainnet) BLOCK, and
+  the owner's two mainnet payees WARN. JUDGES.md has a "What is proven" row for it, and the README's no-clone check
+  has a sixth step, `/check`'s "One letter off". The README's "NEAR technology used, and how" now comes right after
+  Contents, and "Check it in 60 seconds" is "Check it with no clone", since no one timed it. `docs/TRACKS.md` 06
+  says what the Canary's raw mode skips (the SDK's preflight and the code rules, not the contract's dry run) and
+  adds INV-2002, the "We changed banks" invoice that code refused on testnet on 2026-11-09 (ledger entry 3). The
+  seed blocklist's two names are said to come from eval cases and test fixtures. The web console's 9,647 is pinned
+  to commit 2b97c27, and `scripts/smoke-live.mjs` names JUDGES.md's "The worst case today".
+  `.github/workflows/no-clone-verify.yml` no longer fails its job when a Node 22 step fails, so the first run there
+  decides the Node 22 line without a red check. Check: `node scripts/check-claims.mjs` and
+  `pnpm judge --offline --quick`.
 
 - The front door. The README's top is a 30-second story with S2's mainnet test payment (0.25 USDC sent, 0.2476
   arrived on the owner's own Base address), the worst case today read live from `v0.probarion.near` at 19:01 UTC on
   2026-11-13 (`docs/evidence/mainnet-v0/worst-case-2026-11-13.json`) with what a leaked ledger key or the owner's
   account could do, the re-check of every decision with the no-clone mainnet verify block in Bash and PowerShell and
-  O1 and O2 on mainnet, an install table, a 60-second check, a by-track table, a sourced and dated answer to "why not
+  O1 and O2 on mainnet, an install table, a no-clone check, a by-track table, a sourced and dated answer to "why not
   a policy on NEAR's Agent API or OutLayer?" and who it is for. JUDGES.md is rewritten: the worst case first with a
   read-only Node command that needs no clone, five links in order (the first with the same verify block), one Node 24
   setup, one CLI convention and today's `pnpm judge` summaries. The README's "For judges: start here" block and
@@ -1316,8 +1335,8 @@ The software is an unaudited beta.
 - `scripts/check-claims.mjs` says what it is doing while it runs, on stderr: first
   `check-claims (progress): reading up to <n> files`, with a note that the first run on a fresh Windows clone can
   take a few minutes, then `<n> files read` every 500 files. Most of a first run is reading each file once (in a
-  fresh local clone on 2026-11-14 it read 1,151 of 1,398 files, 1,018 of them for the claim-marker scan). stdout
-  keeps the problems and the one summary line, and `pnpm judge` still reports a crash by its own error line
+  fresh local clone on 2026-11-13 UTC it read 1,151 of 1,398 files, 1,018 of them for the claim-marker scan).
+  stdout keeps the problems and the one summary line, and `pnpm judge` still reports a crash by its own error line
   (`scripts/check-claims-progress.test.mjs`). The SDK's two tests of a recorded NEAR AI Cloud decision no longer
   skip while they wait for a recording: `packages/sdk/test/fixtures/nearai-recorded/decision.json` is built from
   entry 4 of the committed mainnet ledger of `v0.probarion.near` (S2, 2026-11-13) and its invoice INV-M003, a

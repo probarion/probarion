@@ -123,7 +123,7 @@ Both mandate commands print a call the owner signs. A mandate has no edit call: 
 
 ## Payee commands
 
-`payee check` is advice for the owner before a mandate names a payee: it reads the chain, signs nothing and changes nothing on chain. A read it could not make warns, so the verdict is never `ALLOW`. It is in this repository and newer than npm 0.1.1. [Mandates](/docs/concepts/mandates#why-a-mandate-cannot-be-edited) explains why a mandate's payee never changes.
+`payee check` is advice for the owner before a mandate names a payee: it reads the chain, signs nothing and changes nothing on chain. A read it could not make warns, so a check with a failed read does not answer `ALLOW`. It is in this repository and newer than npm 0.1.1. [Mandates](/docs/concepts/mandates#why-a-mandate-cannot-be-edited) explains why a mandate's payee never changes.
 
 <RefTable id="cli-commands-payee" />
 

@@ -6,7 +6,8 @@ name: no-clone verify
 # https://probarion.xyz/samples/mainnet), then runs probarion 0.1.1 from npm, which reads mainnet with read-only
 # RPC requests and signs nothing. It passes when checks a to h pass and check i skips (no factory made the vault).
 # It runs on Node 24, which probarion 0.1.1 declares (engines node >=24), and on Node 22 to learn whether 0.1.1 also
-# works there. On a pull request it reads the branch's pushed head commit, not the merge commit GitHub generates.
+# works there. A Node 22 step that fails is marked failed in the log but does not fail the job, so the commit's check
+# stays green while that leg is an experiment. On a pull request it reads the branch's pushed head commit, not the merge commit GitHub generates.
 # apps/web/test/samples-mainnet.test.ts keeps the served files byte for byte equal to their sources in docs/. The
 # action is pinned by the full SHA ci.yml uses.
 
@@ -38,6 +39,7 @@ jobs:
           node-version: ${{ matrix.node }}
       # The README's Bash block as it is, with B at this commit's copy of the files instead of probarion.xyz.
       - name: Run the README block in an empty folder
+        continue-on-error: ${{ matrix.node == 22 }}
         env:
           SAMPLES: https://raw.githubusercontent.com/probarion/probarion/${{ github.event.pull_request.head.sha || github.sha }}/apps/web/public/samples/mainnet
         run: |
@@ -51,6 +53,7 @@ jobs:
           npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
             --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json | tee "$RUNNER_TEMP/verify.txt"
       - name: Require checks a to h to pass and check i to skip
+        continue-on-error: ${{ matrix.node == 22 }}
         run: |
           out="$RUNNER_TEMP/verify.txt"
           for c in a b c d e f g h; do

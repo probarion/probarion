@@ -85,7 +85,7 @@ export const VAULTS = [
 ];
 
 /**
- * What README.md's mainnet runs and JUDGES.md's "Worst case, priced" say of mainnet mandate 1 after the runs of
+ * What README.md's mainnet runs and JUDGES.md's "The worst case today" say of mainnet mandate 1 after the runs of
  * 2026-11-13: it pays probarion-duong.near at most 1 USDC a payment, 1 of its 2 payments is used, the other mandates
  * are exhausted (so the worst case is 1 USDC plus gas), and the vault holds 2 USDC. A new mainnet spend changes
  * these, and the public copy with them, in the same pull request.
@@ -539,7 +539,7 @@ export function mainnetMandateVerdict(mandates, usdc, frozen, want = MAINNET_MAN
   if (diffs.length > 0) {
     return {
       result: "FAIL",
-      detail: `mandate ${want.id}: ${diffs.join("; ")}. README.md and JUDGES.md (Worst case, priced) say it has 1 USDC and 1 payment left and the other mandates are exhausted: find what changed, then update the copy`,
+      detail: `mandate ${want.id}: ${diffs.join("; ")}. README.md and JUDGES.md (The worst case today) say it has 1 USDC and 1 payment left and the other mandates are exhausted: find what changed, then update the copy`,
     };
   }
   const what = `mandate ${want.id} is active: ${m.uses} of ${m.max_uses} payments used, at most ${usdcText(m.max_per_payment)} USDC a payment to ${want.payee}, expires ${dayOfNs(m.expires_at_ns)}; the only active mandate; the vault holds ${usdcText(usdc)} USDC`;

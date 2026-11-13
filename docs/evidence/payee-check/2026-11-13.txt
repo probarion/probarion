@@ -1,0 +1,101 @@
+Payee check, read-only, on NEAR testnet and mainnet (2026-11-13, UTC)
+
+What this records
+-----------------
+`probarion payee check` answers allow, warn or block about a payee before a mandate names it, with one reason per
+check: the account exists, Probarion's seed blocklist, a lookalike of the vault's payees, contract code, new or code
+changed in about 7 days (on Base, nonce 0, a weaker sign that shows no age), and whether the vault paid it before.
+It is in this repository (packages/core/src/payee-check.ts, packages/sdk/src/payee-signals.ts,
+packages/cli/src/commands/payee.ts), not in npm 0.1.1. These runs used the repository's CLI, built from the branch
+chore/integrate-2026-11-14 in a clone.
+
+Each run reads the chain with read-only requests: NEAR RPC views and block headers (FastNEAR, and its archival node
+for the block about 7 days back) and, for the Base payee, Base JSON-RPC (https://mainnet.base.org). It signs
+nothing and sends no transaction. The verdict is advice for the owner; it changes nothing on chain.
+
+Exit codes: 0 allow, 2 warn, 1 block (or a check that could not run), 64 usage error.
+
+Result
+------
+  near:probarion-payee.testnet, testnet, vault v0.probarion.testnet   ALLOW, exit 0
+  near:attacker-eval.testnet, testnet, vault v0.probarion.testnet     BLOCK, exit 1 (blocklisted, not_found)
+  near:probarion-duonq.near, mainnet, vault v0.probarion.near         BLOCK, exit 1 (lookalike, not_found)
+  near:probarion-duong.near, mainnet, vault v0.probarion.near         WARN, exit 2 (new_7d)
+  base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27, mainnet, same vault  WARN, exit 2 (nonce 0)
+
+probarion-duonq.near is one letter off probarion-duong.near, the payee of mandate 1 of v0.probarion.near. No account
+of that name existed on mainnet at the time of the run. The /check page has the same case as its "One letter off"
+example.
+
+Caveats: the blocklist is a seed of two testnet names from Probarion's own eval cases and test fixtures. Probarion
+does not hold them, and neither has a report of wrongdoing. It is not a reputation service. The owner's own mainnet
+payees get WARN, not ALLOW: probarion-duong.near was new within about 7 days on this date, and the Base payee has
+sent no transaction (nonce 0). A lookalike check compares the payee with this vault's payees only. The code is
+unaudited. The mainnet payments so far are tests to the owner's own addresses.
+
+Machine: Windows 10 Pro 10.0.19045, Git Bash, Node v24.12.0. Each run's first line gives its time in UTC. Program
+output is verbatim.
+
+Runs
+----
+# 2026-11-13T23:10:18Z Git Bash, node v24.12.0, the repository CLI (packages/cli built from this branch)
+$ node packages/cli/dist/bin.js payee check near:probarion-payee.testnet --network testnet --vault v0.probarion.testnet
+ALLOW: near:probarion-payee.testnet on testnet
+  info  not_blocklisted     Not on Probarion's seed blocklist for testnet (2 entries; a seed list, not a reputation service).
+  info  no_lookalike        Looks like none of this vault's 1 other payee.
+  info  paid_before         This vault paid near:probarion-payee.testnet once before.
+  info  found               The account exists on NEAR testnet.
+  info  no_contract         No contract code on NEAR testnet: a plain account.
+  info  older_than_7d       The account existed about 7 days ago (block 276545026).
+  info  code_unchanged_7d   Its code is the same as about 7 days ago (block 276545026).
+Read-only at 2026-11-13T23:10:19.653Z: views and block headers, nothing signed or sent.
+The verdict is advice for the owner who writes this payee into a mandate. It changes nothing on chain.
+exit code: 0
+
+# 2026-11-13T23:10:22Z Git Bash, node v24.12.0, the repository CLI (packages/cli built from this branch)
+$ node packages/cli/dist/bin.js payee check near:attacker-eval.testnet --network testnet --vault v0.probarion.testnet
+BLOCK: near:attacker-eval.testnet on testnet
+  block blocklisted         near:attacker-eval.testnet is on Probarion's seed blocklist: the attacker's account in Probarion's own eval cases; Probarion does not hold it; no report of wrongdoing.
+                            evidence: https://github.com/probarion/probarion/blob/main/eval/cases.json
+  block not_found           No account attacker-eval.testnet exists on NEAR testnet. Check the name with the payee: whoever creates this account would receive the payments.
+  warn  first_payment       This vault has not paid near:attacker-eval.testnet before. Set approval_above to 0 on its mandate, so an approver signs each payment until you trust this payee.
+  info  no_lookalike        Looks like none of this vault's 2 other payees.
+Read-only at 2026-11-13T23:10:23.089Z: views and block headers, nothing signed or sent.
+The verdict is advice for the owner who writes this payee into a mandate. It changes nothing on chain.
+exit code: 1
+
+# 2026-11-13T23:10:24Z Git Bash, node v24.12.0, the repository CLI (packages/cli built from this branch)
+$ node packages/cli/dist/bin.js payee check near:probarion-duonq.near --network mainnet --vault v0.probarion.near
+BLOCK: near:probarion-duonq.near on mainnet
+  block lookalike           near:probarion-duonq.near looks like near:probarion-duong.near, the payee of mandate 1 (one edit apart). Check every character with the payee through another channel before you sign.
+  block not_found           No account probarion-duonq.near exists on NEAR mainnet. Check the name with the payee: whoever creates this account would receive the payments.
+  warn  first_payment       This vault has not paid near:probarion-duonq.near before. Set approval_above to 0 on its mandate, so an approver signs each payment until you trust this payee.
+  info  not_blocklisted     Not on Probarion's seed blocklist for mainnet (0 entries; a seed list, not a reputation service).
+Read-only at 2026-11-13T23:10:25.083Z: views and block headers, nothing signed or sent.
+The verdict is advice for the owner who writes this payee into a mandate. It changes nothing on chain.
+exit code: 1
+
+# 2026-11-13T23:10:27Z Git Bash, node v24.12.0, the repository CLI (packages/cli built from this branch)
+$ node packages/cli/dist/bin.js payee check near:probarion-duong.near --network mainnet --vault v0.probarion.near
+WARN: near:probarion-duong.near on mainnet
+  warn  new_7d              The account did not exist about 7 days ago (block 223375940): it is new.
+  info  not_blocklisted     Not on Probarion's seed blocklist for mainnet (0 entries; a seed list, not a reputation service).
+  info  no_lookalike        Looks like none of this vault's 1 other payee.
+  info  paid_before         This vault paid near:probarion-duong.near once before.
+  info  found               The account exists on NEAR mainnet.
+  info  no_contract         No contract code on NEAR mainnet: a plain account.
+Read-only at 2026-11-13T23:10:27.828Z: views and block headers, nothing signed or sent.
+The verdict is advice for the owner who writes this payee into a mandate. It changes nothing on chain.
+exit code: 2
+
+# 2026-11-13T23:10:29Z Git Bash, node v24.12.0, the repository CLI (packages/cli built from this branch)
+$ node packages/cli/dist/bin.js payee check base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27 --network mainnet --vault v0.probarion.near
+WARN: base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27 on mainnet
+  warn  new_7d              base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27 has sent no transaction on Base (nonce 0): it may be new or unused. A nonce does not show its age.
+  info  not_blocklisted     Not on Probarion's seed blocklist for mainnet (0 entries; a seed list, not a reputation service).
+  info  no_lookalike        Looks like none of this vault's 1 other payee.
+  info  paid_before         This vault paid base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27 2 times before.
+  info  no_contract         No contract code on Base: a plain account.
+Read-only at 2026-11-13T23:10:29.994Z: views and block headers, nothing signed or sent.
+The verdict is advice for the owner who writes this payee into a mandate. It changes nothing on chain.
+exit code: 2
