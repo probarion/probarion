@@ -30,6 +30,7 @@ const MODULES: Readonly<Record<string, string>> = {
   compare: "src/components/site/compare.module.css",
   tamper: "src/components/site/tamper.module.css",
   chain: "src/components/site/chain.module.css",
+  live: "src/components/site/live.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -405,7 +406,7 @@ describe("text contrast at WCAG AAA (1.4.6), from the tokens and the CSS modules
 
   it("keeps an input's edge at 3:1 on the panel it sits on (WCAG 1.4.11)", () => {
     for (const [file, selector] of [
-      ["site", ".field select"],
+      ["live", ".field select"],
       ["site", ".accountInput"],
       ["canary", ".textarea"],
     ] as const) {
@@ -526,6 +527,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       // The chain: a row's call, what the chain shows and its transaction stacked, and the foot's two lines.
       ["chain", ".row", "row-gap", 15, "site", ".site"],
       ["chain", ".foot", "gap", 15, "site", ".site"],
+      // The live check: the lines of a hijack's invoice text under its quote.
+      ["live", ".injLine", "margin-top", 15, "live", ".inj"],
       // The hero: one step of the Canary's rehearsal under the next.
       ["hero", ".steps li + li", "margin-top", 14, "hero", ".steps"],
     ];
@@ -579,6 +582,10 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["compare", ".moreNote"],
       ["chain", ".body"],
       ["chain", ".foot"],
+      ["live", ".hint"],
+      ["live", ".inj"],
+      ["live", ".why"],
+      ["live", ".noScript"],
       ["site", ".boFine"],
       ["head", ".lede"],
       ["docs", ".prose > :is(p, ul, ol, blockquote)"],
@@ -720,11 +727,13 @@ describe("text spacing, reflow, focus and colour schemes", () => {
       RULES.filter((r) => r.file === file && forced(r) && r.selectors.includes(selector)).map(
         (r) => r.decls,
       );
-    expect(inForced("site", '.scenario[aria-pressed="true"]')[0]?.["border-color"]).toBe(
+    expect(inForced("live", '.scenario[aria-pressed="true"]')[0]?.["border-color"]).toBe(
       "Highlight",
     );
-    expect(decl("site", '.scenario[aria-pressed="true"]', "border-width")).toBe("2px");
-    for (const s of [".netPillCurrent", ".pill", ".state", ".payeeLock"]) {
+    expect(decl("live", '.scenario[aria-pressed="true"]', "border-width")).toBe("2px");
+    // The red rule of the live check's hijack note takes the forced text colour, so it shows on a dark Canvas.
+    expect(inForced("live", ".inj")[0]?.["border-left-color"]).toBe("CanvasText");
+    for (const s of [".netPillCurrent", ".pill", ".state"]) {
       expect(inForced("site", s)[0]?.border, s).toBe("1px solid CanvasText");
     }
     expect(inForced("site", ".gold")[0]?.color).toBe("CanvasText");

@@ -1550,7 +1550,7 @@ describe("the live check", () => {
     expect(client).toContain("copy.injectedCanaryLink.href");
   });
 
-  it("marks the answer busy and dims it while asking, and keeps room for the hint: two lines, four on a phone", () => {
+  it("marks the answer busy and dims it while asking, and keeps room for the source line: two lines, three in a narrow column, four or five on a phone", () => {
     const html = renderToStaticMarkup(createElement(Home));
     const region = /<div[^>]*aria-live="polite"[^>]*>/.exec(
       html.slice(html.indexOf('id="try"')),
@@ -1558,23 +1558,128 @@ describe("the live check", () => {
     expect(region).toContain('aria-busy="false"');
     const client = text(SRC, "components", "site", "LiveCheckClient.tsx");
     expect(client).toContain('aria-busy={shown.kind === "loading"}');
-    expect(client).toContain('className={shown.kind === "loading" ? s.liveBusy : undefined}');
-    const css = text(SRC, "components", "site", "site.module.css");
-    const busy =
-      /\.liveBusy \.liveVerdict,\s*\.liveBusy \.liveWhy \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(client).toContain('className={shown.kind === "loading" ? lc.busy : undefined}');
+    const css = text(SRC, "components", "site", "live.module.css");
+    const busy = /\.busy \.verdict,\s*\.busy \.why \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(busy).toContain("color: var(--color-band-mute)");
     expect(busy).not.toContain("opacity");
-    // The room is counted in lines of the site's line-height. At 320px to 390px the answer's source with its raw
-    // answer ("Answer from v0.probarion.testnet at block 277337530, 10:22:24 PM. Raw: {...}") takes four.
-    const lineHeight = Number(/\.site \{[^}]*line-height: ([\d.]+);/.exec(css)?.[1]);
+    // The room is counted in lines of the site's line-height, which the source line keeps. At 961px to 1200px the
+    // answer column is narrow and the line, with its raw answer in mono, takes three; at 360px to 620px, four; below 360px,
+    // five.
+    const site = text(SRC, "components", "site", "site.module.css");
+    const lineHeight = Number(/\.site \{[^}]*line-height: ([\d.]+);/.exec(site)?.[1]);
     expect(lineHeight).toBe(1.55);
-    const hintEm = (from: string) =>
-      Number(/\.liveAnswer \.liveHint \{[^}]*min-height: ([\d.]+)em;/.exec(from)?.[1]);
-    expect(hintEm(css)).toBeCloseTo(2 * lineHeight, 5);
-    expect(hintEm(css.slice(css.indexOf("@media (max-width: 620px)")))).toBeCloseTo(
+    const rule = (from: string) => /\n\s*\.source \{([^}]*)\}/.exec(from)?.[1] ?? "";
+    const reserved = (from: string) => Number(/min-height: ([\d.]+)em;/.exec(rule(from))?.[1]);
+    expect(rule(css)).toContain(`line-height: ${lineHeight};`);
+    expect(reserved(css)).toBeCloseTo(2 * lineHeight, 5);
+    const middle = css.slice(css.indexOf("@media (min-width: 961px) and (max-width: 1200px)"));
+    expect(reserved(middle)).toBeCloseTo(3 * lineHeight, 5);
+    expect(reserved(css.slice(css.indexOf("@media (max-width: 620px)")))).toBeCloseTo(
       4 * lineHeight,
       5,
     );
+    expect(reserved(css.slice(css.indexOf("@media (max-width: 359px)")))).toBeCloseTo(
+      5 * lineHeight,
+      5,
+    );
+  });
+
+  it("reads the answer top down: its head with the explorer link, the verdict, the source, the request, the method", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    const answer = html.slice(html.indexOf("The contract&#x27;s answer"));
+    const at = (needle: string) => {
+      const i = answer.indexOf(needle);
+      expect(i, needle).toBeGreaterThanOrEqual(0);
+      return i;
+    };
+    const order = [
+      at("https://testnet.nearblocks.io/address/v0.probarion.testnet"),
+      at('aria-live="polite"'),
+      at("Recorded answer from "),
+      at('id="live-request-cap"'),
+      at("check_spend({"),
+      at("<dt>Method</dt>"),
+    ];
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // One explorer link in the panel, with its new-tab words for a screen reader.
+    const panel = answer.slice(0, at("<dt>Method</dt>"));
+    expect(panel.match(/nearblocks\.io/g)).toHaveLength(1);
+    expect(visibleText(panel)).toContain(`${LIVE_CHECK.copy.explorer}`);
+    expect(panel).toContain("(opens in a new tab)");
+    // The raw answer is code, with a break offered after its commas.
+    const source = /Recorded answer from [^<]*<code>([\s\S]*?)<\/code>/.exec(answer)?.[1] ?? "";
+    expect(source).toContain("<wbr/>");
+    expect(source.replace(/<wbr\/>/g, "")).toContain("&quot;ok&quot;:true");
+  });
+
+  it("names the request panel by its visible caption, once", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    const cap = /<p id="live-request-cap"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
+    expect(visibleText(cap).trim()).toBe(LIVE_CHECK.copy.requestLabel.replace(/`/g, ""));
+    expect(cap).toContain("<code>check_spend</code>");
+    const scroller = /<section[^>]*aria-labelledby="live-request-cap"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(scroller).not.toBe("");
+    expect(scroller).not.toContain("aria-label=");
+  });
+
+  it("marks the verdict with the journey's shape for its outcome, in its own colour and hidden from a screen reader", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    const region = html.slice(html.indexOf('aria-live="polite"', html.indexOf('id="try"')));
+    const verdict = /<p[^>]*>([\s\S]*?)<\/p>/.exec(region)?.[1] ?? "";
+    expect(verdict).toMatch(/^<svg[^>]*aria-hidden="true"[^>]*focusable="false"/);
+    expect(verdict).toContain('<circle cx="6" cy="6" r="5" fill="currentColor"></circle>');
+    expect(verdict).not.toContain("<use");
+    expect(visibleText(verdict).trim()).toBe("Would pay");
+    const client = text(SRC, "components", "site", "LiveCheckClient.tsx");
+    expect(client).toContain('if (tone === "none") return null;');
+    expect(client).not.toMatch(/fill="var\(|stroke="var\(/);
+  });
+
+  it("lays the mandate out who and how much first, then how often, until when, which key and what state", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    const strip = html.slice(html.indexOf("Mandate 1, as the chain has it"));
+    const names = [...strip.matchAll(/<dt>([a-z_]+)<\/dt>/g)].map((m) => m[1]).slice(0, 8);
+    const f = LIVE_CHECK.copy.fields;
+    expect(names).toEqual([
+      f.payee,
+      f.maxPerPayment,
+      f.maxTotal,
+      f.approvalAbove,
+      f.uses,
+      f.expires,
+      f.agentPk,
+      f.status,
+    ]);
+    // Each field is a name over its value, in its own group.
+    expect(strip).toMatch(
+      /<div><dt>payee<\/dt><dd class="[^"]*">probarion-payee\.testnet<\/dd><\/div>/,
+    );
+  });
+
+  it("splits the hijack's invoice text into its label, the quote and two short lines, under one rule", () => {
+    const client = text(SRC, "components", "site", "LiveCheckClient.tsx");
+    const note = client.slice(
+      client.indexOf("<div className={lc.inj}>"),
+      client.indexOf("</div>", client.indexOf("<div className={lc.inj}>")),
+    );
+    for (const part of [
+      "<p className={lc.injLabel}>{copy.injectedLead}</p>",
+      "<blockquote className={lc.injQuote}>",
+      "<p className={lc.injLine}>{copy.injectedTail}</p>",
+      "{copy.injectedCanary}",
+    ]) {
+      expect(note, part).toContain(part);
+    }
+    const css = text(SRC, "components", "site", "live.module.css");
+    const rule = /\n\.inj \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toContain("border-left: 3px solid var(--color-bad)");
+    expect(rule).not.toContain("background");
+    // The payee's note is a plain mute line, not a pill in the status colours, which are kept for statuses.
+    expect(client).toContain("<span className={lc.lockNote}>{copy.payeeLock}</span>");
+    const lock = /\n\.lockNote \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(lock).toContain("color: var(--color-mute)");
+    expect(lock).not.toContain("background");
   });
 
   it("moves a long value in a hero card under its label whole, rather than split an account name", () => {
@@ -1590,8 +1695,13 @@ describe("the live check", () => {
     ]);
   });
 
+  it("reads every colour of its stylesheet from the tokens", () => {
+    const css = text(SRC, "components", "site", "live.module.css");
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|\brgba?\(\s*\d/i);
+  });
+
   it("gives the amount slider a row of its own, 44px high, on a phone", () => {
-    const css = text(SRC, "components", "site", "site.module.css");
+    const css = text(SRC, "components", "site", "live.module.css");
     const phone = css.slice(css.indexOf("@media (max-width: 620px)"));
     const slider = /\.amountRow input\[type="range"\] \{([^}]*)\}/.exec(phone)?.[1] ?? "";
     expect(slider).toContain("flex-basis: 100%");

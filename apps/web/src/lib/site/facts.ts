@@ -382,7 +382,8 @@ export const LIVE_CHECK = {
       "The controls need JavaScript. These are the answers the vault gave, recorded on {date}:",
     noScriptTable: "Recorded answers of the vault, one per scenario",
     unit: "USDC",
-    requestLabel: "The request sent to check_spend",
+    /** The caption over the request preview, which also names it for a screen reader. Backticks are code. */
+    requestLabel: "The request sent to `check_spend`",
     requestFields: "invoice_hash, ref, decision_hash",
     recipientField: "recipient",
     previewNotAmount: "not an amount",

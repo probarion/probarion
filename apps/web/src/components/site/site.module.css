@@ -490,236 +490,6 @@ a.netPill:hover {
   color: var(--color-mute);
 }
 
-/* Live check: two panels and the mandate under them. The answer panel is the ink band's colours. */
-.liveGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 22px;
-}
-.livePanel {
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  border-radius: 20px;
-  padding: 24px;
-  min-width: 0;
-}
-.livePanel h3 {
-  font-size: 17px;
-  font-weight: 600;
-}
-.liveHint {
-  margin: 4px 0 18px;
-  max-width: var(--container-measure);
-  font-size: 13.5px;
-  color: var(--color-mute);
-  overflow-wrap: anywhere;
-}
-.scenarios {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin: 0 0 22px;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-}
-.scenario {
-  text-align: left;
-  border: 1px solid var(--color-line);
-  border-radius: 14px;
-  padding: 12px 14px;
-  font: inherit;
-  font-size: 14.5px;
-  line-height: 1.35;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-.scenario small {
-  display: block;
-  margin-top: 2px;
-  font-size: 12.5px;
-  color: var(--color-mute);
-}
-/* A 2px ink border (1px less padding, so nothing moves), which forced colours keep, as they do not keep a shadow. */
-.scenario[aria-pressed="true"] {
-  padding: 11px 13px;
-  border-width: 2px;
-  border-color: var(--color-ink);
-  background: var(--color-surface);
-}
-.field {
-  display: grid;
-  grid-template-columns: 130px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  padding: 10px 0;
-  border-top: 1px solid var(--color-line);
-  font-size: 14.5px;
-}
-.field > span:first-child,
-.field > label {
-  color: var(--color-mute);
-}
-/* The mute edge of every other field: 8.7:1 on the white panel, where a field's boundary needs 3:1 (WCAG 1.4.11). */
-.field select,
-.field input:not([type="range"]) {
-  font: inherit;
-  font-size: 16px;
-  padding: 8px 10px;
-  border: 1px solid var(--color-mute);
-  border-radius: 10px;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  min-width: 0;
-  width: 100%;
-}
-.amountRow {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.amountRow input[type="range"] {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--color-gold-deep);
-}
-.amountRow input:not([type="range"]) {
-  width: 104px;
-  flex: none;
-}
-.payee {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-}
-.payee code {
-  background: var(--color-paper);
-  border: 1px solid var(--color-line);
-  padding: 3px 8px;
-  border-radius: 7px;
-  overflow-wrap: anywhere;
-}
-.payeeLock {
-  font-size: 12.5px;
-  color: var(--color-wait);
-  background: var(--color-wait-bg);
-  padding: 3px 8px;
-  border-radius: 999px;
-}
-.injected {
-  margin-top: 18px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--color-bad-bg);
-  color: var(--color-bad);
-  font-size: 14px;
-}
-.liveAnswer {
-  background: var(--color-band);
-  color: var(--color-band-fg);
-  border-color: var(--color-band-line);
-}
-.liveAnswer .liveHint {
-  color: var(--color-band-mute);
-  /* Two lines kept free: the hint switches between "Asking" and the answer's source, so the verdict does not move. */
-  min-height: 3.1em;
-}
-.liveAnswer :focus-visible {
-  outline-color: var(--color-band-fg);
-}
-.liveVerdict {
-  margin: 6px 0 10px;
-  font-weight: 300;
-  font-size: clamp(32px, 3.4vw, 44px);
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-  overflow-wrap: anywhere;
-}
-.livePay {
-  color: var(--color-band-fg);
-}
-.liveRefuse {
-  color: var(--color-band-bad);
-}
-.liveHold {
-  color: var(--color-gold-light);
-}
-.liveNone {
-  color: var(--color-band-mute);
-}
-.liveWhy {
-  font-size: 16px;
-  min-height: 50px;
-  margin-bottom: 18px;
-}
-/* While a request is out, the region is aria-busy and still shows the last answer's sentence: it is dimmed. */
-.liveBusy .liveVerdict,
-.liveBusy .liveWhy {
-  color: var(--color-band-mute);
-}
-.liveRetry {
-  margin-bottom: 14px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  border: 1px solid var(--color-band-fg);
-  background: none;
-  color: var(--color-band-fg);
-  font: inherit;
-  cursor: pointer;
-}
-.liveRequest {
-  position: relative;
-  border: 1px solid var(--color-band-line);
-  border-radius: 12px;
-  overflow-x: auto;
-  margin-bottom: 12px;
-}
-.liveRequest pre {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.6;
-  padding: 14px;
-}
-.liveGone {
-  color: var(--color-band-bad);
-}
-.liveMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-  font-size: 12.5px;
-  color: var(--color-band-mute);
-}
-.liveMeta a {
-  color: var(--color-band-fg);
-}
-.liveMandate {
-  grid-column: 1 / -1;
-}
-.mandateFacts {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 16px;
-  font-size: 13.5px;
-}
-.mandateFacts dt {
-  color: var(--color-mute);
-}
-.mandateFacts dd {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  overflow-wrap: anywhere;
-}
-.liveTable th,
-.liveTable td {
-  text-align: left;
-  padding: 4px 16px 4px 0;
-}
-
 /* Problem: two columns, then the numbers */
 .vs {
   display: grid;
@@ -1498,9 +1268,6 @@ a.netPill:hover {
   }
 }
 @media (max-width: 960px) {
-  .liveGrid {
-    grid-template-columns: 1fr;
-  }
   .vs {
     grid-template-columns: 1fr;
   }
@@ -1563,25 +1330,6 @@ a.netPill:hover {
   /* Built on: the four cards stack. */
   .ships {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .scenarios {
-    grid-template-columns: 1fr;
-  }
-  .field {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
-  /* The slider gets a row of its own, as wide as the panel, with a 44px touch height. */
-  .amountRow {
-    flex-wrap: wrap;
-  }
-  .amountRow input[type="range"] {
-    flex-basis: 100%;
-    height: 44px;
-  }
-  /* Four lines kept free here: at 320px to 390px the answer's source, with its raw answer, takes four. */
-  .liveAnswer .liveHint {
-    min-height: 6.2em;
   }
   /*
    * The hero's two buttons and its light link keep one row on a phone: the buttons are smaller, and the link takes
@@ -1662,9 +1410,6 @@ a.netPill:hover {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .scenario {
-    transition: none;
-  }
   .card {
     animation: none;
   }
@@ -1702,15 +1447,10 @@ a.netPill:hover {
   .act[aria-pressed="true"] {
     text-decoration: underline;
   }
-  /* The chosen scenario keeps its 2px border, in the selection colour of the system. */
-  .scenario[aria-pressed="true"] {
-    border-color: Highlight;
-  }
   /* A fill is dropped, so the current network, the paid card and the pills get an edge instead. */
   .netPillCurrent,
   .pill,
-  .state,
-  .payeeLock {
+  .state {
     border: 1px solid CanvasText;
   }
   .metal {

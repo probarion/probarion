@@ -5,14 +5,15 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 /**
  * A panel that may scroll sideways on a narrow screen. The role and label say what it holds. While it really scrolls it
  * takes keyboard focus, or a keyboard user could not scroll it. With no JavaScript nothing can measure it, so it stays
- * a tab stop.
+ * a tab stop. A panel under a visible caption takes its name from it (`labelledBy`, the caption's id), so a screen
+ * reader does not say the same words twice.
  */
 export function ScrollRegion({
   label,
+  labelledBy,
   className,
   children,
-}: {
-  label: string;
+}: ({ label: string; labelledBy?: undefined } | { label?: undefined; labelledBy: string }) & {
   className?: string;
   children: ReactNode;
 }) {
@@ -34,6 +35,7 @@ export function ScrollRegion({
       ref={region}
       className={className}
       aria-label={label}
+      aria-labelledby={labelledBy}
       tabIndex={scrolls ? 0 : undefined}
       onFocus={(event) => {
         // Chrome leaves a focused element where it is while any part of it shows, so a link mostly outside the panel

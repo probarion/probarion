@@ -5,8 +5,8 @@ import { fill, LIVE_VAULT, type RecordedFile } from "@/lib/site/live-check";
 import recordedJson from "@/lib/site/live-check-recorded.json";
 import { answerFromRecorded, verdictWord } from "@/lib/site/live-check-view";
 import { LiveCheckClient } from "./LiveCheckClient";
+import lc from "./live.module.css";
 import { LandingSection } from "./SectionHead";
-import s from "./site.module.css";
 
 const recorded = recordedJson as unknown as RecordedFile;
 
@@ -14,10 +14,10 @@ const recorded = recordedJson as unknown as RecordedFile;
 function NoScriptAnswers() {
   return (
     <noscript>
-      <p className={s.liveHint}>
+      <p className={lc.noScript}>
         {fill(LIVE_CHECK.copy.noScript, { date: recorded.recordedAt.slice(0, 10) })}
       </p>
-      <table className={s.liveTable} aria-label={LIVE_CHECK.copy.noScriptTable}>
+      <table className={lc.table} aria-label={LIVE_CHECK.copy.noScriptTable}>
         <tbody>
           {LIVE_CHECK.scenarios.map((x) => {
             const a = answerFromRecorded(recorded, x.id);
@@ -48,8 +48,11 @@ export function LiveCheck() {
         copy={LIVE_CHECK.copy}
         codes={LIVE_CHECK.codes}
         explorer={
-          <ExternalLink className={s.link} href={explorerAccountUrl("testnet", LIVE_VAULT)}>
+          <ExternalLink className={lc.explorer} href={explorerAccountUrl("testnet", LIVE_VAULT)}>
             {LIVE_CHECK.copy.explorer}
+            <span className={lc.ext} aria-hidden="true">
+              ↗
+            </span>
           </ExternalLink>
         }
       />
