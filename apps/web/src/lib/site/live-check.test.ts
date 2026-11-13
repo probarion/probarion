@@ -352,14 +352,31 @@ describe("viewCall", () => {
 });
 
 describe("the scenarios", () => {
-  it("are the four the spec names, with amounts parseUsdc accepts", () => {
-    expect(SCENARIO_INPUTS.map((s) => s.id)).toEqual(["normal", "hijack", "nomandate", "otherkey"]);
+  it("are the five the spec names, with amounts parseUsdc accepts", () => {
+    expect(SCENARIO_INPUTS.map((s) => s.id)).toEqual([
+      "normal",
+      "hijack",
+      "inflated",
+      "nomandate",
+      "otherkey",
+    ]);
     for (const s of SCENARIO_INPUTS) expect(parseUsdc(s.amount), s.id).not.toBeNull();
   });
 
+  it("send the hijack as the normal invoice: the agent passes on the amount, and no field holds the address", () => {
+    const of = (id: string) => SCENARIO_INPUTS.find((s) => s.id === id);
+    const { id: _n, ...normal } = of("normal") ?? { id: "" };
+    const { id: _h, ...hijack } = of("hijack") ?? { id: "" };
+    expect(hijack).toEqual(normal);
+    expect(of("hijack")?.amount).toBe("2");
+    expect(of("inflated")).toMatchObject({ mandateId: 1, amount: "50", key: "agent" });
+  });
+
   it("are recognised from the controls, and only exactly", () => {
-    expect(matchScenario({ mandateId: 1, amount: "50", key: "agent" })).toBe("hijack");
-    expect(matchScenario({ mandateId: 1, amount: "50.0", key: "agent" })).toBe("hijack");
+    expect(matchScenario({ mandateId: 1, amount: "50", key: "agent" })).toBe("inflated");
+    expect(matchScenario({ mandateId: 1, amount: "50.0", key: "agent" })).toBe("inflated");
+    // Typed by hand, the hijack's fields are the normal invoice's: only its button picks the hijack.
+    expect(matchScenario({ mandateId: 1, amount: "2", key: "agent" })).toBe("normal");
     expect(matchScenario({ mandateId: 1, amount: "49", key: "agent" })).toBeNull();
     expect(matchScenario({ mandateId: 1, amount: "abc", key: "agent" })).toBeNull();
   });

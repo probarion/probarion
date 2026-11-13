@@ -1031,8 +1031,11 @@ a.netPill:hover {
   font-size: 15px;
 }
 
-/* Wider than the page's own break, so that the header has room for the next built page. */
-@media (max-width: 1100px) {
+/*
+ * Wider than the page's own break. The eight links (four sections, then Canary, Docs, What works and GitHub) need about
+ * 1200px of page to stay on one row; 1240px leaves room for a 15px scrollbar and a wider fallback font.
+ */
+@media (max-width: 1240px) {
   .navLinks {
     display: none;
   }
@@ -1044,11 +1047,11 @@ a.netPill:hover {
   }
 }
 /*
- * With both networks served the bar also carries the switch, and the links fit beside it only once the page has its full
- * width (.wrap's 1320px, plus room for a scrollbar). Below that they move into the phone menu, as they do below 1101px.
- * With one network there is no switch, and the bar is unchanged.
+ * With both networks served the bar also carries the switch, and the eight links do not fit beside it even at .wrap's
+ * full 1320px, so at every width they stay in the phone menu, as they do below 1241px. With one network there is no
+ * switch, and the bar is unchanged.
  */
-@media (min-width: 1101px) and (max-width: 1360px) {
+@media (min-width: 1241px) {
   .nav:has(> .netSwitch) {
     gap: 12px;
   }

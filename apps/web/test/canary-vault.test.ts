@@ -616,10 +616,14 @@ describe("what SECURITY.md, the privacy page and the threat model say about the 
     expect(start).toBeGreaterThan(0);
     const next = unreleased.indexOf("\n- ", start + 1);
     const entry = flat(unreleased.slice(start, next < 0 ? undefined : next));
-    const pill = STATUS.rows.find((r) => r.id === "attested-model-run")?.pill;
-    expect(pill).toBe("Checked online on testnet, image not pinned");
+    // The entry gives the pill as it read then; since the mainnet vault's online run of 2026-11-13 it names both
+    // networks (test/mainnet-ask.test.ts).
+    const then = "Checked online on testnet, image not pinned";
+    expect(STATUS.rows.find((r) => r.id === "attested-model-run")?.pill).toBe(
+      "Checked online on testnet and mainnet, image not pinned",
+    );
     expect(entry).toContain(
-      `the status row "Live attested model run" reads "${pill}", and stays Preview`,
+      `the status row "Live attested model run" reads "${then}", and stays Preview`,
     );
     expect(entry).toContain(
       "each TDX quote is a genuine Intel TDX quote (Intel DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose report data holds the signing address and the entry's nonce",

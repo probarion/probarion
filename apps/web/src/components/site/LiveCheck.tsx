@@ -25,7 +25,7 @@ function NoScriptAnswers() {
             return (
               <tr key={x.id}>
                 <th scope="row">{x.title}</th>
-                <td>{verdictWord(a, LIVE_CHECK.copy)}</td>
+                <td>{verdictWord(a, LIVE_CHECK.copy, "injected" in x)}</td>
               </tr>
             );
           })}

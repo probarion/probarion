@@ -18,11 +18,12 @@ export default function Home() {
       <Hero />
       <Problem />
       <LiveCheck />
+      {/* Real USDC right under the testnet check: the mainnet payouts and the visitor's own question to that vault. */}
+      <MainnetPayout />
       <Compare />
       <Journey />
       <Integrate />
       <InkBand />
-      <MainnetPayout />
       <ConsoleShots />
       <LedgerTest />
       <ChainList />

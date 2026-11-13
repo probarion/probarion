@@ -49,15 +49,15 @@ const MAINNET_HEAD = sectionHead(PAYOUTS);
 const SECTIONS = [
   { id: "problem", eyebrow: PROBLEM.eyebrow, title: PROBLEM.title, lede: PROBLEM.sub },
   { id: "try", eyebrow: LIVE_CHECK.eyebrow, title: LIVE_CHECK.title, lede: LIVE_CHECK.intro },
-  { id: "compare", eyebrow: COMPARE.eyebrow, title: COMPARE.title, lede: COMPARE.sub },
-  { id: "payment", eyebrow: JOURNEY.eyebrow, title: JOURNEY.title, lede: JOURNEY.intro },
-  { id: "integrate", eyebrow: INTEGRATE.eyebrow, title: INTEGRATE.title, lede: INTEGRATE.sub },
   {
     id: "mainnet",
     eyebrow: MAINNET_HEAD.eyebrow,
     title: `${MAINNET_HEAD.line1} ${MAINNET_HEAD.line2}`,
     lede: MAINNET_HEAD.lede,
   },
+  { id: "compare", eyebrow: COMPARE.eyebrow, title: COMPARE.title, lede: COMPARE.sub },
+  { id: "payment", eyebrow: JOURNEY.eyebrow, title: JOURNEY.title, lede: JOURNEY.intro },
+  { id: "integrate", eyebrow: INTEGRATE.eyebrow, title: INTEGRATE.title, lede: INTEGRATE.sub },
   {
     id: "console",
     eyebrow: CONSOLE_SHOTS.eyebrow,
@@ -99,9 +99,12 @@ describe("the landing's section heads", () => {
     const at = SECTIONS.map((x) => start(x.id));
     for (const [i, x] of SECTIONS.entries()) expect(at[i], x.id).toBeGreaterThan(0);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    // The ink band sits between the integration and the mainnet payouts, and the closing follows Built on.
+    // The mainnet payouts sit under the live check, the ink band between the integration and the console
+    // screenshots, and the closing follows Built on.
+    expect(start("mainnet")).toBeGreaterThan(start("try"));
+    expect(start("mainnet")).toBeLessThan(start("compare"));
     expect(html.indexOf('id="payee"')).toBeGreaterThan(start("integrate"));
-    expect(html.indexOf('id="payee"')).toBeLessThan(start("mainnet"));
+    expect(html.indexOf('id="payee"')).toBeLessThan(start("console"));
     expect(closing).toBeGreaterThan(start(BUILT_ON.id));
     // The comparison table is still named by its heading.
     expect(html).toContain('<table class="');

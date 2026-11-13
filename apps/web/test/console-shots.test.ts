@@ -52,9 +52,10 @@ function section() {
   const start = html.indexOf('id="console"');
   const verify = html.indexOf('id="verify"');
   expect(band).toBeGreaterThan(0);
-  // The mainnet payouts sit between the ink band and the screenshots.
-  expect(mainnet).toBeGreaterThan(band);
-  expect(start).toBeGreaterThan(mainnet);
+  // The mainnet payouts sit higher, under the live check; the screenshots follow the ink band.
+  expect(mainnet).toBeGreaterThan(0);
+  expect(mainnet).toBeLessThan(band);
+  expect(start).toBeGreaterThan(band);
   expect(verify).toBeGreaterThan(start);
   return html.slice(start, verify);
 }
