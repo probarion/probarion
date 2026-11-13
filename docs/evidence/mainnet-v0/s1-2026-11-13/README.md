@@ -28,7 +28,8 @@ Times are block times in UTC. NEAR transactions open on nearblocks, the Base one
 | Time | What | Transaction | Signed by |
 | --- | --- | --- | --- |
 | 07:11:23 | The owner registers the 1Click deposit address `c4c0c41f…08b2` on native USDC (`storage_deposit`, registration only) | [`HbtByK1K…`](https://nearblocks.io/txns/HbtByK1K6nTYvjYuHmiKaJxEjoTkthztW7HLQ8zqr1KJ) | `probarion.near` |
-| 07:12:56 | The owner's Meteor wallet sends 1.5 native USDC to that address (`ft_transfer`). 1Click answers `SUCCESS` and credits 1.499823 Base USDC (`base-0x8335…omft.near`) to the vault's balance inside `intents.near` | [`DWUMvM58…`](https://nearblocks.io/txns/DWUMvM58dH3MpH9Jj838ycrfvCMjNJpgFsr43qu8u6mw) | `probarion-duong.near` |
+| 07:12:56 | The owner's Meteor wallet sends 1.5 native USDC to that address (`ft_transfer`) | [`DWUMvM58…`](https://nearblocks.io/txns/DWUMvM58dH3MpH9Jj838ycrfvCMjNJpgFsr43qu8u6mw) | `probarion-duong.near` |
+| 07:13:31 | 1Click settles the swap: `intents.near` `execute_intents` moves 1499823 Base USDC (`base-0x8335…omft.near`) from 1Click's deposit account to the vault (`mt_transfer`); 1Click's status is `SUCCESS` | [`FJA7rehn…`](https://nearblocks.io/txns/FJA7rehnWXuMHeZkD1RBojqnEgAvkiJHtZtttCcDEUUU) | 1Click, through `intents.near` |
 | 07:14:08 | `set_ledger_key`: the ledger key `ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK`, a function-call key on the vault for `anchor` only, allowance 0.25 NEAR | [`CFhtVrCA…`](https://nearblocks.io/txns/CFhtVrCA3Cjumcx68kixLbR5r6Xo8Fp1PTueK8z968jb) | `probarion.near` |
 | 07:16:58 | `create_mandate` returns `2`: payee `0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27` on Base through NEAR Intents (the owner's own Base wallet), at most 1.00 USDC a payment and 1.00 in all, 1 payment, until 2026-11-20 00:00 UTC, `approval_above` 1.00, purpose `PO-M002` | [`77cC8nMq…`](https://nearblocks.io/txns/77cC8nMq6qWynU51FsPn8mkFAb3NEuDmEG7ZXjX6483g) | `probarion.near` |
 | 07:17:47 | Ledger entry 0: `z-ai/glm-5.3-flash` proposes paying (confidence 0.95); code refuses with `mandate.payee_mismatch`. Nothing is sent | None (off chain) | the ledger key |
@@ -60,13 +61,18 @@ The code rule `mandate.payee_mismatch` refused it. For a mandate that pays a Bas
 the payee hint contradicts the payee, whatever account it is (`payeeHintContradiction` in
 [`packages/core/src/policy.ts`](../../../../packages/core/src/policy.ts)). The rule's own words in the entry: "invoice
 names NEAR account base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near; the mandate pays
-base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27". The second cycle (entry 1) asked `Qwen/Qwen3.8-27B`, which proposed
+base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27" (the rule's message says "invoice" for any payee hint; this one came
+from the model's proposal, since the code's own reading of the invoice found no NEAR account and passes the same rule
+in entry 2). The second cycle (entry 1) asked `Qwen/Qwen3.8-27B`, which proposed
 `pay` with confidence 0.9 and the same `near_account`, and the same rule refused it.
 
-That rule is strict on purpose: a hint that names a NEAR account for a Base payee is refused rather than read
-generously. Here it refused two proposals whose address was right, so it cost two tries and no money. Each refusal is
-a signed ledger entry, anchored on chain before the next cycle began. The owner then ran the cycle a third time with no
-model (the kit's `S1_MODEL=off`). The SDK decided with the code rules alone: all 14 rules passed (entry 2), and it sent
+That rule is strict. For a NEAR payee the code accepts the mandate's own account in the hint (the "model hint names the
+mandate's NEAR account" cases in [`packages/core/test/policy.test.ts`](../../../../packages/core/test/policy.test.ts),
+added after testnet runs), but it has no such case for a Base payee, so even the mandate's own asset account counts as
+another payee. Both proposals had the right amount and Base address, so these were false refusals: they cost two tries
+and no money, and the code was not changed for this run. Each refusal is a signed ledger entry, anchored on chain
+before the next cycle began. The owner then ran the cycle a third time with no model (the kit's `S1_MODEL=off`, which
+runs the SDK's `Probarion.process()` with no proposer, so the entry has no model rule). The SDK decided with the code rules alone: all 14 rules passed (entry 2), and it sent
 the spend.
 
 ## The vault after the run
@@ -88,9 +94,9 @@ Spend 2 burned 15.35 Tgas, 0.001423 NEAR, summed over the transaction and its re
 
 | File | What it is |
 | --- | --- |
-| [`ledger-2026-11-13.jsonl`](ledger-2026-11-13.jsonl) | The vault's signed ledger, entries 0 to 3, byte for byte as the run wrote it. It is `v0.probarion.near`'s ledger from now on: a later entry is appended to it |
+| [`ledger-2026-11-13.jsonl`](ledger-2026-11-13.jsonl) | The vault's signed ledger, entries 0 to 3, byte for byte as the run wrote it, and it stays so. If the vault signs and anchors more entries later, the full ledger is committed as a new dated file beside this one, and the live verify commands (README, JUDGES.md, the testnet-and-mainnet docs page and `MAINNET_V0_LEDGER` in scripts/judge.mjs) move to it |
 | [`snapshot-2026-11-13.json`](snapshot-2026-11-13.json) | The chain data and ledger the verifier read at 07:24:42 UTC |
-| [`verify-2026-11-13.txt`](verify-2026-11-13.txt), [`verify-2026-11-13.json`](verify-2026-11-13.json) | The verifier's live run at 07:24:43 UTC, with the ledger and the invoice text, as text and as JSON |
+| [`verify-2026-11-13.txt`](verify-2026-11-13.txt), [`verify-2026-11-13.json`](verify-2026-11-13.json) | The verifier's live run at 07:24:43 UTC, with the ledger and the invoice text, as text and as JSON. Its invoices line names the file's path on the owner's machine; the committed copy is `invoice-INV-M002.txt`, with the same sha256 (`bd45f232…`) |
 | [`invoice-INV-M002.txt`](invoice-INV-M002.txt), [`po-PO-M002.txt`](po-PO-M002.txt) | The invoice and the purchase order, whose sha256 are on chain |
 | `outcome-20261113T071746Z.json`, `outcome-20261113T072221Z.json`, `outcome-20261113T072425Z.json` | What the kit recorded for each cycle: `refused_by_code` twice, then `burned` |
 | [`burn.json`](burn.json) | The burn the kit found in the spend's transaction: memo, owner and amount |
@@ -106,7 +112,7 @@ The verifier, read-only, from a clone after `pnpm install --frozen-lockfile` and
 
 ```bash
 node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near \
-  --ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl --invoices docs/evidence/mainnet-v0/s1-2026-11-13 \
+  --ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl --invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt \
   --evidence docs/evidence --proof docs/mainnet-proof.json
 ```
 
@@ -125,12 +131,12 @@ At 07:24:43 UTC the kit's live run printed `8 passed, 0 failed, 0 unproven, 1 sk
   vault's `mt_burn` is for the spend's amount.
 
 Without the ledger, checks c and d fail: the chain's anchors cover 4 entries, and spend 2's decision is in no entry.
-`--invoices` reads every `.txt` file of the folder: the invoice matches entries 0 and 1, and the verifier warns that the
-two other files, the purchase order and the verifier's output, match no entry. To check the recorded run offline, with
-no network:
+`--invoice` gives A8 the invoice text, which matches entries 0 and 1. The kit's run read the invoice from its own
+folder, so its output names that local path; from a clone the verifier reads the committed copy, and A8 checks the
+same invoice. To check the recorded run offline, with no network:
 
 ```bash
-node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/s1-2026-11-13/snapshot-2026-11-13.json --invoices docs/evidence/mainnet-v0/s1-2026-11-13
+node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/s1-2026-11-13/snapshot-2026-11-13.json --invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt
 ```
 
 The Base transfer, from Base's public RPC, with no key:
@@ -153,4 +159,5 @@ near contract call-function as-read-only v0.probarion.near get_mandate json-args
 
 The transactions are also in [`contracts/deployments/mainnet.json`](../../../../contracts/deployments/mainnet.json)
 (the top-up, mandate 2, spend 2 and the Base transfer) and in [`docs/mainnet-proof.json`](../../../mainnet-proof.json)
-(all eight NEAR ones, and the Base transfer as spend 2's `base_tx`).
+(the eight NEAR ones the owner and the kit signed, and the Base transfer as spend 2's `base_tx`). 1Click's settlement,
+`FJA7rehn…`, is in neither: 1Click signed it.

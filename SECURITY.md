@@ -6,8 +6,9 @@ today.
 
 **Unaudited beta.** No third party has audited the contracts or the packages. Today the vault runs on
 NEAR testnet with test tokens. Since 2026-11-11 one mainnet vault, `v0.probarion.near`, holds a small
-amount of real USDC. Its owner signed every transaction that created, funded or configured it, and
-it has made one NEAR payment and one refusal ([the run](README.md#near-mainnet-2026-11-11)). On
+amount of real USDC. Its owner signed every transaction that created or configured it and every
+transfer that funded it; on 2026-11-13 1Click settled a swap into the vault's Intents balance with its
+own `intents.near` transaction. The vault has made one NEAR payment and one refusal ([the run](README.md#near-mainnet-2026-11-11)). On
 2026-11-13 it made one Base payout through NEAR Intents, 1.00 USDC to the owner's own Base address, a test decided
 by code rules alone, and since then its decisions are in a signed ledger anchored on the vault
 ([the run](README.md#near-mainnet-2026-11-13-s1-a-base-payout)).

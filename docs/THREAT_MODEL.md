@@ -12,8 +12,8 @@ Status on 2026-11-07, and for mainnet on 2026-11-13:
   (`contracts/deployments/testnet.json`).
 - On mainnet one standalone vault runs since 2026-11-11, `v0.probarion.near`, with a small amount of
   real USDC: locked, made by no factory, with one NEAR payment and one `NoMandate` refusal on
-  2026-11-11, and one Base payout on 2026-11-13 (`contracts/deployments/mainnet.json`,
-  [the evidence](evidence/mainnet-v0/README.md)). The mainnet factory is not deployed. Spend 1 of v0 is
+  2026-11-11, and one Base payout on 2026-11-13, a 1.00 USDC test to the owner's own Base address
+  (`contracts/deployments/mainnet.json`, [the evidence](evidence/mainnet-v0/README.md)). The mainnet factory is not deployed. Spend 1 of v0 is
   pre-ledger: its decision is a file in `docs/evidence`, with no signed ledger and no attestation.
   Spend 2, the Base payout, is in a signed ledger with 3 anchors on chain; code rules alone decided
   it, after code refused two attested model proposals

@@ -257,10 +257,12 @@ describe("the built-on facts", () => {
     expect(mainnet).toContain("1.00 USDC once, to the owner's own Base address");
     expect(mainnet).toContain("a labeled test of the cross-chain path");
     expect(near.note).toBe(
-      "The Base payout, 1.00 USDC on 2026-11-13, was a test paid to the owner's own address.",
+      "The 2026-11-13 Base payout, 1.00 USDC, was a rules-only test to the owner's own address.",
     );
     // The same words as the status list's row, which is held to the README in site-facts.test.ts.
-    expect(statusOf("Mainnet vault").pill).toBe("On mainnet: 2 payments (1 to Base), 1 refusal");
+    expect(statusOf("Mainnet vault").pill).toBe(
+      "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
+    );
     const record = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
       vault_v0: { account_id: string };
     };
@@ -394,7 +396,7 @@ describe("the built-on facts", () => {
 
   it("the also line: attestation checks that exist, and one mainnet payout through NEAR Intents", () => {
     expect(BUILT_ON.also).toBe(
-      "Also used: Intel TDX and NVIDIA NRAS attestation, which `verify --online` checks (O1 and O2). NEAR Intents payouts are built and tested against a testnet stand-in, and one has run on mainnet: 1.00 USDC to a Base address on 2026-11-13.",
+      "Also used: Intel TDX and NVIDIA NRAS attestation, which `verify --online` checks (O1 and O2). NEAR Intents payouts are built and tested against a testnet stand-in, and one has run on mainnet: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
     );
     expect(prose).toContain(
       "`verify --online` loads the optional `@nearai/inference-sdk` to check the TDX quote (O1) and the GPU evidence (O2)",
@@ -403,7 +405,7 @@ describe("the built-on facts", () => {
       "On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`",
     );
     expect(prose).toContain(
-      "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to a Base address this way",
+      "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to the owner's own Base address this way, a test decided by code rules alone",
     );
   });
 });

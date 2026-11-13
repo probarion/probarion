@@ -27,9 +27,9 @@ The software is an unaudited beta.
   snapshot, the live `verify` output of 07:24:43 UTC (8 passed, 0 failed, 0 unproven, 1 skipped), the spend
   outcomes, the burn and POA bridge statuses, the 1Click quotes and status, the order of every transaction, the
   gas of spend 2, the invoice and purchase order texts, and a README that lists every transaction on nearblocks.io
-  and basescan.org and says how to check it again. `docs/mainnet-proof.json` and
-  `contracts/deployments/mainnet.json` record the eight NEAR transactions and the Base transfer, and the judge
-  holds the run's snapshot to its committed verifier output.
+  and basescan.org and says how to check it again. `docs/mainnet-proof.json` records the eight NEAR transactions
+  and the Base transfer, `contracts/deployments/mainnet.json` records the top-up, mandate 2, spend 2 and the Base
+  transfer, and the judge holds the run's snapshot to its committed verifier output.
 
 - `JUDGES.md`, a page for judges and screeners whose first part takes two minutes: the mechanism in one sentence
   (the model proposes, code rules decide, the contract checks again), three links to open (the demo vault's proof
@@ -40,7 +40,7 @@ The software is an unaudited beta.
   case with the agent key public, priced on `v0.probarion.near` by view calls on 2026-11-13, who it is for as a
   labeled hypothesis with the unit costs the repository and the chain record, and what is not done yet. A marked
   spot (an HTML comment) waited for the mainnet Base payout, which ran on 2026-11-13 and is now the fourth link.
-  The README gets a "For judges: start here" block of 11 lines under its header and a link in its top row, and
+  The README gets a "For judges: start here" block of 11 lines (14 since the Base payout added its link) under its header and a link in its top row, and
   `AGENTS.md` links the page. `scripts/check-claims.mjs` checks `JUDGES.md` as it checks the README and
   `AGENTS.md` (links, tx hashes, accounts, paths and commands, facts), and a test holds it to that.
 - `docs/evidence/mainnet-v0/gas-2026-11-13.json`: the gas and NEAR burned by the two agent-key spends of
@@ -1068,15 +1068,21 @@ The software is an unaudited beta.
 ### Changed
 
 - The judge's `live-verify-mainnet-v0` step verifies `v0.probarion.near` with its committed ledger
-  (`--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl`) and the run's invoice texts
-  (`--invoices`), and expects checks c, d, e and h to say what the chain and that ledger now hold. Its snapshot
-  guard also reads the subfolders of `docs/evidence`. The README (the "For judges" block, the status rows, the
+  (`--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl`) and the run's invoice text
+  (`--invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt`, one file, so the verifier warns about
+  no other `.txt` file of the folder), and expects checks c, d, e and h to say what the chain and that ledger now
+  hold. With `--offline` its skip says it reads NEAR mainnet, not testnet. Its snapshot guard also reads the
+  subfolders of `docs/evidence`. The README (the "For judges" block, the status rows, the
   NEAR Intents row, the verify command and a section for the run), `JUDGES.md` (a fourth link, two rows of what
   is proven, the worst case and the costs read again), `AGENTS.md`, `SECURITY.md`, `docs/THREAT_MODEL.md`, the
-  mainnet runbook, the landing page's mainnet pill and NEAR facts, the terms page's status line, the rules for
-  agents, the SDK reference and the docs pages that said no Base payout had run now tell the run, and the tests
+  mainnet runbook, the landing page's mainnet pill and NEAR facts, the terms page's status line (and its date,
+  now 2026-11-13), the rules for agents, the SDK reference and the docs pages that said no Base payout had run
+  now tell the run, each as a test to the owner's own Base address, decided by code rules alone, and the tests
   that hold those texts follow. A docs test fails when a page calls the Base payout unrun while
-  `contracts/deployments/mainnet.json` records it.
+  `contracts/deployments/mainnet.json` records it (`proof.first_base_payout_tx`), and another when a docs page
+  or a rule for agents tells the payout without both labels. The S1 record says the two refusals by code were
+  false ones (the right amount and address, and the mandate's asset account in the hint) and adds 1Click's
+  settlement transaction, `FJA7rehn…`, signed by `intents.near`.
 
 - The README has a "Privacy & Private AI" section after "NEAR technology used, and how", linked from
   the top row of links, from Contents and from a line under the tagline. It says what the TEE

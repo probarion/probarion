@@ -25,6 +25,7 @@ import {
   ledgerPrefix,
   locate,
   looksLikeNetworkError,
+  MAINNET_V0_INVOICE,
   MAINNET_V0_LEDGER,
   matchA8,
   matchVerify,
@@ -275,6 +276,15 @@ describe("a run", () => {
       assert.ok(got.detail.endsWith(`; run \`${s.command}\``), got.detail);
       assert.ok(r.printed.includes(got.detail), `${s.id}: the printed row cuts its command`);
     }
+    // Each skip names the network the step reads: mainnet for the mainnet vault, testnet for the rest.
+    assert.match(
+      row(r, "live-verify-mainnet-v0").detail,
+      /^--offline: this step reads NEAR mainnet;/,
+    );
+    assert.match(
+      row(r, "live-verify-demo-vault").detail,
+      /^--offline: this step reads NEAR testnet;/,
+    );
     const lines = r.calls.map((c) => c.args.join(" "));
     assert.ok(!lines.some((l) => /--online|--network|bin\.js demo$/.test(l)), lines.join("\n"));
     assert.equal(r.report.flags.offline, true);
@@ -793,7 +803,9 @@ describe("safety", () => {
     );
     const mainnet = live[3];
     assert.equal(at(mainnet, "--ledger"), MAINNET_V0_LEDGER);
-    assert.equal(at(mainnet, "--invoices"), "docs/evidence/mainnet-v0/s1-2026-11-13");
+    assert.equal(at(mainnet, "--invoice"), MAINNET_V0_INVOICE);
+    assert.ok(!mainnet.args.includes("--invoices"), "one invoice file, not the whole folder");
+    assert.equal(MAINNET_V0_INVOICE, "docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt");
     assert.equal(at(mainnet, "--evidence"), "docs/evidence");
     assert.equal(at(mainnet, "--proof"), "docs/mainnet-proof.json");
     // The committed ledger is the one the README's mainnet verify command passes.

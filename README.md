@@ -17,7 +17,7 @@
 
 **[For judges](JUDGES.md)** · **[Live site](https://probarion.xyz)** · **[Demo video](https://x.com/probarionhq/status/2120882499689836651)** · **[Docs](https://probarion.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[NEAR tech](#near-technology-used-and-how)** · **[Privacy](#privacy--private-ai)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
 
-<sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) · NEAR Intents payouts (one Base payout on mainnet, a testnet stand-in otherwise) · NEAR AI Cloud private models · TypeScript SDK, CLI and MCP server on npm</sub>
+<sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) · NEAR Intents payouts (one 1.00 USDC test payout to the owner's own Base address on mainnet, decided rules-only; a testnet stand-in otherwise) · NEAR AI Cloud private models · TypeScript SDK, CLI and MCP server on npm</sub>
 
 </div>
 
@@ -30,9 +30,11 @@
 > the landing page's [live `check_spend`](https://probarion.xyz/#try) and the mainnet transactions of
 > 2026-11-11: [1 USDC paid](https://nearblocks.io/txns/22oqhgruo7JqdpPg5Cb2ts25mLK2fto8y1YAxNA56ieE) and
 > [a spend refused with `PROBARION:NoMandate`](https://nearblocks.io/txns/2Dabq4uMh9VvttH3uj85samfYoX2wbQheADHS96AtwYh);
-> on 2026-11-13, [a 1.00 USDC payout to Base](#near-mainnet-2026-11-13-s1-a-base-payout), a test to the owner's own
-> address, decided by code rules alone after code refused two attested model proposals. Then, in a clone, run `pnpm install --frozen-lockfile` and `pnpm judge --offline --quick`. What is proven and what
-> is not, assume breach, the worst case and the business hypothesis: [JUDGES.md](JUDGES.md).
+> on 2026-11-13, [a 1.00 USDC payout to Base](https://basescan.org/tx/0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71)
+> ([the run](#near-mainnet-2026-11-13-s1-a-base-payout)), a test to the owner's own address, decided by code rules
+> alone after code refused two attested model proposals. Then, in a clone, run `pnpm install --frozen-lockfile`
+> and `pnpm judge --offline --quick`. What is proven and what is not, assume breach, the worst case and the
+> business hypothesis: [JUDGES.md](JUDGES.md).
 
 Giving an AI agent a wallet means trusting a prompt with money. Probarion moves the rule into a NEAR
 contract. An owner puts USDC in a vault and signs mandates: who gets paid, how much per payment and in
@@ -51,7 +53,7 @@ What stays public by design, and what is not private yet: [Privacy & Private AI]
 > **Unaudited beta.** No third party has audited this code. The vault runs on NEAR testnet with test
 > tokens. Since 2026-11-11 one small vault, `v0.probarion.near`, also runs on NEAR mainnet with real
 > USDC: it made one NEAR payment and one refusal, and on 2026-11-13 one Base payout of 1.00 USDC, a
-> test paid to the owner's own Base address. The site and
+> test paid to the owner's own Base address and decided by code rules alone. The site and
 > web console run at [probarion.xyz](https://probarion.xyz) on testnet. The console is in progress.
 > The testnet demo vault's proof page is public, and so is the
 > [Canary](https://probarion.xyz/canary?via=readme), a vault anyone may try to trick into paying
@@ -87,7 +89,7 @@ No wallet, no key and no account: every step either runs offline or reads public
 | Track | Do | See |
 | --- | --- | --- |
 | AI Security & Defense | Try to talk the [Canary](https://probarion.xyz/canary?via=readme) into paying you | What the model wanted, what the code rules decided and what the contract did. In the rehearsal of 2026-11-10 the model proposed 50 USDC, the code rules refused it, and so did the contract, on chain, with `OverPerPayment` ([transaction](https://testnet.nearblocks.io/txns/6XuxN42dDWaboaqaiCuRGKCoA1UrypcDfvat48v6z8DH)) |
-| Real-World Money | Read the mainnet vault's payment and refusal from an archival node ([the commands](#near-mainnet-2026-11-11)), then its Base payout ([the commands](#near-mainnet-2026-11-13-s1-a-base-payout)) | `spend_paid` for 1 real USDC under mandate 1 of `v0.probarion.near`, `PROBARION:NoMandate` for mandate 999, and `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27` for spend 2, which the POA bridge paid out on Base as 0.9976 USDC |
+| Real-World Money | Read the mainnet vault's payment and refusal from an archival node ([the commands](#near-mainnet-2026-11-11)), then its Base payout ([the commands](#near-mainnet-2026-11-13-s1-a-base-payout)) | `spend_paid` for 1 real USDC under mandate 1 of `v0.probarion.near`, `PROBARION:NoMandate` for mandate 999, and `WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27` for spend 2, which the POA bridge paid out on Base as 0.9976 USDC. Both payments are tests to the owner's own wallets, and code rules alone decided spend 2, after code refused two attested model proposals |
 | Agent Economy | Run `npx -y @probarion/mcp@0.1.1 demo` | The five MCP tools, none of which takes an address, and an injected recipient refused by the schema; in the 402 run of 2026-11-09, 20 calls paid at 0.01 test USDC each and the 21st was refused ([evidence](docs/evidence/402-vault)) |
 | Autonomous Business | Open entry 15 on the [demo vault's proof page](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-15) | Payables paid INV-2010 on its own: `Qwen/Qwen3.8-27B` proposed paying it, every code rule passed, and spend 5 paid 2.00 test USDC ([evidence](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)) |
 | Privacy & Private AI | Press **Check the TEE now** on the [same page](https://probarion.xyz/proof/demo.vaults.probarion.testnet#tee-check), or run `verify --invoices` ([the command](docs/evidence/demo-vault/README.md#2026-11-12-a8-with-the-invoices-in-this-folder)) | Four checks for a nonce your browser drew: nonce bound, signer bound, O1 and O2; and A8 passing on the demo vault's 5 attested decisions ([output](docs/evidence/demo-vault/verify-a8-2026-11-12.txt)) |
@@ -401,7 +403,7 @@ Probarion has no per-mandate budget per period, no USD budget, no timelock, no w
 | **Smart contracts in Rust** (near-sdk 5.29.1) | The vault holds the USDC and checks every payment against its mandate before anything moves. The rule lives on the money's path, not in a prompt | [`contracts/vault`](contracts/vault) |
 | **Function-call access keys** | The vault adds the agent's key to itself, limited to `spend`, and a second key limited to `anchor`. NEAR lets a function-call key call only its listed methods and attach no deposit. So the owner and approver methods that move value or change authority need a deposit that only a full-access key on the owner's or an approver's account can attach: 1 yoctoNEAR, or the storage deposit for `create_mandate`. `freeze` takes none, so the owner can also stop the vault fast with a function-call key on their account that may call the vault. The MCP server `@probarion/mcp` holds these two keys and no other | [`contracts/vault/src`](contracts/vault/src), [`packages/mcp`](packages/mcp) |
 | **NEP-141 fungible tokens** | The vault pays a NEAR payee in USDC with `ft_transfer`. On mainnet, `v0.probarion.near` paid 1 native USDC this way on 2026-11-11 ([the run](#near-mainnet-2026-11-11)) | [`contracts/vault`](contracts/vault) |
-| **NEAR Intents** | A Base or Solana payee is paid with `ft_withdraw` on `intents.near` and the memo `WITHDRAW_TO:<address>`, which the vault builds from the mandate. On mainnet the POA bridge then releases the USDC on the other chain. On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR. On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to a Base address this way, and the POA bridge released 0.9976 USDC on Base, keeping a fee of 0.0024 ([the run](#near-mainnet-2026-11-13-s1-a-base-payout)). That run topped the vault's Intents balance up with the 1Click API, from its own script. The console's top-up asks the 1Click API for a quote into the vault's Intents balance on mainnet; it has not been tried with a live quote yet | [`contracts/vault`](contracts/vault), [`apps/web/src/app/api/topup`](apps/web/src/app/api/topup) |
+| **NEAR Intents** | A Base or Solana payee is paid with `ft_withdraw` on `intents.near` and the memo `WITHDRAW_TO:<address>`, which the vault builds from the mandate. On mainnet the POA bridge then releases the USDC on the other chain. On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR. On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to the owner's own Base address this way, a test decided by code rules alone, and the POA bridge released 0.9976 USDC on Base, keeping a fee of 0.0024 ([the run](#near-mainnet-2026-11-13-s1-a-base-payout)). That run topped the vault's Intents balance up with the 1Click API, from its own script. The console's top-up asks the 1Click API for a quote into the vault's Intents balance on mainnet; it has not been tried with a live quote yet | [`contracts/vault`](contracts/vault), [`apps/web/src/app/api/topup`](apps/web/src/app/api/topup) |
 | **Global contracts** | The factory creates keyless vaults. It can deploy them from code stored once on chain and referenced by hash (`use_global_contract`), or from an embedded copy, and it keeps a version registry. The testnet factory serves the embedded copy today, and the global version is not deployed yet. The seller in the 402 example calls the factory's `vault_version` view to check that the vault paying it was created by the factory | [`contracts/factory`](contracts/factory), [`examples/402/src/paywall.ts`](examples/402/src/paywall.ts) |
 | **NEAR AI Cloud** | A private model in a TEE proposes pay, hold or refuse over NEAR AI Cloud's API (plain `fetch` in `nearai.ts`). A nonce binds its attestation report to one ledger position, and the provider's TEE key signs its answer; `@probarion/core` checks both (A1 to A8). `verify --online` loads the optional `@nearai/inference-sdk` to check the TDX quote (O1) and the GPU evidence (O2). The model only advises: the code and the contract decide. Built and tested against a fake NEAR AI Cloud. On testnet the Canary's ledger of 2026-11-10, published in the repository, holds 2 real attested decisions, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](docs/evidence/canary-vault/verify-online-2026-11-11.txt)). On the demo vault, Payables made 5 more, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12 ([online output](docs/evidence/demo-vault/verify-online-2026-11-12.txt)). A later live run the same day, at 16:13 UTC, passed O1 and O2 on all five, entry 15 included ([online output](docs/evidence/demo-vault/verify-online-a8-2026-11-12.txt)). The last two led to payments after an attested model's proposal: on 2026-11-12 `Qwen/Qwen3.8-27B` proposed paying INV-2009 and then INV-2010, every code rule passed, and spends 4 and 5 paid 2.00 test USDC each ([evidence](docs/evidence/demo-vault/README.md#2026-11-12-payables-pays-on-its-own-with-an-attested-model), [evidence of spend 5](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)); the TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run on the Canary's 2; on the demo vault's 5 it passed on 2026-11-12, with the invoices committed in the repository ([output](docs/evidence/demo-vault/verify-a8-2026-11-12.txt)) | [`packages/sdk/src/nearai.ts`](packages/sdk/src/nearai.ts), [`packages/sdk/src/online.ts`](packages/sdk/src/online.ts), [`packages/core`](packages/core) |
 | **near-api-js 7** | The SDK signs and sends the agent's transactions with near-api-js; it reads vaults with its own JSON-RPC client, with failover. The console verifies wallet sign-in as a NEP-413 signed message | [`packages/sdk`](packages/sdk), [`apps/web/src/lib/auth/verify.ts`](apps/web/src/lib/auth/verify.ts) |
@@ -844,19 +846,19 @@ tx 2Dabq4uMh9VvttH3uj85samfYoX2wbQheADHS96AtwYh | grep -o 'PROBARION:[A-Za-z]*' 
 Then run the verifier on the vault, read-only, from a clone after step 1 of
 [the evaluation](#how-to-evaluate-probarion-in-5-minutes). Since 2026-11-13 the vault has a signed
 ledger, committed in [`docs/evidence/mainnet-v0/s1-2026-11-13`](docs/evidence/mainnet-v0/s1-2026-11-13):
-`--ledger` gives it to the verifier, `--invoices` adds the invoice text for A8, and `--evidence` and
+`--ledger` gives it to the verifier, `--invoice` adds the invoice text for A8, and `--evidence` and
 `--proof` add spend 1's pre-ledger decision and the recorded transactions:
 
 ```bash
 node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near --ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl \
-  --invoices docs/evidence/mainnet-v0/s1-2026-11-13 --evidence docs/evidence --proof docs/mainnet-proof.json
+  --invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt --evidence docs/evidence --proof docs/mainnet-proof.json
 ```
 
 It prints `RESULT: PASS`, and [the run of 2026-11-13](#near-mainnet-2026-11-13-s1-a-base-payout)
 says what each check finds. Without `--ledger`, checks c and d fail: the chain's anchors cover 4
 entries, and spend 2's decision is in no entry.
 
-On 2026-11-11, before the vault had a ledger, the same command without `--ledger` and `--invoices`,
+On 2026-11-11, before the vault had a ledger, the same command without `--ledger` and `--invoice`,
 with `--snapshot docs/evidence/mainnet-v0/snapshot-2026-11-11.json` added, printed
 `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`
 ([output](docs/evidence/mainnet-v0/verify-2026-11-11.txt)). Without `--snapshot`, check d also
@@ -895,7 +897,9 @@ Why code rules alone decided the payment: both models proposed paying with the r
 their payee hint, and also put the mandate's asset account, `base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near`,
 in its `near_account` field. For a mandate that pays a Base address, the rule refuses any NEAR
 account in the hint (`payeeHintContradiction` in [`packages/core/src/policy.ts`](packages/core/src/policy.ts)).
-It is strict on purpose, and here it cost two tries and no money. The owner then ran the cycle again
+The rule accepts a NEAR mandate's own account in the hint but not a Base mandate's asset account, so both
+refusals were false ones: the proposals had the right amount and address. They cost two tries and no money,
+and the code was not changed for this run. The owner then ran the cycle again
 with no model, and every code rule passed. So no payment on mainnet has been made on a model's
 proposal yet.
 
@@ -904,8 +908,8 @@ is used up. The run's ledger, snapshot, verifier output, invoice and purchase or
 POA bridge statuses and the order of every transaction are in
 [`docs/evidence/mainnet-v0/s1-2026-11-13`](docs/evidence/mainnet-v0/s1-2026-11-13).
 
-Check it yourself. With `tx` from the block above, the archival node gives the burn's memo, and Base's
-public RPC gives the transfer:
+Check it yourself. With the `tx` helper from [the 2026-11-11 section](#near-mainnet-2026-11-11), the archival
+node gives the burn's memo, and Base's public RPC gives the transfer:
 
 ```bash
 tx BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9 | grep -o 'WITHDRAW_TO:0x[0-9A-Fa-f]*' | sort -u   # WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27
@@ -923,7 +927,7 @@ invoice text; it reports entry 2 as rules-only. Check h finds spend 2's burn pai
 Offline, with no network:
 
 ```bash
-node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/s1-2026-11-13/snapshot-2026-11-13.json --invoices docs/evidence/mainnet-v0/s1-2026-11-13
+node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/s1-2026-11-13/snapshot-2026-11-13.json --invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt
 ```
 
 What did not run on mainnet:
@@ -931,8 +935,8 @@ What did not run on mainnet:
 - No payment on a model's proposal: spend 1 was sent without the SDK, and spend 2 was decided by code
   rules alone. `verify --online` has not run on the two attested decisions of 2026-11-13, so O1 and O2
   have not checked them.
-- The runbook's step 6, mandate 2 and step 10 as written (a 6 USDC top-up and a 2 USDC payout). S1 used
-  its own amounts and a 1Click swap instead.
+- The runbook's step 6, the Base mandate of step 8 and step 10 as written (a 6 USDC top-up, 5 USDC a payment
+  and a 2 USDC payout). S1 used its own mandate 2, its own amounts and a 1Click swap instead.
 - No mainnet factory: `vaults.probarion.near` is not deployed, and no global contract is published.
 - No console or proof page for this vault: probarion.xyz serves testnet only. The deep demo is still
   the testnet vaults above.

@@ -129,3 +129,10 @@ labeled test of the cross-chain path, as spend 2. The vault burned 1.00 Base USD
 payment was decided by the code rules alone, after code refused two attested model proposals. Since then the vault has
 a signed ledger with 4 entries and 3 anchors. The run's record, its ledger and how to check it:
 [`s1-2026-11-13/README.md`](s1-2026-11-13/README.md).
+
+Since the vault was anchored on 2026-11-13, the live command under "Check it" above fails checks c and d without the
+ledger: it prints `6 passed, 2 failed, 0 unproven, 1 skipped` and `RESULT: FAIL (first broken seq 0)`.
+`--snapshot docs/evidence/mainnet-v0/snapshot-2026-11-11.json` also refuses the existing file. To check the vault live
+now, add `--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl` and
+`--invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt`, and leave out `--snapshot`
+([the command](s1-2026-11-13/README.md#check-it)). The offline command on `snapshot-2026-11-11.json` still passes.
