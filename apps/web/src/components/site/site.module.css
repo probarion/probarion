@@ -770,22 +770,7 @@ a.netPill:hover {
   transform: none;
 }
 
-/* Status */
-.status {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0 clamp(20px, 3vw, 44px);
-}
-.statusRow {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: baseline;
-  padding-block: 15px;
-  border-top: 1px solid var(--color-line);
-  min-width: 0;
-  font-size: 16px;
-}
+/* Status pills: the comparison, the integrate cards and the story cards (the status section has its own module). */
 .pill {
   flex: none;
   max-width: 60%;
@@ -815,34 +800,27 @@ a.netPill:hover {
   max-width: 100%;
   white-space: normal;
 }
-.statusNote {
-  margin-top: 28px;
-  font-size: 15px;
-  color: var(--color-mute);
-  max-width: var(--container-measure);
+/*
+ * A pill that links its row on the status board (StatusPill.tsx), whose key says what the row's marks mean: a light
+ * underline says it is a link, and it is 24px tall at least (WCAG 2.5.8).
+ */
+.pillLink {
+  min-height: 24px;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
 }
-/* Every caveat the landing used to repeat, said once (audit P1-10). The beta strip links here. */
-/* A footnote to the status list, not a chapter: the heading of the integrations it is built on stays small. */
+.pillLink:hover {
+  text-decoration-color: currentColor;
+}
+/* A footnote to the status section, not a chapter: the heading of the integrations it is built on stays small. */
 .boTitle {
   margin: 0;
   font-size: 22px;
   font-weight: 500;
   line-height: 1.25;
   letter-spacing: -0.01em;
-}
-.gapsTitle {
-  margin: 28px 0 8px;
-  font-size: 17px;
-  font-weight: 500;
-}
-.gaps {
-  margin: 0;
-  padding-left: 20px;
-  font-size: 15px;
-  max-width: var(--container-measure);
-}
-.gaps li + li {
-  margin-top: 1em;
 }
 
 /*
@@ -1146,9 +1124,6 @@ a.netPill:hover {
   .numbers > div:nth-child(n + 3) {
     border-top: 1px solid var(--color-line);
   }
-  .status {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 /*
  * Built on, from 961px: the sentence beside the heading sits on the heading's last line, at the right. Section heads
@@ -1193,9 +1168,6 @@ a.netPill:hover {
   .ctaLink {
     flex-basis: 100%;
     font-size: 14px;
-  }
-  .status {
-    grid-template-columns: minmax(0, 1fr);
   }
   .quietSm {
     display: none;

@@ -28,6 +28,7 @@ const IN_ORDER = [
   "start/owner-quickstart",
   "start/developer-quickstart",
   "start/testnet-and-mainnet",
+  "start/mainnet-payout",
   "start/what-works-today",
   "concepts/vaults-roles-and-keys",
   "concepts/why-spend-has-no-payee",

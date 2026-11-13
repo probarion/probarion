@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { createElement, Fragment, type ReactNode } from "react";
 import { ExternalLink } from "@/components/ui";
-import { type CopyPart, INTEGRATE, type StatusTone, statusOf } from "@/lib/site/facts";
+import {
+  type CopyPart,
+  INTEGRATE,
+  STATUS_BOARD,
+  type StatusTone,
+  statusOf,
+} from "@/lib/site/facts";
 import { ArrowLabel, CodeLabel, Glued, Keep, KeepRich, TxLabel } from "./bits";
 import p from "./parts.module.css";
 import s from "./site.module.css";
@@ -129,9 +135,13 @@ export function StatusPill({
 }) {
   const st = statusOf(row);
   return (
-    <span className={`${s.pill} ${s.pillInline} ${p.pill} ${PILL_TONE[st.tone]}`}>
+    <a
+      className={`${s.pill} ${s.pillInline} ${s.pillLink} ${p.pill} ${PILL_TONE[st.tone]}`}
+      href={`#${st.id}`}
+    >
       {prefix ? <span className="sr-only">{INTEGRATE.statusPrefix}</span> : null}
       <Keep text={st.pill} />
-    </span>
+      <span className="sr-only">{STATUS_BOARD.pillSuffix}</span>
+    </a>
   );
 }

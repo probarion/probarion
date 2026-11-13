@@ -9,7 +9,7 @@ import { ScrollRegion } from "./ScrollRegion";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
-/** The uses' part: the hero's pointer to the mainnet payouts lands on its heading. */
+/** The uses' part, an anchor of its own. */
 export const USES_ID = "integrate-uses";
 
 /** The snippet as written, each comment in a span of its own so that it reads quieter than the code beside it. */

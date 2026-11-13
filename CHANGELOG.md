@@ -56,6 +56,59 @@ The software is an unaudited beta.
   and the Base transfer, `contracts/deployments/mainnet.json` records the top-up, mandate 2, spend 2 and the Base
   transfer, and the judge holds the run's snapshot to its committed verifier output.
 
+- The landing page's mainnet payout section, `#mainnet`, between the ink band and the console screenshots. One
+  dark card per Base payout says "A test, not a customer payment" and how the payout was decided (on 2026-11-13, by
+  the code rules alone, after code refused two attested model proposals), with 1.00 USDC burned on NEAR in the
+  neutral tone and 0.9976 USDC arrived on Base in the ok tone. **Read the chain now** reads the payout's 4
+  transactions and 3 views again in the visitor's browser and runs seven checks, from the owner's signature on the
+  mandate to the `Transfer` on Base, and each row shows the values it read. Check 03 holds the vault's code hash,
+  read with `view_account`, to the recorded build whose `SpendRequest` has the 5 fields, and finds an address
+  anywhere in a field's text. Check 06 hashes the ledger file's entries from the spend's decision to the root the
+  anchor wrote, so the decision the spend names is inside what the chain holds. Every NEAR read goes to FastNEAR's
+  archival node, with the regular node as the fallback; the views `get_config`, `view_access_key` and
+  `view_account` are pinned to the spend's own block, so a later change to the vault cannot change them; Base
+  answers from `mainnet.base.org`. Each request times out after 8 s and is tried up to twice more, when a retry can
+  help, after 0.5 s and 1.5 s, before the next host; an answer for another transaction, or one that is not final,
+  goes to the next host. The requests carry no cookies and no referrer, and none goes through Probarion's server. An
+  answer the page cannot read leaves its row unread, not failed. With no JavaScript the section shows the result
+  `apps/web/scripts/record-mainnet-payout.ts` recorded from public RPC
+  (`apps/web/src/lib/site/mainnet-payout-recorded.json`, 7 of 7 checks). The decision trail shows the two refused
+  proposals on a dashed spur off the main line and the 3 anchors as numbered gold seals, each with the entries it
+  covers and its transaction, and the verifier's result links its output, the `#verify` section and the payout's own
+  section of the docs page. The payouts are built from `docs/mainnet-proof.json`,
+  `contracts/deployments/mainnet.json` and the evidence folder, so every count on the section comes from data and
+  another payout adds a fold under the newest. On a phone each check's values fold behind a "What it read" line, and
+  with no JavaScript they all show. Motion starts after the button press, under
+  `prefers-reduced-motion: no-preference`, and does not loop. Tests run the seven checks on the recorded reads and on
+  tampered copies (another amount, another owner, no `ft_burn`, another token in `mt_burn`, an address in the
+  request, a wider key, another code hash, another `decision_hash`, ledger entries that do not hash to the root, a
+  view from another block) and cover the retries, the fallback, a node that answers for another transaction and an
+  aborted run. The data guard stops a payout to a wallet that `owner_wallets` in `contracts/deployments/mainnet.json`
+  does not list, since the section calls it a test to the owner's own wallet. The section shows both Base payouts of
+  2026-11-13, the newest at the top: spend 3, proposed by an attested model and allowed by the code rules, is open,
+  and spend 2 follows folded in a closed `<details>` whose summary gives its amounts, how it was decided and a hint
+  to show its seven checks and its ledger. The vault's two transactions of 2026-11-11 come after the fold, so the
+  section goes back in time. The fold opens with no JavaScript, and each payout's own **Read the chain
+  now** reads its transactions again in the browser. The card's line on attested decisions counts the decisions in
+  the ledger that payout's verifier run read, and its pronouns agree with the count. The trail's summary counts the
+  entries of the ledger file it links and the anchors on chain, as that verifier run read them. Each payout's own
+  links and its button end in words a screen reader reads, such as "for spend 3", so two links with one label still
+  have two names.
+- A docs page, [Mainnet payouts, step by step](https://probarion.xyz/docs/start/mainnet-payout), after "Testnet and
+  mainnet", for spends 2 and 3: spend 3 has its own table, its seven checks' values, how it was decided (entry 4, an
+  attested model and the code rules, no refusal), ledger entries 4 and 5 and anchor 4, and the verifier run with the
+  ledger of 6 entries. For spend 2: its table at a glance, what to open in a browser, the seven checks with the
+  values each one read, how the payment was decided (the two proposals that `mandate.payee_mismatch` refused and why,
+  then the code rules alone), the ledger's 4 entries and 3 anchors, the verifier command and its output, the bridge
+  fee, the 1Click top-up and the gas, the NEAR technology the run used, and what the runs do not show. "Testnet and
+  mainnet" links it, the README's Documentation table lists it, and the Docs Center has 35 pages.
+- A README visual of the mainnet payout, `docs/assets/readme/mainnet-payout.svg`: 1.00 USDC burned on NEAR mainnet,
+  0.9976 USDC arrived on Base, the gold bar with the coin at the Base end and ticks 01 to 07, "A test, not a customer
+  payment" and the date. It draws spend 2, and its heading, title and last line say so. It is one self-contained SVG
+  with real text in system fonts, in the site's paper, ink and gold, and its alt text says all of it. The README's S1
+  section shows it above a table of what to do and what you see (the live button, nearblocks, Basescan, the verifier
+  with the ledger file, the docs page) and a list of the NEAR technology the run used and how.
+
 - `JUDGES.md`, a page for judges and screeners whose first part takes two minutes: the mechanism in one sentence
   (the model proposes, code rules decide, the contract checks again), three links to open (the demo vault's proof
   page with its live TEE check, the landing page's live `check_spend` and the mainnet transactions of 2026-11-11),
@@ -1091,6 +1144,23 @@ The software is an unaudited beta.
   rules-only, as the SDK does). See `eval/README.md`.
 
 ### Changed
+
+- The landing's "What works today, and what does not" is a status board. A summary computed from
+  the rows comes first: how many are Verified, and what each row marked In part or Not tried yet
+  misses. A key then defines the two marks every row can carry: Proof (Verified, In part, Not tried
+  yet) and, where it applies, Use (Running, Released). The 13 rows sit in four groups (On chain,
+  Packages, The web app, Agents and the model) on one set of columns: name, what it does and what
+  is not done yet, the marks, where it runs, and the evidence. Each evidence link names its kind
+  (Try, Testnet, Mainnet, Base, npm, Registry, Store, Log, Record, Page, Docs, Verify), and the
+  real-money kinds are set in ink. The web console is one row whose tried parts fold under a line
+  that names them, with what is left to try always shown. Known gaps close the section in three
+  short lists. No status changed: each mark follows its STATUS row's tone and the README, and
+  `apps/web/test/status-board.test.ts` holds every mark, transaction, amount and link to its record.
+  The styles live in `components/site/status.module.css`.
+  The mainnet rows now tell round 2 (S2): three test payments, the 0.25 USDC one on an attested
+  model's proposal, with spend 3, its Base transfer and the S2 run linked, and `verify --online`
+  (O1 and O2) not yet run on the 3 mainnet decisions. The board's mainnet verify links now open
+  S2's output, the live verify of the 6-entry ledger.
 
 - After S2, the judge's `live-verify-mainnet-v0` step verifies `v0.probarion.near` with S2's copy of the ledger
   (`docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl`, 6 entries, since the chain's anchors now

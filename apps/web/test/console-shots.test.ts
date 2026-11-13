@@ -48,10 +48,13 @@ const recorded = (term: string) => CONSOLE_SHOTS.record.find((r) => r.term === t
 function section() {
   const html = renderToStaticMarkup(createElement(Home));
   const band = html.indexOf('id="payee"');
+  const mainnet = html.indexOf('id="mainnet"');
   const start = html.indexOf('id="console"');
   const verify = html.indexOf('id="verify"');
   expect(band).toBeGreaterThan(0);
-  expect(start).toBeGreaterThan(band);
+  // The mainnet payouts sit between the ink band and the screenshots.
+  expect(mainnet).toBeGreaterThan(band);
+  expect(start).toBeGreaterThan(mainnet);
   expect(verify).toBeGreaterThan(start);
   return html.slice(start, verify);
 }
