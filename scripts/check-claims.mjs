@@ -58,7 +58,7 @@ import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CLAIM_DOCS = ["README.md", "AGENTS.md", "JUDGES.md"];
+const CLAIM_DOCS = ["README.md", "AGENTS.md", "JUDGES.md", "docs/TRACKS.md"];
 const LINK_ONLY_DOCS = ["SECURITY.md", "CONTRIBUTING.md"];
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
