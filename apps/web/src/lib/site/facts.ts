@@ -991,15 +991,24 @@ export const BOARD_TX = {
   mcpSpend: recordTx("testnet", "CJu2sN5E6Z76c9Cfm29hmTNvh8BwpxgELFJmhjDFAfce"),
   /** mainnet.json proof.first_base_payout_tx: spend 2 of v0.probarion.near burned 1.00 USDC, 2026-11-13. */
   basePayout: recordTx("mainnet", "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9"),
+  /** mainnet.json proof.attested_base_payout_tx: spend 3, 0.25 USDC, on an attested proposal, 2026-11-13. */
+  attestedPayout: recordTx("mainnet", "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH"),
 } as const;
 
-/** mainnet.json proof.first_base_payout_base_tx: the POA bridge released 0.9976 USDC on Base, on Base's explorer. */
-const BASE_PAYOUT_HASH = "0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71";
-export const BASE_TX: TxFact = {
-  hash: BASE_PAYOUT_HASH,
-  label: shortHash(BASE_PAYOUT_HASH),
-  url: `https://basescan.org/tx/${BASE_PAYOUT_HASH}`,
-};
+/** A transaction on Base, on Base's explorer, named by its hash's leading 10 characters (with the 0x) and its last 4. */
+const baseTx = (hash: string): TxFact => ({
+  hash,
+  label: shortHash(hash),
+  url: `https://basescan.org/tx/${hash}`,
+});
+/** mainnet.json proof.first_base_payout_base_tx: the POA bridge released 0.9976 USDC on Base for spend 2. */
+export const BASE_TX: TxFact = baseTx(
+  "0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71",
+);
+/** mainnet.json proof.attested_base_payout_base_tx: the POA bridge released 0.2476 USDC on Base for spend 3. */
+export const ATTESTED_BASE_TX: TxFact = baseTx(
+  "0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7",
+);
 
 /**
  * The records and pages the board links that LINKS does not hold. The test checks each file and heading exists, and
@@ -1021,8 +1030,10 @@ export const BOARD_LINKS = {
   canaryRehearsal: blob("docs/evidence/canary-vault/README.md#the-rehearsal"),
   canaryVerifyOnline: blob("docs/evidence/canary-vault/verify-online-2026-11-11.txt"),
   vault402: blob("docs/evidence/402-vault/README.md"),
-  mainnetRun: blob("docs/evidence/mainnet-v0/s1-2026-11-13/README.md"),
-  mainnetVerify: blob("docs/evidence/mainnet-v0/s1-2026-11-13/verify-2026-11-13.txt"),
+  mainnetRunS1: blob("docs/evidence/mainnet-v0/s1-2026-11-13/README.md"),
+  mainnetRunS2: blob("docs/evidence/mainnet-v0/s2-2026-11-13/README.md"),
+  /** The live verify of the mainnet ledger after S2: all 6 entries, both invoices, 3 attested decisions. */
+  mainnetVerify: blob("docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt"),
   teeCheck: blob("docs/evidence/tee-check/live-2026-11-12.json"),
   eval: blob("eval/results/adversary.md"),
   readmeStatus: `${REPO_URL}#status`,
@@ -1253,17 +1264,25 @@ export const STATUS_BOARD = {
           name: "Mainnet vault",
           proof: "verified",
           use: "running",
-          what: "One small standalone vault with real USDC, locked, on the recorded build. It made two test payments to the owner's own addresses, one of them a Base payout through NEAR Intents, and refused mandate 999 on chain.",
+          what: "One small standalone vault with real USDC, locked, on the recorded build. It made three test payments to the owner's own addresses: 1 USDC to a NEAR wallet on 2026-11-11, then two Base payouts through NEAR Intents on 2026-11-13. Code rules alone decided the 1.00 USDC payout. The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed. It refused mandate 999 on chain.",
           limit:
-            "No payment on a model's proposal yet: code rules alone decided the Base payout, and spend 1 was sent without the SDK, with no signed ledger.",
+            "No customer payment yet: each one is a test to the owner's own address. `verify --online` (O1 and O2) has not run on the vault's 3 attested decisions, and spend 1 was sent without the SDK, with no signed ledger.",
           where: { place: "Mainnet, real USDC" },
           evidence: [
             { kind: "mainnet", label: "v0.probarion.near", href: BOARD_LINKS.mainnetAccount },
             chainTx("mainnet", "paid", MAINNET_TX.payment, "1 USDC, 2026-11-11"),
             chainTx("mainnet", "refused", MAINNET_TX.refusal, "NoMandate"),
-            chainTx("mainnet", "Base payout", BOARD_TX.basePayout, "1.00 USDC burned, 2026-11-13"),
+            chainTx("mainnet", "Base payout", BOARD_TX.basePayout, "1.00 USDC burned, rules alone"),
             chainTx("base", "arrived", BASE_TX, "0.9976 USDC on Base"),
-            { kind: "record", label: "the S1 run, 2026-11-13", href: BOARD_LINKS.mainnetRun },
+            chainTx(
+              "mainnet",
+              "Base payout",
+              BOARD_TX.attestedPayout,
+              "0.25 USDC burned, attested model",
+            ),
+            chainTx("base", "arrived", ATTESTED_BASE_TX, "0.2476 USDC on Base"),
+            { kind: "record", label: "the S1 run, 2026-11-13", href: BOARD_LINKS.mainnetRunS1 },
+            { kind: "record", label: "the S2 run, 2026-11-13", href: BOARD_LINKS.mainnetRunS2 },
           ],
         },
         {
@@ -1351,9 +1370,15 @@ export const STATUS_BOARD = {
             { kind: "npm", label: "@probarion/sdk", href: LINKS.npmSdk },
             {
               kind: "record",
-              label: "mainnet run with the SDK",
-              href: BOARD_LINKS.mainnetRun,
-              note: "the Base payout, 2026-11-13",
+              label: "S1 run with the SDK",
+              href: BOARD_LINKS.mainnetRunS1,
+              note: "1.00 USDC to Base, rules alone",
+            },
+            {
+              kind: "record",
+              label: "S2 run with the SDK",
+              href: BOARD_LINKS.mainnetRunS2,
+              note: "0.25 USDC to Base, attested model",
             },
             {
               kind: "docs",
@@ -1602,9 +1627,9 @@ export const STATUS_BOARD = {
           status: "attested-model-run",
           name: "Live attested model run",
           proof: "part",
-          what: "NEAR AI Cloud's private model, in a TEE, proposes a payment, and code decides. 7 attested decisions are published on testnet, and each passes A1 to A7 offline. On mainnet, code refused the 2 attested proposals of 2026-11-13.",
+          what: "NEAR AI Cloud's private model, in a TEE, proposes a payment, and code decides. 7 attested decisions are published on testnet, and each passes A1 to A7 offline. On mainnet, the 3 of 2026-11-13 pass A1 to A8 offline. Code refused 2 of them and allowed the third, which the vault paid: a 0.25 USDC test to the owner's own Base address.",
           limit:
-            "The TEE measurement is not pinned, so no check shows which model image ran. O1 and O2 have not run on the 2 mainnet decisions, and A8 was not run on the Canary's 2.",
+            "The TEE measurement is not pinned, so no check shows which model image ran. `verify --online` (O1 and O2) has not run on the 3 mainnet decisions, and A8 was not run on the Canary's 2.",
           where: { place: "NEAR AI Cloud, testnet and mainnet" },
           evidence: [
             { kind: "page", label: "proof page, entry 15", href: `${DEMO_PROOF}#seq-15` },
@@ -1625,6 +1650,12 @@ export const STATUS_BOARD = {
               label: "A8 check, 2026-11-12",
               href: BOARD_LINKS.demoVerifyA8,
               note: "the demo vault's 5",
+            },
+            {
+              kind: "verify",
+              label: "mainnet check, 2026-11-13",
+              href: BOARD_LINKS.mainnetVerify,
+              note: "A1 to A8 on all 3",
             },
           ],
           missing: "TEE image not pinned",

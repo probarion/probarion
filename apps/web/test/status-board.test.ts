@@ -14,6 +14,7 @@ import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { explorerTxUrl } from "@/lib/config";
 import { REPO_URL } from "@/lib/proof/cli";
 import {
+  ATTESTED_BASE_TX,
   BASE_TX,
   BOARD_GROUPS,
   BOARD_LINKS,
@@ -103,7 +104,8 @@ const BACKING: Readonly<Record<string, { proof: readonly Quote[]; use?: readonly
   "mainnet-vault": {
     proof: [
       ["judges", "The contract enforces the mandate on mainnet"],
-      ["judges", "A payout through NEAR Intents on mainnet"],
+      ["judges", "| Payouts through NEAR Intents on mainnet |"],
+      ["judges", "| A payment on an attested model's proposal on mainnet |"],
     ],
     use: [
       ["readme", "**Live on NEAR mainnet** since 2026-11-11, with real USDC and small amounts"],
@@ -221,6 +223,11 @@ const BACKING: Readonly<Record<string, { proof: readonly Quote[]; use?: readonly
     proof: [
       ["judges", "A1 to A8, O1 and O2 on recorded decisions"],
       ["judges", "**The TEE measurement is not pinned**, so no check shows which model image ran"],
+      [
+        "judges",
+        "On mainnet, the 3 of `v0.probarion.near` of 2026-11-13, entries 0, 1 and 4, pass A1 to A7",
+      ],
+      ["judges", "O1 and O2 have not run on them"],
     ],
   },
 };
@@ -424,6 +431,51 @@ describe("the status board's rows", () => {
       "showed 0 external owners, 0 Canary participants and 0 pilots, beside 2 team vaults",
     );
   });
+
+  it("tells the mainnet vault's three test payments, the 0.25 USDC one on an attested model's proposal", () => {
+    const row = ITEMS.find((i) => i.id === "mainnet-vault");
+    const what = row?.what ?? "";
+    expect(what).toContain("It made three test payments to the owner's own addresses");
+    expect(what).toContain("Code rules alone decided the 1.00 USDC payout.");
+    expect(what).toContain(
+      "The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed.",
+    );
+    // What is still not done after S2: no customer payment, and no online check of the mainnet decisions.
+    expect(row?.limit).toContain("No customer payment yet");
+    expect(row?.limit).toContain("`verify --online` (O1 and O2) has not run");
+    expect(row?.limit).not.toMatch(/No payment on a model's proposal/);
+    // Its evidence: spend 3 on NEAR, what arrived on Base, and the S2 run beside the S1 run.
+    const hrefs = row?.evidence.map((e) => e.href) ?? [];
+    for (const href of [
+      BOARD_TX.basePayout.url,
+      BASE_TX.url,
+      BOARD_TX.attestedPayout.url,
+      ATTESTED_BASE_TX.url,
+      BOARD_LINKS.mainnetRunS1,
+      BOARD_LINKS.mainnetRunS2,
+    ]) {
+      expect(hrefs, href).toContain(href);
+    }
+    // Each claim stands on the S2 record and on JUDGES.md.
+    const s2 = flat(text(ROOT, "docs", "evidence", "mainnet-v0", "s2-2026-11-13", "README.md"));
+    expect(s2).toContain("**Decided by an attested model and the code rules.**");
+    expect(s2).toContain("verdict `allow`, `decided_by` `model+rules`");
+    expect(s2).toContain("which has not run on this decision");
+    expect(SOURCES.judges).toContain(
+      "spend 3 paid it to the owner's own Base address, a test: 0.25 USDC sent, 0.2476 USDC arrived",
+    );
+    // The model run's row tells the 3 mainnet decisions, and that O1 and O2 have not run on them.
+    const model = ITEMS.find((i) => i.id === "attested-model-run");
+    expect(model?.what).toContain("On mainnet, the 3 of 2026-11-13 pass A1 to A8 offline.");
+    expect(model?.what).toContain("Code refused 2 of them and allowed the third");
+    expect(model?.limit).toContain("has not run on the 3 mainnet decisions");
+    // On the page, word for word.
+    const out = visibleText(board());
+    expect(out).toContain(
+      "The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed.",
+    );
+    expect(out).toContain("verify --online (O1 and O2) has not run on the 3 mainnet decisions");
+  });
 });
 
 describe("the status board's evidence", () => {
@@ -437,6 +489,7 @@ describe("the status board's evidence", () => {
       ...strings(HERO),
       ...strings(BOARD_TX),
       ...strings(BASE_TX),
+      ...strings(ATTESTED_BASE_TX),
       ...strings(BOARD_LINKS),
       ...strings(STORY),
       ...strings(INTEGRATE),
@@ -523,6 +576,7 @@ describe("the status board's evidence", () => {
       payablesOwn: { network: "testnet", hash: proof.txs.demo_payables_spend_4?.hash ?? "" },
       mcpSpend: { network: "testnet", hash: proof.txs.trial_mcp_spend_1?.hash ?? "" },
       basePayout: { network: "mainnet", hash: mainnet.proof.first_base_payout_tx },
+      attestedPayout: { network: "mainnet", hash: mainnet.proof.attested_base_payout_tx },
     };
     for (const [name, fact] of Object.entries(BOARD_TX)) {
       const r = recorded[name as keyof typeof BOARD_TX];
@@ -542,6 +596,15 @@ describe("the status board's evidence", () => {
     expect(SOURCES.judges).toContain(BASE_TX.url);
     expect(SOURCES.judges).toContain("the POA bridge released 0.9976 USDC on Base");
     expect(SOURCES.judges).toContain("spend 2 burned 1.00 USDC");
+    // The Base side of spend 3, the payout on an attested model's proposal, the same way.
+    expect(ATTESTED_BASE_TX.hash).toBe(mainnet.proof.attested_base_payout_base_tx);
+    expect(ATTESTED_BASE_TX.label).toBe(
+      `${ATTESTED_BASE_TX.hash.slice(0, 10)}…${ATTESTED_BASE_TX.hash.slice(-4)}`,
+    );
+    expect(SOURCES.readme).toContain(ATTESTED_BASE_TX.url);
+    expect(SOURCES.judges).toContain(ATTESTED_BASE_TX.url);
+    expect(SOURCES.judges).toContain("the POA bridge released 0.2476 USDC on Base");
+    expect(SOURCES.judges).toContain("spend 3 burned 0.25 USDC");
   });
 
   it("holds every amount, invoice and refusal a transaction's note gives to the record of that transaction", () => {
@@ -595,12 +658,20 @@ describe("the status board's evidence", () => {
     // The Base side of the payout: JUDGES.md's words for what the bridge released.
     const released = /the POA bridge released (\d+\.\d+) USDC on Base/.exec(SOURCES.judges)?.[1];
     record.set(BASE_TX.hash, { amount: Number(released) });
+    // The Base side of spend 3: the POA bridge's own status record of S2, in base units of 6 decimals.
+    const poa = JSON.parse(
+      text(ROOT, "docs", "evidence", "mainnet-v0", "s2-2026-11-13", "poa-status.json"),
+    ) as { data: { tx_hash: string; transfer_tx_hash: string; withdraw_amount: string } };
+    expect(poa.data.tx_hash).toBe(BOARD_TX.attestedPayout.hash);
+    expect(poa.data.transfer_tx_hash).toBe(ATTESTED_BASE_TX.hash);
+    record.set(ATTESTED_BASE_TX.hash, { amount: Number(poa.data.withdraw_amount) / 1e6 });
 
     const facts: TxFact[] = [
       ...Object.values(TX),
       ...Object.values(MAINNET_TX),
       ...Object.values(BOARD_TX),
       BASE_TX,
+      ATTESTED_BASE_TX,
       HERO.paid.tx,
       HERO.refused.tx,
     ];
@@ -673,6 +744,12 @@ describe("the status board's evidence", () => {
         "O1 and O2, 2026-11-11",
         "online: 2 DCAP-genuine TDX quotes bound to this request",
       ],
+      [
+        "attested-model-run",
+        BOARD_LINKS.mainnetVerify,
+        "A1 to A8 on all 3",
+        "A8 (request binding and mandate match) passes for 3 of 3 attested decisions (seq 0, 1, 4)",
+      ],
     ];
     for (const [id, href, note, line] of logs) {
       expect(evidence.find((e) => e.id === id && e.href === href)?.note, `${id} ${href}`).toBe(
@@ -681,6 +758,19 @@ describe("the status board's evidence", () => {
       const file = href.replace(/^https:\/\/github\.com\/probarion\/probarion\/blob\/main\//, "");
       expect(text(ROOT, file), file).toContain(line);
     }
+    // The mainnet verify is the live run after S2, on the whole ledger: its 3 attested decisions pass A1 to A7 too, and
+    // it ran without --online, so O1 and O2 are still to run on mainnet.
+    const mainnetLog = text(
+      ROOT,
+      BOARD_LINKS.mainnetVerify.replace(
+        /^https:\/\/github\.com\/probarion\/probarion\/blob\/main\//,
+        "",
+      ),
+    );
+    expect(BOARD_LINKS.mainnetVerify).toContain("/s2-2026-11-13/");
+    expect(mainnetLog).toContain("entries 6, anchors 4");
+    expect(mainnetLog).toContain("3 attested decisions pass A1");
+    expect(mainnetLog).toContain("quote not verified offline (run --online for O1)");
     // The later online check covers entry 15, which the row's proof page link opens, as JUDGES.md cites it.
     expect(
       text(ROOT, "docs", "evidence", "demo-vault", "verify-online-a8-2026-11-12.txt"),
@@ -722,6 +812,7 @@ describe("the status board's evidence", () => {
       ...Object.values(MAINNET_TX),
       ...Object.values(BOARD_TX),
       BASE_TX,
+      ATTESTED_BASE_TX,
       HERO.paid.tx,
       HERO.refused.tx,
     ];
@@ -756,7 +847,7 @@ describe("the status board's evidence", () => {
     }
     // A verify output is a log or a result file in the evidence, and its note is the result, set in ink.
     const verify = evidence.filter((e) => e.kind === "verify");
-    expect(verify.length).toBe(7);
+    expect(verify.length).toBe(8);
     for (const e of verify) {
       expect(e.href.startsWith(`${REPO_URL}/blob/main/docs/evidence/`), e.label).toBe(true);
       expect(e.href.endsWith(".txt") || e.href.endsWith(".json"), e.label).toBe(true);

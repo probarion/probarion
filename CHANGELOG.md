@@ -1104,6 +1104,9 @@ The software is an unaudited beta.
   short lists. No status changed: each mark follows its STATUS row's tone and the README, and
   `apps/web/test/status-board.test.ts` holds every mark, transaction, amount and link to its record.
   The styles live in `components/site/status.module.css`.
+  The mainnet rows now tell round 2 (S2): three test payments, the 0.25 USDC one on an attested
+  model's proposal, with spend 3, its Base transfer and the S2 run linked, and `verify --online`
+  (O1 and O2) not yet run on the 3 mainnet decisions.
 
 - After S2, the judge's `live-verify-mainnet-v0` step verifies `v0.probarion.near` with S2's copy of the ledger
   (`docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl`, 6 entries, since the chain's anchors now
