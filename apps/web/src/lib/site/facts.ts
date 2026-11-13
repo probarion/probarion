@@ -1030,26 +1030,66 @@ export const TAMPER_COPY = {
 
 export const CHAIN = {
   eyebrow: "Read it on chain",
-  /** Its count is the number of rows (test/section-heads.test.ts). */
-  title: "Three testnet transactions from the smoke run.",
-  intro: "A smoke run of the contract alone on NEAR testnet, with test tokens, on 2026-11-01.",
+  /**
+   * Its count is the number of rows (test/section-heads.test.ts). "The smoke run" is the name Known gaps gives v0's run
+   * (STATUS.gaps.v0), so the heading, the record's "Run" and the foot's pointer all name one run.
+   */
+  title: "Three transactions from the smoke run.",
+  /** What the run exercised (README, "NEAR testnet, 2026-11-01"). Its missing ledger is told once, in Known gaps (P1-10). */
+  intro:
+    "The contract alone, with test tokens: the agent key called `spend` directly, with no SDK or model in between. Each hash opens its transaction on testnet.nearblocks.io.",
+  /** What the three rows share, said once in the head under the record's terms, as the console's record says its own. */
+  network: "Testnet",
+  date: "2026-11-01",
+  vault: "v0.probarion.testnet",
+  vaultUrl: explorerAccountUrl("testnet", "v0.probarion.testnet"),
+  terms: { network: "Network", date: "Run", vault: "Vault" },
+  /** Read after the vault's name and after each hash. ExternalLink adds " (opens in a new tab)" itself. */
+  vaultExplorer: ", the account on the testnet explorer",
+  txExplorer: ", on the testnet explorer",
+  /** Over each row's hash, so that each link carries its network when it is read on its own. */
+  evidenceLabel: "Testnet transaction",
+  /** `call` is the README's "The agent key called `spend` on mandate N" for the row's transaction. */
   rows: [
     {
       title: "Paid a NEAR account",
+      call: "Called `spend` on mandate 1",
       body: "1 test USDC to `probarion-payee.testnet`. Events `spend_submitted`, `ft_transfer`, `spend_paid`.",
       tx: TX.nearPayment,
     },
     {
       title: "Withdrawal for a Base address",
+      call: "Called `spend` on mandate 2",
       body: "The vault burned 1 test USDC with the memo `WITHDRAW_TO:0x1111…1111`, which it built from the mandate. On testnet nothing leaves NEAR.",
       tx: TX.baseBurn,
     },
     {
       title: "Refused a mandate that does not exist",
+      call: "Called `spend` on mandate 999",
       body: "The contract answered `PROBARION:NoMandate`. Nothing was paid.",
       tx: TX.noMandate,
     },
   ],
+  /**
+   * Where to read on, under the rows. A link to this page (#) stays in the tab, and the proof page is a page of the
+   * site; each # is held to an id on the landing (test/site-facts.test.ts). The second line only points to the gap.
+   */
+  foot: [
+    [
+      "The demo vault's newer testnet transactions are linked from ",
+      { label: "its four invoices", href: `#${JOURNEY_IDS.invoices}` },
+      " and ",
+      { label: "the console screenshots", href: "#console" },
+      ", and ",
+      { label: "its proof page", href: CONSOLE_SHOTS.proof.href },
+      " lists the vault's spends.",
+    ],
+    [
+      "For what a live `verify` of `v0.probarion.testnet` shows, see ",
+      { label: "Known gaps", href: "#known-gaps" },
+      ".",
+    ],
+  ] satisfies readonly (readonly CopyPart[])[],
 } as const;
 
 // --- status ---------------------------------------------------------------------------------------

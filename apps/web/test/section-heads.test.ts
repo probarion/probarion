@@ -71,8 +71,9 @@ describe("the landing's section heads", () => {
       expect(decode(head?.[1] ?? ""), x.id).toBe(x.eyebrow);
       expect(decode(head?.[2] ?? ""), x.id).toBe(x.title);
       expect(text(head?.[3] ?? ""), x.id).toBe(plain(x.lede));
-      // Only the console says one thing for its whole body under the lede: the record its three shots share.
-      expect(head?.[4] !== undefined, x.id).toBe(x.id === "console");
+      // Only the console and the chain say one thing for their whole body under the lede: the record their three
+      // shots or transactions share.
+      expect(head?.[4] !== undefined, x.id).toBe(x.id === "console" || x.id === "chain");
     }
   });
 
@@ -132,13 +133,17 @@ describe("the landing's section heads", () => {
     expect(CONSOLE_SHOTS.shots[2]?.title).toBe("Paid after approval");
   });
 
-  it("counts in the chain's heading as many transactions as it lists, all on testnet", () => {
+  it("counts in the chain's heading as many transactions as it lists, and says testnet in the record and on each hash", () => {
     const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
     const first = (CHAIN.title.split(" ")[0] ?? "").toLowerCase();
     expect(WORDS).toContain(first);
     expect(WORDS.indexOf(first)).toBe(CHAIN.rows.length);
-    expect(CHAIN.title).toContain("testnet");
-    expect(CHAIN.intro).toContain("NEAR testnet, with test tokens");
+    // The heading names the run as Known gaps does; the network is said in the record and over every hash.
+    expect(CHAIN.title).toBe("Three transactions from the smoke run.");
+    expect(CHAIN.network).toBe("Testnet");
+    expect(CHAIN.evidenceLabel).toBe("Testnet transaction");
+    expect(CHAIN.intro).toContain("with test tokens");
+    expect(CHAIN.intro).toContain("testnet.nearblocks.io");
     for (const row of CHAIN.rows) expect(row.tx.url).toContain("testnet");
   });
 });

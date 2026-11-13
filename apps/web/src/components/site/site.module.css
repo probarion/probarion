@@ -1012,34 +1012,6 @@ a.netPill:hover {
   transform: none;
 }
 
-/* On chain */
-.tx {
-  display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 5fr) auto;
-  gap: 8px 28px;
-  padding-block: 20px;
-  border-top: 1px solid var(--color-line);
-  align-items: baseline;
-}
-.tx:last-of-type {
-  border-bottom: 1px solid var(--color-line);
-}
-.tx h3 {
-  font-weight: 400;
-  font-size: 19px;
-  letter-spacing: -0.012em;
-}
-.tx p {
-  color: var(--color-mute);
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-.txHash {
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  white-space: nowrap;
-}
-
 /* Status */
 .status {
   display: grid;
@@ -1553,9 +1525,6 @@ a.netPill:hover {
   }
   .foot > div:first-child {
     grid-column: 1 / -1;
-  }
-  .tx {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 /*

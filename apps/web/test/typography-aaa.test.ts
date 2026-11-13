@@ -29,6 +29,7 @@ const MODULES: Readonly<Record<string, string>> = {
   hero: "src/components/site/hero.module.css",
   compare: "src/components/site/compare.module.css",
   tamper: "src/components/site/tamper.module.css",
+  chain: "src/components/site/chain.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -522,6 +523,9 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       // The console: the record under the head's lede, and a capture's full-size link over its transaction.
       ["console", ".record", "margin-top", 17, "site", ".site"],
       ["console", ".ev", "gap", 15, "site", ".site"],
+      // The chain: a row's call, what the chain shows and its transaction stacked, and the foot's two lines.
+      ["chain", ".row", "row-gap", 15, "site", ".site"],
+      ["chain", ".foot", "gap", 15, "site", ".site"],
       // The hero: one step of the Canary's rehearsal under the next.
       ["hero", ".steps li + li", "margin-top", 14, "hero", ".steps"],
     ];
@@ -573,6 +577,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["site", ".proofIntro"],
       ["compare", ".moreLink"],
       ["compare", ".moreNote"],
+      ["chain", ".body"],
+      ["chain", ".foot"],
       ["site", ".boFine"],
       ["head", ".lede"],
       ["docs", ".prose > :is(p, ul, ol, blockquote)"],

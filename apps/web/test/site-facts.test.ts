@@ -11,6 +11,7 @@ import Home from "@/app/page";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { BetaStrip, BetaStripView } from "@/components/site/BetaStrip";
+import ch from "@/components/site/chain.module.css";
 import { InkBand } from "@/components/site/InkBand";
 import ig from "@/components/site/integrate.module.css";
 import j from "@/components/site/journey.module.css";
@@ -36,6 +37,7 @@ import {
   CLOSING,
   COMPARE,
   CONSOLE_ROUTE,
+  CONSOLE_SHOTS,
   CONTRACT_REFUSAL_CODE,
   EVALUATE_ROUTE,
   FIXTURE_PATH,
@@ -457,8 +459,39 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
   const entry = (key: string) => step4.find((line) => "key" in line && line.key === key);
 
   it("the smoke run's date", () => {
-    const date = /on (\d{4}-\d{2}-\d{2})\./.exec(CHAIN.intro)?.[1];
-    expect(README).toContain(`### NEAR testnet, ${date}`);
+    expect(CHAIN.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(README).toContain(`### NEAR testnet, ${CHAIN.date}`);
+  });
+
+  it("the smoke run's vault, on the testnet explorer", () => {
+    const record = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
+      accounts: { vault_v0: string };
+      smoke: Record<string, string>;
+    };
+    expect(CHAIN.vault).toBe(record.accounts.vault_v0);
+    expect(CHAIN.vaultUrl).toBe(explorerAccountUrl("testnet", CHAIN.vault));
+    expect(CHAIN.network).toBe("Testnet");
+    // The three rows are the record's three smoke transactions, in its order.
+    expect(CHAIN.rows.map((r) => r.tx.hash)).toEqual(Object.values(record.smoke));
+  });
+
+  it("the mandate each smoke transaction's spend named, as the README's table has it", () => {
+    const lines = README.split("\n");
+    expect(CHAIN.rows.map((r) => r.call)).toEqual([
+      "Called `spend` on mandate 1",
+      "Called `spend` on mandate 2",
+      "Called `spend` on mandate 999",
+    ]);
+    for (const row of CHAIN.rows) {
+      const mandate = /^Called `spend` on mandate (\d+)$/.exec(row.call)?.[1];
+      const line = lines.find(
+        (l) => l.startsWith("| The agent key called") && l.includes(`(${row.tx.url})`),
+      );
+      expect(line, row.title).toBeDefined();
+      expect(line, row.title).toMatch(
+        new RegExp(`^\\| The agent key called \`spend\` on mandate ${mandate}, `),
+      );
+    }
   });
 
   it("what the smoke run's paid transaction paid, and to whom", () => {
@@ -853,10 +886,19 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
   });
 
   it("what the smoke run was, and that mainnet has only one small vault", () => {
-    // Its missing ledger is told once, in the known gaps (audit P1-10).
+    // Its missing ledger is told once, in the known gaps (audit P1-10): the README's "without the SDK, a model or a
+    // ledger" loses its ledger here, and the foot only points to the gap.
     expect(CHAIN.intro).toBe(
-      "A smoke run of the contract alone on NEAR testnet, with test tokens, on 2026-11-01.",
+      "The contract alone, with test tokens: the agent key called `spend` directly, with no SDK or model in between. Each hash opens its transaction on testnet.nearblocks.io.",
     );
+    expect(README.replace(/\s+/g, " ")).toContain(
+      "The smoke run exercised the contract alone: its spends were sent with the agent key directly, without the SDK, a model or a ledger",
+    );
+    expect(CHAIN.intro).not.toMatch(/ledger/i);
+    expect(JSON.stringify(CHAIN.foot)).not.toMatch(/ledger|check d|check h|FAIL/i);
+    // Every hash in the section opens on the explorer the lede names.
+    for (const row of CHAIN.rows)
+      expect(row.tx.url).toMatch(/^https:\/\/testnet\.nearblocks\.io\/txns\//);
     expect(HERO.both.rest).toContain("test tokens");
     expect(HERO.mainnet.intro).toContain("one small vault, `v0.probarion.near`, with real USDC");
     expect(HERO.mainnet.rows.map((r) => r.tx)).toEqual([MAINNET_TX.payment, MAINNET_TX.refusal]);
@@ -1288,8 +1330,9 @@ describe("the status list", () => {
       "`v0.probarion.testnet`, the vault of the 2026-11-01 smoke run, sent its spends with the agent key alone, without a ledger, so a live `verify --vault` on it fails checks d and h. It also runs a build from before the 2026-11-03 `set_ledger_key` fix. The vaults the testnet factory creates, the demo vault among them, run the fixed build recorded in `contracts/code-hashes.json`.",
     );
     const prose = README.replace(/\s+/g, " ");
-    const smokeRun = /on (\d{4}-\d{2}-\d{2})\./.exec(CHAIN.intro)?.[1];
-    expect(STATUS.gaps.v0).toContain(`the vault of the ${smokeRun} smoke run`);
+    expect(STATUS.gaps.v0).toContain(
+      `\`${CHAIN.vault}\`, the vault of the ${CHAIN.date} smoke run`,
+    );
     expect(prose).toContain(
       "its spends were sent with the agent key directly, without the SDK, a model or a ledger",
     );
@@ -2267,6 +2310,75 @@ describe("the rendered landing page", () => {
       expect(html).toContain(row.tx.label);
     }
     expect(html).toContain("(opens in a new tab)");
+  });
+
+  describe("the on-chain section as it renders", () => {
+    const html = landing();
+    const part = html.slice(
+      html.indexOf('id="chain"'),
+      html.lastIndexOf("<section", html.indexOf('id="status"')),
+    );
+    /** A link's accessible name: its text without the arrow, which is hidden from screen readers. */
+    const nameOf = (a: string) =>
+      textContent(a.replace(/<span[^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/span>/g, ""));
+    const anchors = [...part.matchAll(/<a\s[^>]*>[\s\S]*?<\/a>/g)].map((m) => m[0]);
+    const anchorTo = (href: string) => anchors.find((a) => a.includes(` href="${href}"`)) ?? "";
+
+    it("says the network, the run's date and the vault once, in the head, with the vault on the explorer", () => {
+      const head = part.slice(0, part.indexOf("</header>"));
+      expect(visibleText(head)).toContain(
+        `${CHAIN.terms.network} ${CHAIN.network} ${CHAIN.terms.date} ${CHAIN.date} ${CHAIN.terms.vault} ${CHAIN.vault}`,
+      );
+      const vault = anchorTo(CHAIN.vaultUrl);
+      expect(head).toContain(vault);
+      expect(vault).toContain('target="_blank"');
+      expect(nameOf(vault)).toBe(`${CHAIN.vault}${CHAIN.vaultExplorer} (opens in a new tab)`);
+      // The date is said once, in the record, not on every row.
+      expect(part.split(CHAIN.date).length - 1).toBe(1);
+    });
+
+    it("gives each row its title, the call, what the chain shows and its labelled hash, in that order", () => {
+      const rows = [...part.matchAll(new RegExp(`<li class="${ch.row}">([\\s\\S]*?)</li>`, "g"))];
+      expect(rows).toHaveLength(CHAIN.rows.length);
+      expect(part).toContain(`<ul class="${ch.rows}" role="list">`);
+      for (const [i, row] of CHAIN.rows.entries()) {
+        const li = rows[i]?.[1] ?? "";
+        expect(li, row.title).toMatch(new RegExp(`<h3 class="${ch.title}">${row.title}</h3>`));
+        expect(textContent(li), row.title).toBe(
+          `${row.title}${row.call}${row.body}${CHAIN.evidenceLabel}${row.tx.label}↗${CHAIN.txExplorer} (opens in a new tab)`.replace(
+            /`/g,
+            "",
+          ),
+        );
+        const a = anchorTo(row.tx.url);
+        expect(a, row.title).toContain('target="_blank"');
+        // ExternalLink says "opens in a new tab" itself; the row adds only where the link goes.
+        expect(nameOf(a), row.title).toBe(
+          `${row.tx.label}${CHAIN.txExplorer} (opens in a new tab)`,
+        );
+      }
+    });
+
+    it("points on from the foot with links that stay in the tab, each to an id the landing has", () => {
+      const foot = part.slice(part.indexOf(`<div class="${ch.foot}">`));
+      const line = new RegExp(`<p class="${ch.line}">([\\s\\S]*?)</p>`, "g");
+      const lines = [...foot.matchAll(line)].map((m) => textContent(m[1] ?? ""));
+      expect(lines).toEqual(CHAIN.foot.map(partsText));
+      const links = CHAIN.foot.flat().filter((p) => typeof p !== "string");
+      expect(links.map((l) => l.href)).toEqual([
+        "#invoices",
+        "#console",
+        CONSOLE_SHOTS.proof.href,
+        "#known-gaps",
+      ]);
+      for (const { href } of links) {
+        const a = anchorTo(href);
+        expect(a, href).not.toBe("");
+        expect(a, href).not.toMatch(/\starget=/);
+        // A moved anchor (the invoices, the console, the known gaps) fails here instead of becoming a dead link.
+        if (href.startsWith("#")) expect(html, href).toContain(` id="${href.slice(1)}"`);
+      }
+    });
   });
 
   it("offers the two closing links on main", () => {

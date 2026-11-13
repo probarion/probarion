@@ -2,6 +2,10 @@ import Link from "next/link";
 import { ExternalLink } from "@/components/ui";
 import { CHAIN, CLOSING, EVALUATE_ROUTE, LINKS, STATUS, type StatusTone } from "@/lib/site/facts";
 import { NEXT_STEP } from "@/lib/site/next-step";
+import ch from "./chain.module.css";
+import c from "./console.module.css";
+import { Parts } from "./JourneyRecord";
+import j from "./journey.module.css";
 import { NextStep } from "./NextStep";
 import { Rich } from "./Rich";
 import { LandingSection } from "./SectionHead";
@@ -13,23 +17,85 @@ const TONE: Readonly<Record<StatusTone, string | undefined>> = {
   plan: s.plan,
 };
 
+/** list-style: none drops a list's semantics in Safari, so the rows say they are one. Spread past noRedundantRoles. */
+const LIST = { role: "list" } as const;
+
+/** The arrow after a link that opens in a new tab, as the journey draws it. ExternalLink says it in words. */
+const NewTab = () => (
+  <span className={j.ext} aria-hidden="true">
+    ↗
+  </span>
+);
+
+/** What the three rows share, said once in the head: the network, the run's date and the vault, on the explorer. */
+function ChainRecord() {
+  return (
+    <dl className={c.record}>
+      <div>
+        <dt>{CHAIN.terms.network}</dt>
+        <dd>{CHAIN.network}</dd>
+      </div>
+      <div>
+        <dt>{CHAIN.terms.date}</dt>
+        <dd>{CHAIN.date}</dd>
+      </div>
+      <div>
+        <dt>{CHAIN.terms.vault}</dt>
+        <dd>
+          <ExternalLink className={`${s.link} ${ch.vault}`} href={CHAIN.vaultUrl}>
+            <code>{CHAIN.vault}</code>
+            <NewTab />
+            <span className="sr-only">{CHAIN.vaultExplorer}</span>
+          </ExternalLink>
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
+/**
+ * The smoke run's three transactions: each row's title and the call the agent key made, what the chain shows, and the
+ * transaction on the testnet explorer. A short foot points to the demo vault's newer record and to v0's known gap.
+ */
 export function ChainList() {
   return (
     <LandingSection
       id="chain"
       head={{ eyebrow: CHAIN.eyebrow, title: CHAIN.title, lede: CHAIN.intro }}
+      headAfter={<ChainRecord />}
     >
-      {CHAIN.rows.map(({ title, body, tx }) => (
-        <div key={tx.hash} className={s.tx}>
-          <h3>{title}</h3>
-          <p>
-            <Rich text={body} />
+      <ul className={ch.rows} {...LIST}>
+        {CHAIN.rows.map(({ title, call, body, tx }) => (
+          <li key={tx.hash} className={ch.row}>
+            <div className={ch.what}>
+              <h3 className={ch.title}>{title}</h3>
+              <p className={ch.call}>
+                <Rich text={call} />
+              </p>
+            </div>
+            <p className={ch.body}>
+              <Rich text={body} />
+            </p>
+            <dl className={ch.ev}>
+              <dt>{CHAIN.evidenceLabel}</dt>
+              <dd>
+                <ExternalLink className={`${s.link} ${ch.txLink}`} href={tx.url}>
+                  <span className={ch.hash}>{tx.label}</span>
+                  <NewTab />
+                  <span className="sr-only">{CHAIN.txExplorer}</span>
+                </ExternalLink>
+              </dd>
+            </dl>
+          </li>
+        ))}
+      </ul>
+      <div className={ch.foot}>
+        {CHAIN.foot.map((line) => (
+          <p key={String(line[0])} className={ch.line}>
+            <Parts parts={line} />
           </p>
-          <ExternalLink className={`${s.link} ${s.txHash}`} href={tx.url}>
-            {tx.label}
-          </ExternalLink>
-        </div>
-      ))}
+        ))}
+      </div>
     </LandingSection>
   );
 }
