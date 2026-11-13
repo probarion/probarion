@@ -15,6 +15,7 @@
     "rotate-keys": "tsx scripts/rotate-keys.ts",
     "telegram-webhook": "tsx scripts/telegram-webhook.ts",
     "record-live-check": "tsx scripts/record-live-check.ts",
+    "record-mainnet-payout": "tsx scripts/record-mainnet-payout.ts",
     "eval": "tsx scripts/eval.ts run",
     "eval:generate": "tsx scripts/eval.ts generate",
     "eval:check": "tsx scripts/eval.ts check",

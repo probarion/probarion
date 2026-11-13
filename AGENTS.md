@@ -2,6 +2,8 @@
 
 Probarion lets an AI agent pay people and services only inside mandates a human signed. This file is for AI agents and humans who build, verify or review this repository. It grows as the build progresses.
 
+For judges, [JUDGES.md](JUDGES.md) has the mechanism, what is proven with its evidence, assume breach, the worst case and what is not done yet.
+
 ## Judge or evaluate in one command
 
 With Node.js 24 and pnpm 10, from a clone, run this first. It is read-only: it signs and sends nothing, and no step gets a key.
@@ -13,7 +15,7 @@ pnpm judge --quick     # without the package tests: about 2 minutes
 pnpm judge --offline   # no network at all: the live reads (testnet and mainnet) are SKIPPED
 ```
 
-It builds the four packages (not the web app) and runs steps 0 and 2 to 6 of the README's "How to evaluate Probarion in 5 minutes", the eval check and the package tests: the claims check (offline, then online), the README's own snippets with their output compared line by line, `verify --offline` on every committed snapshot in `docs/evidence`, and once more on the demo vault's filmed snapshot with the invoices of its folder, for A8, live read-only verifies of the testnet vaults and of the mainnet vault `v0.probarion.near`, the MCP and 402 demos. Each step quotes the README line it proves and prints one row: PASS, EXPECTED-FAIL, SKIPPED (with the reason and the command) or FAIL. EXPECTED-FAIL is a failure the README says is by design (the Canary verified without its ledger fails check c; `v0.probarion.testnet` has no ledger, so d and h fail); if one ever passes or fails another way, it is a FAIL. SKIPPED is for a step not run here: `--offline`, `--quick`, the network down, or an endpoint that timed out or answered 429 or 5xx. A definite wrong answer is a FAIL, such as the demo vault's proof page answering 404, or the MCP demo skipping its verify for that reason. The command exits 0 only when no step failed, and writes `judge-report.json`: per step the claim, the README line, the command, the result, the expectation, the time and the detail, plus the commit, Node and OS. The web console's tests and the Rust tests are not in it; the report lists each as SKIPPED with its command. Give it a 10-minute timeout or run it in the background; the rows print as each step ends.
+It builds the four packages (not the web app) and runs steps 0 and 2 to 6 of the README's "How to evaluate Probarion in 5 minutes", the eval check and the package tests: the claims check (offline, then online), the README's own snippets with their output compared line by line, `verify --offline` on every committed snapshot in `docs/evidence`, and once more on the demo vault's filmed snapshot with the invoices of its folder and on the mainnet vault's S2 snapshot with the two committed invoices (INV-M002, INV-M003), for A8, live read-only verifies of the testnet vaults and of the mainnet vault `v0.probarion.near` (with its committed ledger), the MCP and 402 demos. Each step quotes the README line it proves and prints one row: PASS, EXPECTED-FAIL, SKIPPED (with the reason and the command) or FAIL. EXPECTED-FAIL is a failure the README says is by design (the Canary verified without its ledger fails check c; `v0.probarion.testnet` has no ledger, so d and h fail); if one ever passes or fails another way, it is a FAIL. SKIPPED is for a step not run here: `--offline`, `--quick`, the network down, or an endpoint that timed out or answered 429 or 5xx. A definite wrong answer is a FAIL, such as the demo vault's proof page answering 404, or the MCP demo skipping its verify for that reason. The command exits 0 only when no step failed, and writes `judge-report.json`: per step the claim, the README line, the command, the result, the expectation, the time and the detail, plus the commit, Node and OS. The web console's tests and the Rust tests are not in it; the report lists each as SKIPPED with its command. Give it a 10-minute timeout or run it in the background; the rows print as each step ends.
 
 ## Setup
 
@@ -94,7 +96,7 @@ This adds `cargo near build` for every contract and the near-workspaces sandbox 
 | testnet | `intents-stub.probarion.testnet` | intents-stub (Intents has no testnet) |
 | testnet | `v0.probarion.testnet` | vault v0, locked (no full-access key) |
 | mainnet | `probarion.near` | owner of vault v0, which it created |
-| mainnet | `v0.probarion.near` | vault v0 (2026-11-11), standalone (no factory), locked (no full-access key) |
+| mainnet | `v0.probarion.near` | vault v0 (2026-11-11), standalone (no factory), locked (no full-access key); keys: agent `spend`, and since 2026-11-13 ledger `anchor`. Its signed ledger, 6 entries after S2 of 2026-11-13, is `docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl`; S1's copy of 4 entries stays in `docs/evidence/mainnet-v0/s1-2026-11-13/` |
 
 Deployments and transaction hashes: `contracts/deployments/`. Code hashes: `contracts/code-hashes.json`.
 

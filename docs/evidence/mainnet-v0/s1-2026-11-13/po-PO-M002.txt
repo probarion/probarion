@@ -1,0 +1,6 @@
+Probarion purchase order PO-M002 (NEAR mainnet, real USDC paid out on Base)
+Vault: v0.probarion.near, owned by probarion.near.
+Payee: the owner's own Base wallet, the address named in the vault's mandate for this purchase order.
+Token: USDC on Base, paid from the vault's NEAR Intents balance of Base USDC (base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near) through the POA bridge, which keeps its withdrawal fee (0.0024 USDC on 2026-11-13).
+Cap: at most 1 USDC per payment, 1 USDC in total, 1 payment, until 2026-11-20 00:00 UTC.
+Purpose: a test of the cross-chain path. The payee is the owner's own Base address. Not a customer payment.

@@ -976,7 +976,7 @@ const PROOF: readonly Export[] = [
   [
     "PRE_LEDGER_VAULTS",
     "constant",
-    "The only vault the code exempts as pre-ledger: `v0.probarion.near` on mainnet, which has run there since 2026-11-11 with no ledger. Testnet has none.",
+    "The only vault the code exempts as pre-ledger: `v0.probarion.near` on mainnet, whose spend 1 of 2026-11-11 came before its ledger. Testnet has none.",
     "None",
   ],
   ["isPreLedgerVault", "function", "True for a vault in `PRE_LEDGER_VAULTS`.", "None"],

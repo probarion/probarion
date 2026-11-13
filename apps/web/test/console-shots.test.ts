@@ -93,10 +93,13 @@ describe("the console screenshots on the landing (audit P1-23)", () => {
   it("sits right after the ink band, with each shot, its caption and the proof and console links", () => {
     const html = renderToStaticMarkup(createElement(Home));
     const band = html.indexOf('id="payee"');
+    const mainnet = html.indexOf('id="mainnet"');
     const start = html.indexOf('id="console"');
     const verify = html.indexOf('id="verify"');
     expect(band).toBeGreaterThan(0);
-    expect(start).toBeGreaterThan(band);
+    // The mainnet payout sits between the ink band and the screenshots.
+    expect(mainnet).toBeGreaterThan(band);
+    expect(start).toBeGreaterThan(mainnet);
     expect(verify).toBeGreaterThan(start);
     const section = html.slice(start, verify);
     const words = text(section);

@@ -602,6 +602,38 @@ export const SNAPSHOTS = [
     },
     expect: { exit: 0, checks: { ...ALL_PASS, i: "skip" } },
   },
+  {
+    id: "verify-mainnet-v0-snapshot-1113",
+    file: "docs/evidence/mainnet-v0/s1-2026-11-13/snapshot-2026-11-13.json",
+    committed: "docs/evidence/mainnet-v0/s1-2026-11-13/verify-2026-11-13.txt",
+    title:
+      "verify --offline: mainnet v0 snapshot after the Base payout (S1) passes a to h, i skips (no factory)",
+    ref: {
+      file: "docs/evidence/mainnet-v0/s1-2026-11-13/README.md",
+      quote: "Checks a to h pass, and check i skips, because no factory made this vault",
+    },
+    expect: {
+      exit: 0,
+      checks: { ...ALL_PASS, i: "skip" },
+      why: { h: "1 burned spend has a matched burn pair" },
+    },
+  },
+  {
+    id: "verify-mainnet-v0-snapshot-1113-s2",
+    file: "docs/evidence/mainnet-v0/s2-2026-11-13/snapshot-2026-11-13.json",
+    committed: "docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt",
+    title:
+      "verify --offline: mainnet v0 snapshot after the attested Base payout (S2) passes a to h, i skips (no factory)",
+    ref: {
+      file: "docs/evidence/mainnet-v0/s2-2026-11-13/README.md",
+      quote: "Checks a to h pass, and check i skips, because no factory made this vault",
+    },
+    expect: {
+      exit: 0,
+      checks: { ...ALL_PASS, i: "skip" },
+      why: { h: "2 burned spends have a matched burn pair" },
+    },
+  },
 ];
 
 /** The vaults read live, read-only, each with its verdict. */
@@ -621,13 +653,44 @@ export const LIVE_VAULTS = {
       "run without the ledger: c fails on an empty ledger, and d passing shows no spend was ever created",
   },
   demo: { exit: 0, checks: ALL_PASS },
-  // The mainnet vault has no ledger: its one spend's decision is pre-ledger, so d passes on the documented
-  // hash, and i skips because no factory made it.
-  mainnetV0: { exit: 0, checks: { ...ALL_PASS, i: "skip" } },
+  // The mainnet vault, with its committed ledger after S2: spend 1's decision is pre-ledger, so d exempts it on the
+  // documented hash, and spends 2 and 3 have theirs at entries 2 and 4 of the ledger; with the two invoice texts, A8
+  // runs on the three attested decisions; h finds the burn pairs of spends 2 and 3; and i skips because no factory
+  // made the vault.
+  mainnetV0: {
+    exit: 0,
+    checks: { ...ALL_PASS, i: "skip" },
+    why: {
+      c: "4 anchors match the ledger",
+      d: "1 spend has a decision_hash listed as pre-ledger",
+      e: "A8 (request binding and mandate match) passes for 3 of 3 attested decisions (seq 0, 1, 4)",
+      h: "2 burned spends have a matched burn pair",
+    },
+  },
 };
 
-/** The repository's evidence for the mainnet vault: its pre-ledger decisions and its recorded transactions. */
-const MAINNET_V0_EVIDENCE = ["--evidence", "docs/evidence", "--proof", "docs/mainnet-proof.json"];
+/**
+ * The mainnet vault's signed ledger, committed after S2 (2026-11-13; S1's copy of 4 entries no longer matches the
+ * chain's anchors), and the invoices its attested decisions read: INV-M002 (S1, entries 0 and 1) and INV-M003
+ * (S2, entry 4).
+ */
+export const MAINNET_V0_LEDGER = "docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl";
+export const MAINNET_V0_INVOICES = [
+  "docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt",
+  "docs/evidence/mainnet-v0/s2-2026-11-13/invoice-INV-M003.txt",
+];
+
+/**
+ * The repository's evidence for the mainnet vault: the invoice texts for A8 (named files, so no other `.txt` of the
+ * folders is read and warned about), the pre-ledger decisions and the recorded transactions.
+ */
+const MAINNET_V0_EVIDENCE = [
+  ...MAINNET_V0_INVOICES.flatMap((f) => ["--invoice", f]),
+  "--evidence",
+  "docs/evidence",
+  "--proof",
+  "docs/mainnet-proof.json",
+];
 
 const statusCounts = (checks) => {
   const counts = new Map();
@@ -737,17 +800,48 @@ export const A8_RUN = {
   },
 };
 
+/**
+ * A8 on the mainnet vault's snapshot after S2 (2026-11-13), with the two invoice texts committed in the S1 and S2
+ * folders, named one by one: it must pass on the three attested decisions, entries 0 and 1 (INV-M002) and entry 4
+ * (INV-M003). `committed` is the kit's live run, which read the same texts (the same sha256) from its own folder;
+ * no factory made the vault, so check i skips.
+ */
+export const A8_RUN_MAINNET_S2 = {
+  id: "verify-mainnet-v0-a8-1113-s2",
+  snapshot: "docs/evidence/mainnet-v0/s2-2026-11-13/snapshot-2026-11-13.json",
+  invoiceFiles: MAINNET_V0_INVOICES,
+  committed: "docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt",
+  seqs: [0, 1, 4],
+  checks: { ...ALL_PASS, i: "skip" },
+  title:
+    "verify --offline with the two committed invoices: A8 passes on the mainnet vault's 3 attested decisions",
+  ref: {
+    file: "docs/evidence/mainnet-v0/s2-2026-11-13/README.md",
+    quote: "A8 passes on all three with the two invoice texts",
+  },
+};
+
+/** The verify arguments of an A8 run: the snapshot, then its invoice folder or each of its invoice files. */
+export const a8Args = (a) => [
+  "--offline",
+  a.snapshot,
+  ...(a.invoiceFiles
+    ? a.invoiceFiles.flatMap((f) => ["--invoice", f])
+    : ["--invoices", a.invoices]),
+];
+
 /** What check e says when A8, with the mandate match, passes on every one of the attested decisions `seqs`. */
 export const a8Passes = (seqs) =>
   `A8 (request binding and mandate match) passes for ${seqs.length} of ${seqs.length} attested decisions (seq ${seqs.join(", ")})`;
 
 /**
- * What the A8 run means: PASS when checks a to i pass, check e says A8 passes on exactly the attested decisions
- * `seqs`, and the invoice files are those decisions' (--json `invoices[].attested_seqs`, the attested decisions each
- * file is the invoice of; with every check passing, check e ran A8 on each of them).
+ * What the A8 run means: PASS when the checks are `checks` (a to i pass, unless the run expects a skip), check e
+ * says A8 passes on exactly the attested decisions `seqs`, and the invoice files are those decisions' (--json
+ * `invoices[].attested_seqs`, the attested decisions each file is the invoice of; with check e passing, it ran A8
+ * on each of them).
  */
-export function matchA8(run, seqs) {
-  const verdict = matchVerify({ exit: 0, checks: ALL_PASS }, run);
+export function matchA8(run, seqs, checks = ALL_PASS) {
+  const verdict = matchVerify({ exit: 0, checks }, run);
   if (verdict.result === "FAIL") return verdict;
   const e = run.report.checks.find((c) => c.id === "e");
   const want = a8Passes(seqs);
@@ -772,17 +866,20 @@ export function matchA8(run, seqs) {
   };
 }
 
-/** The committed snapshots under docs/evidence (snapshot-*.json), as repository paths. */
+/**
+ * The committed snapshots in the folders under docs/evidence and their subfolders (snapshot-*.json), as
+ * repository paths.
+ */
 export function evidenceSnapshots(root) {
-  const base = join(root, "docs", "evidence");
   const out = [];
-  if (!existsSync(base)) return out;
-  for (const dir of readdirSync(base, { withFileTypes: true })) {
-    if (!dir.isDirectory()) continue;
-    for (const f of readdirSync(join(base, dir.name)).sort()) {
-      if (/^snapshot-.*\.json$/.test(f)) out.push(`docs/evidence/${dir.name}/${f}`);
+  const walk = (rel) => {
+    for (const e of readdirSync(join(root, rel), { withFileTypes: true })) {
+      if (e.isDirectory()) walk(`${rel}/${e.name}`);
+      else if (rel !== "docs/evidence" && /^snapshot-.*\.json$/.test(e.name))
+        out.push(`${rel}/${e.name}`);
     }
-  }
+  };
+  if (existsSync(join(root, "docs", "evidence"))) walk("docs/evidence");
   return out.sort();
 }
 
@@ -792,7 +889,7 @@ export function snapshotPlan(root) {
   const extra = evidenceSnapshots(root)
     .filter((f) => !listed.has(f))
     .map((file) => {
-      const dir = file.split("/").slice(0, 3).join("/");
+      const dir = file.slice(0, file.lastIndexOf("/"));
       const date = /snapshot-(.*)\.json$/.exec(file)?.[1];
       const committed = `${dir}/verify-${date}.txt`;
       return {
@@ -858,10 +955,10 @@ function a8Step(a) {
     title: a.title,
     ref: a.ref,
     expected: "PASS",
-    command: `node ${CLI} verify --offline ${a.snapshot} --invoices ${a.invoices} --json`,
+    command: `node ${CLI} verify ${a8Args(a).join(" ")} --json`,
     run: async (ctx) => {
-      const run = await verifyRun(ctx, ["--offline", a.snapshot, "--invoices", a.invoices]);
-      const verdict = matchA8(run, a.seqs);
+      const run = await verifyRun(ctx, a8Args(a));
+      const verdict = matchA8(run, a.seqs, a.checks);
       if (verdict.result === "FAIL") return verdict;
       const text = ctx.readFile(a.committed);
       if (text === null) return { result: "FAIL", detail: `${a.committed} is missing` };
@@ -1094,6 +1191,7 @@ export function planSteps(root = ROOT) {
     }),
     ...snapshotPlan(root).map(snapshotStep),
     a8Step(A8_RUN),
+    a8Step(A8_RUN_MAINNET_S2),
     {
       id: "readme-step-6-owner-tx",
       kind: "offline",
@@ -1256,23 +1354,21 @@ export function planSteps(root = ROOT) {
     {
       id: "live-verify-mainnet-v0",
       kind: "live",
+      network: "mainnet",
       needs: "build",
       title:
-        "live verify of the mainnet vault v0.probarion.near passes a to h, i skips (no factory)",
+        "live verify of the mainnet vault v0.probarion.near with its committed ledger passes a to h, i skips (no factory)",
       ref: {
         file: "README.md",
         quote: "node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near",
       },
       expected: "PASS",
-      command: `node ${CLI} verify --network mainnet --vault v0.probarion.near --ledger <tmp>/no-ledger.jsonl ${MAINNET_V0_EVIDENCE.join(" ")} --json`,
+      command: `node ${CLI} verify --network mainnet --vault v0.probarion.near --ledger ${MAINNET_V0_LEDGER} ${MAINNET_V0_EVIDENCE.join(" ")} --json`,
       run: (ctx) =>
-        liveVerify(
-          ctx,
-          "v0.probarion.near",
-          join(ctx.tmp, "no-ledger.jsonl"),
-          LIVE_VAULTS.mainnetV0,
-          { network: "mainnet", extra: MAINNET_V0_EVIDENCE },
-        ),
+        liveVerify(ctx, "v0.probarion.near", MAINNET_V0_LEDGER, LIVE_VAULTS.mainnetV0, {
+          network: "mainnet",
+          extra: MAINNET_V0_EVIDENCE,
+        }),
     },
     {
       id: "mcp-demo",
@@ -1491,7 +1587,10 @@ async function gate(step, flags, failed, network) {
   }
   if (step.kind === "live") {
     if (flags.offline)
-      return { result: "SKIPPED", detail: "--offline: this step reads NEAR testnet" };
+      return {
+        result: "SKIPPED",
+        detail: `--offline: this step reads NEAR ${step.network ?? "testnet"}`,
+      };
     const net = await network();
     if (!net.ok) return { result: "SKIPPED", detail: `the network is down (${net.reason})` };
   }
@@ -1519,7 +1618,8 @@ const TABLE_HEAD = `${columns("#", "RESULT", "TIME", "CLAIM  [the README line it
 
 /**
  * One row of the table: number, result, time and claim with its README line; the detail on the next line, cut
- * at 200 characters, or at 400 for a SKIPPED row so that its command prints whole.
+ * at 200 characters, or at 500 for a SKIPPED row so that its command prints whole (the mainnet verify, with its two
+ * invoices, needs about 400).
  */
 export function renderRow(row) {
   const head = columns(
@@ -1528,7 +1628,7 @@ export function renderRow(row) {
     `${row.ms} ms`,
     `${row.claim}  [${refText(row.readme_ref)}]`,
   );
-  return `${head}\n${" ".repeat(7)}${oneLine(row.detail, row.result === "SKIPPED" ? 400 : 200)}\n`;
+  return `${head}\n${" ".repeat(7)}${oneLine(row.detail, row.result === "SKIPPED" ? 500 : 200)}\n`;
 }
 
 export function renderMarkdown(report) {

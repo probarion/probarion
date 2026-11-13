@@ -1,13 +1,8 @@
 import { ExternalLink } from "@/components/ui";
-import { COMPARE, type StatusTone, statusOf } from "@/lib/site/facts";
+import { COMPARE } from "@/lib/site/facts";
 import { Rich } from "./Rich";
+import { StatusPill } from "./StatusPill";
 import s from "./site.module.css";
-
-const TONE: Readonly<Record<StatusTone, string | undefined>> = {
-  live: s.live,
-  work: s.work,
-  plan: s.plan,
-};
 
 /**
  * The table's roles, said out loud. They are redundant on paper, but the stylesheet turns the table into blocks below
@@ -45,7 +40,6 @@ export function Compare() {
           </thead>
           <tbody>
             {COMPARE.rows.map((r) => {
-              const st = statusOf(r.status);
               return (
                 <tr key={r.question} {...ROLE.row}>
                   <th scope="row" {...ROLE.rowheader} className={s.compareRow}>
@@ -55,8 +49,7 @@ export function Compare() {
                     {r.diy}
                   </td>
                   <td {...ROLE.cell} data-label={COMPARE.head[2]}>
-                    <Rich text={r.probarion} />{" "}
-                    <span className={`${s.pill} ${s.pillInline} ${TONE[st.tone]}`}>{st.pill}</span>
+                    <Rich text={r.probarion} /> <StatusPill row={r.status} />
                   </td>
                 </tr>
               );

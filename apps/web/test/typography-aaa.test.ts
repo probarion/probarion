@@ -8,9 +8,9 @@ import { isTestFile, toPosix, walk } from "./deploy-scan";
 /*
  * The site's typography against WCAG 2.2: contrast at AAA (1.4.6: 7:1, or 4.5:1 for large text), the visual
  * presentation of reading text (1.4.8), readable sizes and weights, and the guards that keep text spacing (1.4.12) and
- * reflow (1.4.10) working. Every check reads the real files: the tokens in app/globals.css and the four CSS modules.
- * Large text is 24px and up (18.66px bold and up; no module sets a weight above 600). What is left out is listed below,
- * each with its reason.
+ * reflow (1.4.10) working. Every check reads the real files: the tokens in app/globals.css and every CSS module in
+ * MODULES. Large text is 24px and up (18.66px bold and up; no module sets a weight above 600). What is left out is
+ * listed below, each with its reason.
  */
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
@@ -19,9 +19,12 @@ const read = (...parts: string[]) => readFileSync(join(WEB, ...parts), "utf8");
 const GLOBALS = read("src", "app", "globals.css");
 const MODULES: Readonly<Record<string, string>> = {
   site: "src/components/site/site.module.css",
+  ships: "src/components/site/ships.module.css",
   docs: "src/components/docs/docs.module.css",
   canary: "src/components/site/canary.module.css",
   usage: "src/components/site/usage.module.css",
+  mainnet: "src/components/site/mainnet.module.css",
+  status: "src/components/site/status.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -268,6 +271,7 @@ const NESTED: readonly [string, string, string][] = [
   ["ink", "wait-bg", "docs: .warning callout text"],
   ["bad", "bad-bg", "site: .hit .num and .rowNote on a struck row's red tint"],
   ["ink", "soft", "docs: inline code in prose, on its soft fill"],
+  ["ink", "soft", "ships: .shipGo a, a card's link row on its hover fill"],
   ["gold-ink", "soft", "docs: .searchOption mark in the selected option's soft fill"],
   [
     "ink",
@@ -493,11 +497,18 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["docs", ".check > * + *", "margin-top", 16.5, "docs", ".prose"],
       ["docs", ".agents > * + *", "margin-top", 16.5, "docs", ".prose"],
       ["docs", ".prose li > :is(p, ul, ol) + :is(p, ul, ol)", "margin-top", 16.5, "docs", ".prose"],
-      ["site", ".gaps li + li", "margin-top", 15, "site", ".site"],
+      ["status", ".gaps li + li", "margin-top", 15, "site", ".site"],
+      ["status", ".untriedList", "gap", 15, "site", ".site"],
+      ["status", ".limit", "margin-top", 15, "site", ".site"],
+      ["status", ".where", "margin-top", 15, "site", ".site"],
+      ["status", ".note + .note", "margin-top", 15, "site", ".site"],
       ["site", ".whoControl", "margin-top", 14, "site", ".site"],
       ["site", ".whoProof", "margin-top", 14, "site", ".site"],
       ["site", ".codeNote", "margin-top", 14, "site", ".site"],
-      ["site", ".boFine p + p", "margin-top", 13, "site", ".site"],
+      // The Built on footer's blocks, where they stack (a tablet's lead over its notices, a phone).
+      ["ships", ".legal", "row-gap", 13, "ships", ".legal"],
+      // The two entries of the stack note, where they stack (below 1101px).
+      ["ships", ".stackList", "row-gap", 15, "site", ".site"],
       ["site", ".shot .shotMeta", "margin-top", 15, "site", ".site"],
       ["canary", ".column p + p", "margin-top", 17, "site", ".site"],
       ["canary", ".line", "margin-top", 17, "site", ".site"],
@@ -540,14 +551,23 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
     const capped: [string, string][] = [
       ["site", ".lede"],
       ["site", ".storyIntro"],
-      ["site", ".statusNote"],
-      ["site", ".gaps"],
+      ["status", ".note"],
+      ["status", ".what"],
+      ["status", ".limit"],
+      ["status", ".untriedList"],
+      ["status", ".sumText"],
+      ["status", ".keyMeans"],
+      ["status", ".gapsHead p"],
+      ["status", ".gaps"],
       ["site", ".closeNote"],
       ["site", ".codeNote"],
       ["site", ".duelNote"],
       ["site", ".proofIntro"],
       ["site", ".compareMore"],
-      ["site", ".boFine"],
+      ["ships", ".stackBody"],
+      ["ships", ".shipBody"],
+      ["ships", ".legalLead"],
+      ["ships", ".legalNotices"],
       ["docs", ".prose > :is(p, ul, ol, blockquote)"],
       ["docs", ".prose li > :is(p, ul, ol)"],
       ["docs", ".check > p"],
@@ -639,6 +659,13 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     // A long status pill wraps inside itself rather than run past a 320px column (1.4.10).
     expect(decl("site", ".pillInline", "white-space")).toBe("normal");
     expect(decl("site", ".pillInline", "max-width")).toBe("100%");
+    // A status mark wraps too: its word may break onto a second line, and its glyph, which never shrinks, stays by it.
+    for (const sel of [".mark", ".marks", ".marks > li:first-child"]) {
+      for (const d of declsOf("status", sel)) expect(d["white-space"], sel).toBeUndefined();
+    }
+    expect(decl("status", ".marks", "flex-wrap")).toBe("wrap");
+    expect(decl("status", ".glyph", "flex")).toBe("none");
+    expect(decl("status", ".mark", "align-items")).toBe("flex-start");
   });
 
   it("positions every sideways scroller, so screen-reader text inside cannot widen the page (1.4.10)", () => {
@@ -700,6 +727,15 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     expect(inForced("site", ".gold")[0]?.color).toBe("CanvasText");
     expect(inForced("docs", ".gold")[0]?.color).toBe("CanvasText");
     expect(inForced("docs", ".chipDot")[0]?.background).toBe("CanvasText");
+    // A status mark keeps its shape: the glyph is drawn in the text colour of the theme.
+    expect(inForced("status", ".mark .glyph")[0]?.color).toBe("CanvasText");
+    // The console's hairline and the rules between its parts are borders, which forced colours keep; fills are dropped.
+    expect(decl("status", ".parts::before", "border-left")).toBe("1px solid var(--color-line)");
+    expect(decl("status", ".part + .part::before", "border-top")).toBe(
+      "1px solid var(--color-line)",
+    );
+    for (const sel of [".parts::before", ".part + .part", ".part + .part::before"])
+      for (const d of declsOf("status", sel)) expect(d.background, sel).toBeUndefined();
   });
 
   it("declares one light scheme and asks browsers not to darken it on their own", () => {

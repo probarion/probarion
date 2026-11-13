@@ -6,10 +6,13 @@ today.
 
 **Unaudited beta.** No third party has audited the contracts or the packages. Today the vault runs on
 NEAR testnet with test tokens. Since 2026-11-11 one mainnet vault, `v0.probarion.near`, holds a small
-amount of real USDC. Its owner signed every transaction that created, funded or configured it, and
-it has made one NEAR payment and one refusal. No Base payout has run on mainnet: spike S1, a contract
-withdrawing Base POA USDC to a Base address on mainnet, is unproven
-([the run](README.md#near-mainnet-2026-11-11)).
+amount of real USDC. Its owner signed every transaction that created or configured it and every
+transfer that funded it; on 2026-11-13 1Click settled a swap into the vault's Intents balance with its
+own `intents.near` transaction. The vault has made one NEAR payment and one refusal ([the run](README.md#near-mainnet-2026-11-11)). On
+2026-11-13 it made two Base payouts through NEAR Intents, both tests to the owner's own Base address: 1.00 USDC
+decided by code rules alone ([the run](README.md#near-mainnet-2026-11-13-s1-a-base-payout)), then 0.25 USDC decided
+by an attested model and the code rules ([the run](README.md#near-mainnet-2026-11-13-s2-an-attested-base-payout)).
+Since the 1.00 USDC run its decisions are in a signed ledger anchored on the vault.
 
 ## Supported versions
 
@@ -196,6 +199,13 @@ snapshot of the ledger and the chain:
   ([output](docs/evidence/demo-vault/verify-online-a8-2026-11-12.txt)). The code allowed the last two
   of them, and the vault paid both invoices, 2.00 test USDC each
   ([evidence of the second](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)).
+  On NEAR mainnet, the ledger of `v0.probarion.near` holds 3 attested decisions of 2026-11-13,
+  which pass A1 to A7 and, with the two invoice texts, A8 offline
+  ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)). `verify --online` has
+  not run on them, so O1 and O2 have not checked their TDX quotes or GPU evidence. Code refused the
+  two of S1, and the third, entry 4, led to a payment in real USDC: spend 3, a 0.25 USDC test to the
+  owner's own Base address, of which 0.2476 USDC arrived after the bridge fee
+  ([the run](docs/evidence/mainnet-v0/s2-2026-11-13/README.md)).
   The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not
   run on the Canary's 2, since the ledger holds no invoice text; on the demo vault's 5 it passed on
   2026-11-12, with the invoices committed in the repository

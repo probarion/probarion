@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { slug } from "github-slugger";
 import type { Code, List, Root, RootContent } from "mdast";
 import { describe, expect, it } from "vitest";
+import { AGENT_RULES } from "@/lib/docs/agents";
 import { changelogTree } from "@/lib/docs/changelog";
 import { headingsOf } from "@/lib/docs/headings";
 import { MDX_COMPONENT_NAMES } from "@/lib/docs/markdown";
@@ -230,6 +231,84 @@ describe("copy rules", () => {
         if (m) found.push(`${fileOf(p.path)}: ${m[0]}`);
       }
     }
+    expect(found).toEqual([]);
+  });
+
+  it("call no Base payout unrun once contracts/deployments/mainnet.json records one", () => {
+    const record = JSON.parse(
+      readFileSync(join(ROOT, "contracts", "deployments", "mainnet.json"), "utf8"),
+    ) as { proof?: { first_base_payout_tx?: string | null } };
+    // Before spike S1 ran on 2026-11-13 these words were true.
+    if (!record.proof?.first_base_payout_tx) return;
+    const stale =
+      /no Base payout|no such payout has run|no mainnet payout|S1,? [^.]*is unproven|S1 is unproven|none has run through NEAR Intents|waits for spike S1|no mandate to a Base payee/i;
+    const found: string[] = [];
+    for (const p of PAGES) {
+      const fields = [p.title, p.nav, p.description, p.lede, readMdx(p.path)];
+      for (const field of fields) {
+        const m = field ? stale.exec(field) : null;
+        if (m) found.push(`${fileOf(p.path)}: ${m[0]}`);
+      }
+    }
+    for (const rule of AGENT_RULES) {
+      const m = stale.exec(rule);
+      if (m) found.push(`apps/web/src/lib/docs/agents.ts: ${m[0]}`);
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("refuse 'one Base payout', 'no mainnet payment on a model's proposal' and 'all on testnet' once mainnet.json records S2", () => {
+    const record = JSON.parse(
+      readFileSync(join(ROOT, "contracts", "deployments", "mainnet.json"), "utf8"),
+    ) as { proof?: { attested_base_payout_tx?: string | null } };
+    // Before S2 ran on 2026-11-13 these words were true: one Base payout, decided by code rules alone, and every
+    // attested decision recorded in the repository on testnet. S2 is recorded, so the guard always runs.
+    expect(record.proof?.attested_base_payout_tx).toBeTruthy();
+    const stale =
+      /one Base payout|One Base payout|One such payout has run|one payout has run|one has run on mainnet|No mainnet payment has been made on a model's proposal|no payment on mainnet has been made on a model's proposal|are all on testnet|recorded in the repository are all/i;
+    const found: string[] = [];
+    for (const p of PAGES) {
+      const fields = [p.title, p.nav, p.description, p.lede, readMdx(p.path)];
+      for (const field of fields) {
+        const m = field ? stale.exec(field) : null;
+        if (m) found.push(`${fileOf(p.path)}: ${m[0]}`);
+      }
+    }
+    for (const rule of AGENT_RULES) {
+      const m = stale.exec(rule);
+      if (m) found.push(`apps/web/src/lib/docs/agents.ts: ${m[0]}`);
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("label the mainnet Base payouts wherever a page or an agent rule tells them", () => {
+    // The S2 gate of docs/runbooks/mainnet-v0.md: the two Base payouts of 2026-11-13 were tests to the owner's own
+    // Base address, 1.00 USDC decided by code rules alone and 0.25 USDC by an attested model and the code rules.
+    // Each paragraph that tells them says whose address it was, how the 1.00 USDC one was decided and, once it
+    // tells the 0.25 USDC payout too, that an attested model decided that one.
+    const tells =
+      /one Base payout|two Base payouts|Two Base payouts|Base payouts? of|such payouts? ha(?:s|ve) run|(?:paid|burned) (?:1\.00|0\.25) USDC|payouts? through NEAR Intents ha(?:s|ve) run|two have run/;
+    const labels = [/owner's own/, /rules alone|rules-only/];
+    const tellsS2 = /0\.25 USDC|two Base payouts|Two Base payouts|Two such payouts|two have run/;
+    const found: string[] = [];
+    const check = (where: string, text: string | undefined) => {
+      for (const para of (text ?? "").split("\n")) {
+        if (!tells.test(para)) continue;
+        const missing = labels.filter((re) => !re.test(para));
+        if (tellsS2.test(para) && !/attested model/.test(para)) missing.push(/attested model/);
+        if (missing.length) found.push(`${where}: ${para.slice(0, 100)}`);
+      }
+    };
+    for (const p of PAGES) {
+      for (const field of [p.title, p.nav, p.description, p.lede, readMdx(p.path)]) {
+        check(fileOf(p.path), field);
+      }
+    }
+    for (const [i, rule] of AGENT_RULES.entries()) {
+      check(`apps/web/src/lib/docs/agents.ts, rule ${i + 1}`, rule);
+    }
+    // The guard reads the pages that tell the payout.
+    expect(PAGES.filter((p) => tells.test(readMdx(p.path))).length).toBeGreaterThanOrEqual(10);
     expect(found).toEqual([]);
   });
 });

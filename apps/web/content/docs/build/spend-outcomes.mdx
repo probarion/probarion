@@ -296,7 +296,7 @@ A burn is final for the vault, and its status stays `burned`. Probarion does not
 
 `txHash` is null on a `paid`, `burned` or `failed` outcome with a `spendId`, or on a contract hold, in one case: the vault answered `DuplicateRef` or `DuplicateInvoice` to a re-signed copy, and the SDK found this decision's own spend by its ref. A re-signed copy comes from the SDK's sender after `InvalidNonce`: it signs the same spend again only once the node says it does not know the first copy. If that first copy landed anyway, the vault answers the new copy with a duplicate code. The transaction that landed the spend is then unknown to the SDK, and the payment entry records the answered transaction as `contract.tx_hash`. The SDK's outcome tests pin this for `paid`, `burned` and `failed`. For a contract hold, it follows from the SDK's code; no test shows it yet.
 
-On NEAR testnet, `intents-stub` stands in for `intents.near`, so a `burned` payout does not leave NEAR. The SDK takes either network. On mainnet one small vault, `v0.probarion.near`, has made one NEAR payment. No Base payout has run on mainnet, so no spend there is `burned`: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+On NEAR testnet, `intents-stub` stands in for `intents.near`, so a `burned` payout does not leave NEAR. The SDK takes either network. On mainnet one small vault, `v0.probarion.near`, has made one NEAR payment and two Base payouts: its spends 2 and 3 of 2026-11-13 are `burned`, and the POA bridge then released the USDC on Base. Both were tests to the owner's own Base address: spend 2 decided by code rules alone, spend 3 by an attested model and the code rules. See [Testnet and mainnet](/docs/start/testnet-and-mainnet).
 
 ## Ledger fields
 

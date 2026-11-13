@@ -1,0 +1,947 @@
+{
+  "recordedAt": "2026-11-13T14:09:12.787Z",
+  "payouts": [
+    {
+      "payout": {
+        "id": "spend-2",
+        "date": "2026-11-13",
+        "vault": "v0.probarion.near",
+        "intents": "intents.near",
+        "chain": "base",
+        "asset": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+        "baseToken": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        "payee": "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27",
+        "mandate": {
+          "id": 2,
+          "maxPerPayment": "1000000",
+          "maxTotal": "1000000",
+          "maxUses": 1,
+          "expiresAtNs": "1795132800000000000"
+        },
+        "agentKey": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+        "spendId": 2,
+        "invoiceHash": "bd45f2327fb0c2c1e960606e5c0bb91e3cfec7883f21315e94f454a83fee8357",
+        "amount": "1000000",
+        "received": "997600",
+        "fee": "2400",
+        "anchor": {
+          "seq": 3,
+          "count": 4,
+          "root": "28ac4e58a34f545e7c3ab71f3ce1e9adc1239970411f1eb0c697bdc4d3b3e6c6"
+        },
+        "decision": {
+          "seq": 2,
+          "bodyHash": "d64f0de77c38294cf103439e6b5b0c2623b96b114962afd50f5a3c553df2a336"
+        },
+        "links": [
+          {
+            "seq": 2,
+            "prevLink": "2fb2b5cc740e0cd27cf43b1ac50d878b3e10fae39c6c1b5f90f336245dfaa7e0",
+            "bodyHash": "d64f0de77c38294cf103439e6b5b0c2623b96b114962afd50f5a3c553df2a336",
+            "sig": "ed25519:5Y3nDPD5RgtSKBuUH85FnatYiaU7BqExvL2kN2eho8icaq8QPfef9xqXctCHskcE749EyG7ETUm3PQKKfzorM4LW"
+          },
+          {
+            "seq": 3,
+            "prevLink": "ad65996ccf82f73cc9184e82bb80b30bd8b7c6af1014f6826a81c85d16a9d300",
+            "bodyHash": "c33798816ca2121c39dcecc72ff08d4560dca7b1a3dad718989c48071794d89b",
+            "sig": "ed25519:3Rb2m8xuRdX3fUrAoUQbjWvvspd2WjKKuw3Stw728jQgAU6GQzs1noRUPxnZ5Vxo45YtnoewoDCWapdoCDrL9bHA"
+          }
+        ],
+        "build": {
+          "codeHash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+          "commit": "64ac3c03547d59a1f563b5ddf5767c38ae781413"
+        },
+        "tx": {
+          "mandate": {
+            "hash": "77cC8nMq6qWynU51FsPn8mkFAb3NEuDmEG7ZXjX6483g",
+            "sender": "probarion.near"
+          },
+          "spend": {
+            "hash": "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9",
+            "sender": "v0.probarion.near"
+          },
+          "anchor": {
+            "hash": "65eBfw6vMettw5GFc3R2A2WHvDiGeyXs7STGojCveA9Q",
+            "sender": "v0.probarion.near"
+          },
+          "base": "0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71"
+        },
+        "setup": [
+          {
+            "kind": "intents_topup",
+            "tx": "DWUMvM58dH3MpH9Jj838ycrfvCMjNJpgFsr43qu8u6mw",
+            "amount": "1500000",
+            "at": "2026-11-13T07:13:05.000Z"
+          },
+          {
+            "kind": "ledger_key_set",
+            "tx": "CFhtVrCA3Cjumcx68kixLbR5r6Xo8Fp1PTueK8z968jb",
+            "amount": null,
+            "at": "2026-11-13T07:14:15.000Z"
+          },
+          {
+            "kind": "mandate_created",
+            "tx": "77cC8nMq6qWynU51FsPn8mkFAb3NEuDmEG7ZXjX6483g",
+            "amount": null,
+            "at": "2026-11-13T07:17:06.000Z"
+          }
+        ],
+        "trail": [
+          {
+            "seq": 0,
+            "kind": "decision",
+            "at": "2026-11-13T07:17:47.060Z",
+            "verdict": "refuse",
+            "decidedBy": "model+rules",
+            "model": "z-ai/glm-5.3-flash",
+            "attested": true,
+            "action": "pay",
+            "refusedBy": ["mandate.payee_mismatch"],
+            "rulesPassed": 15,
+            "rulesTotal": 16,
+            "hintIsAsset": true,
+            "spend": null,
+            "bodyHash": "5911eecc1a99590da909e714829f04aedd994999a3409f6f9b74f29a07afd477"
+          },
+          {
+            "seq": 1,
+            "kind": "decision",
+            "at": "2026-11-13T07:22:23.023Z",
+            "verdict": "refuse",
+            "decidedBy": "model+rules",
+            "model": "Qwen/Qwen3.8-27B",
+            "attested": true,
+            "action": "pay",
+            "refusedBy": ["mandate.payee_mismatch"],
+            "rulesPassed": 15,
+            "rulesTotal": 16,
+            "hintIsAsset": true,
+            "spend": null,
+            "bodyHash": "03ca13d64d158ce1a5f505433e0062e176907eed365b0e0629f769b87858d3a4"
+          },
+          {
+            "seq": 2,
+            "kind": "decision",
+            "at": "2026-11-13T07:24:26.537Z",
+            "verdict": "allow",
+            "decidedBy": "rules-only",
+            "model": null,
+            "attested": false,
+            "action": null,
+            "refusedBy": [],
+            "rulesPassed": 14,
+            "rulesTotal": 14,
+            "hintIsAsset": false,
+            "spend": null,
+            "bodyHash": "d64f0de77c38294cf103439e6b5b0c2623b96b114962afd50f5a3c553df2a336"
+          },
+          {
+            "seq": 3,
+            "kind": "payment",
+            "at": "2026-11-13T07:24:33.014Z",
+            "verdict": null,
+            "decidedBy": null,
+            "model": null,
+            "attested": false,
+            "action": null,
+            "refusedBy": [],
+            "rulesPassed": 0,
+            "rulesTotal": 0,
+            "hintIsAsset": false,
+            "spend": {
+              "id": 2,
+              "status": "burned",
+              "tx": "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9"
+            },
+            "bodyHash": "c33798816ca2121c39dcecc72ff08d4560dca7b1a3dad718989c48071794d89b"
+          }
+        ],
+        "seals": [
+          {
+            "seq": 1,
+            "count": 1,
+            "root": "097e7bd75825fd4152a33d1d701b74dc42081f95bfdd5e3dddc0b41f3fbc7a90",
+            "tx": "8REzPLVwoQJrkccMQeFCTLaQHu8m7AczxsMzEH9PLvPp",
+            "at": "2026-11-13T07:18:24.849Z"
+          },
+          {
+            "seq": 2,
+            "count": 2,
+            "root": "2fb2b5cc740e0cd27cf43b1ac50d878b3e10fae39c6c1b5f90f336245dfaa7e0",
+            "tx": "6ULZZvGa7M99jR7Uk5f1Md4KCdD1Cnd5au2s8fAZDMqY",
+            "at": "2026-11-13T07:22:48.819Z"
+          },
+          {
+            "seq": 3,
+            "count": 4,
+            "root": "28ac4e58a34f545e7c3ab71f3ce1e9adc1239970411f1eb0c697bdc4d3b3e6c6",
+            "tx": "65eBfw6vMettw5GFc3R2A2WHvDiGeyXs7STGojCveA9Q",
+            "at": "2026-11-13T07:24:34.892Z"
+          }
+        ],
+        "verify": {
+          "ok": true,
+          "passed": 8,
+          "failed": 0,
+          "unproven": 0,
+          "skipped": 1,
+          "entries": 4,
+          "anchors": 3,
+          "at": "2026-11-13T07:24:44.138Z",
+          "quoteOnline": false
+        },
+        "source": "docs/evidence/mainnet-v0/s1-2026-11-13",
+        "files": {
+          "ledger": "docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl",
+          "verify": "docs/evidence/mainnet-v0/s1-2026-11-13/verify-2026-11-13.txt",
+          "poa": "docs/evidence/mainnet-v0/s1-2026-11-13/poa-status.json"
+        },
+        "pin": {
+          "hash": "GM4ojam5J4e91NpzMF1BdbjF65wJcVPvbF6bijT37FTa",
+          "height": 224331722,
+          "at": "2026-11-13T07:24:29.038Z"
+        },
+        "base": {
+          "block": 56821514,
+          "at": "2026-11-13T07:24:38.000Z"
+        }
+      },
+      "reads": {
+        "mandate": {
+          "transaction": {
+            "hash": "77cC8nMq6qWynU51FsPn8mkFAb3NEuDmEG7ZXjX6483g",
+            "signer_id": "probarion.near",
+            "receiver_id": "v0.probarion.near",
+            "public_key": "ed25519:4jHJSmeUGvpJzXDTUvBkKzGUgXMb3jMXmyKT44htnUxc",
+            "actions": [
+              {
+                "FunctionCall": {
+                  "method_name": "create_mandate",
+                  "args": "eyJpbnB1dCI6eyJhZ2VudF9wayI6ImVkMjU1MTk6R0FEZVZDWHRnY3hTM0U1SnJjVnBFV1R1WmlOTUo0Z3UxN2l5dUVneUN5Y2QiLCJhcHByb3ZhbF9hYm92ZSI6IjEwMDAwMDAiLCJleHBpcmVzX2F0X25zIjoiMTc5NTEzMjgwMDAwMDAwMDAwMCIsImxhYmVsIjoiczEgYmFzZSBwYXllZSIsIm1heF9wZXJfcGF5bWVudCI6IjEwMDAwMDAiLCJtYXhfdG90YWwiOiIxMDAwMDAwIiwibWF4X3VzZXMiOjEsInBheWVlIjp7ImFkZHJlc3MiOiIweEIyMkVBY0RmMTExNzdkNkQ2MzVFODk1NkJCYkJkZDU0QjNFNkVCMjciLCJhc3NldCI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsImNoYWluIjoiYmFzZSIsInR5cGUiOiJpbnRlbnRzIn0sInB1cnBvc2VfaGFzaCI6IjM1OWQ3ZWUyMWJhZmUzOGIxZDFhOTQ4YmQ5ZGY4ODRlZTFiYjg1Yzc1YWMxMmNlMDVhOGEwY2RiYzkyYjM0NTIifX0="
+                }
+              }
+            ]
+          },
+          "transaction_outcome": {
+            "id": "77cC8nMq6qWynU51FsPn8mkFAb3NEuDmEG7ZXjX6483g",
+            "block_hash": "CXQt1Mbw9BZzLcYx3kLtv8WbR3pSFkWZusbeicrqRBwV"
+          },
+          "status": {
+            "SuccessValue": "Mg=="
+          },
+          "final_execution_status": "FINAL",
+          "receipts": [
+            {
+              "receipt_id": "72P7X9sXpv3j9T1GB4649PC7cVcgxn9iYQQUserJ81DS",
+              "predecessor_id": "probarion.near",
+              "receiver_id": "v0.probarion.near",
+              "receipt": {
+                "Action": {
+                  "actions": [
+                    {
+                      "FunctionCall": {
+                        "method_name": "create_mandate",
+                        "args": "eyJpbnB1dCI6eyJhZ2VudF9wayI6ImVkMjU1MTk6R0FEZVZDWHRnY3hTM0U1SnJjVnBFV1R1WmlOTUo0Z3UxN2l5dUVneUN5Y2QiLCJhcHByb3ZhbF9hYm92ZSI6IjEwMDAwMDAiLCJleHBpcmVzX2F0X25zIjoiMTc5NTEzMjgwMDAwMDAwMDAwMCIsImxhYmVsIjoiczEgYmFzZSBwYXllZSIsIm1heF9wZXJfcGF5bWVudCI6IjEwMDAwMDAiLCJtYXhfdG90YWwiOiIxMDAwMDAwIiwibWF4X3VzZXMiOjEsInBheWVlIjp7ImFkZHJlc3MiOiIweEIyMkVBY0RmMTExNzdkNkQ2MzVFODk1NkJCYkJkZDU0QjNFNkVCMjciLCJhc3NldCI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsImNoYWluIjoiYmFzZSIsInR5cGUiOiJpbnRlbnRzIn0sInB1cnBvc2VfaGFzaCI6IjM1OWQ3ZWUyMWJhZmUzOGIxZDFhOTQ4YmQ5ZGY4ODRlZTFiYjg1Yzc1YWMxMmNlMDVhOGEwY2RiYzkyYjM0NTIifX0="
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "receipts_outcome": [
+            {
+              "id": "72P7X9sXpv3j9T1GB4649PC7cVcgxn9iYQQUserJ81DS",
+              "block_hash": "J9mWXXHvWoKhdL4BXLjh6wwy73FBeYNwTv6UtPqTBDTf",
+              "outcome": {
+                "executor_id": "v0.probarion.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"mandate_created\",\"data\":{\"mandate_id\":2,\"payee\":{\"type\":\"intents\",\"chain\":\"base\",\"address\":\"0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\",\"asset\":\"base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"},\"max_total\":\"1000000\",\"max_per_payment\":\"1000000\",\"expires_at_ns\":\"1795132800000000000\",\"purpose_hash\":\"359d7ee21bafe38b1d1a948bd9df884ee1bb85c75ac12ce05a8a0cdbc92b3452\",\"agent_pk\":\"ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd\"}}"
+                ]
+              }
+            }
+          ]
+        },
+        "spend": {
+          "transaction": {
+            "hash": "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9",
+            "signer_id": "v0.probarion.near",
+            "receiver_id": "v0.probarion.near",
+            "public_key": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+            "actions": [
+              {
+                "FunctionCall": {
+                  "method_name": "spend",
+                  "args": "eyJyZXF1ZXN0Ijp7Im1hbmRhdGVfaWQiOjIsImFtb3VudCI6IjEwMDAwMDAiLCJpbnZvaWNlX2hhc2giOiJiZDQ1ZjIzMjdmYjBjMmMxZTk2MDYwNmU1YzBiYjkxZTNjZmVjNzg4M2YyMTMxNWU5NGY0NTRhODNmZWU4MzU3IiwicmVmIjoiSU5WLU0wMDIiLCJkZWNpc2lvbl9oYXNoIjoiZDY0ZjBkZTc3YzM4Mjk0Y2YxMDM0MzllNmI1YjBjMjYyM2I5NmIxMTQ5NjJhZmQ1MGY1YTNjNTUzZGYyYTMzNiJ9fQ=="
+                }
+              }
+            ]
+          },
+          "transaction_outcome": {
+            "id": "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9",
+            "block_hash": "GM4ojam5J4e91NpzMF1BdbjF65wJcVPvbF6bijT37FTa"
+          },
+          "status": {
+            "SuccessValue": "eyJzcGVuZF9pZCI6Miwic3RhdHVzIjoiYnVybmVkIn0="
+          },
+          "final_execution_status": "FINAL",
+          "receipts": [
+            {
+              "receipt_id": "F2BErA5fo6HBPhgwjyER9iiCrs9XHmDHX6dsey1dZmVi",
+              "predecessor_id": "v0.probarion.near",
+              "receiver_id": "intents.near",
+              "receipt": {
+                "Action": {
+                  "actions": [
+                    {
+                      "FunctionCall": {
+                        "method_name": "ft_withdraw",
+                        "args": "eyJ0b2tlbiI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsInJlY2VpdmVyX2lkIjoiYmFzZS0weDgzMzU4OWZjZDZlZGI2ZTA4ZjRjN2MzMmQ0ZjcxYjU0YmRhMDI5MTMub21mdC5uZWFyIiwiYW1vdW50IjoiMTAwMDAwMCIsIm1lbW8iOiJXSVRIRFJBV19UTzoweEIyMkVBY0RmMTExNzdkNkQ2MzVFODk1NkJCYkJkZDU0QjNFNkVCMjciLCJtc2ciOm51bGx9"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "receipt_id": "D7Ux36fgy29tu5jjEoEstVwbLz3FXDP8Q2gDu65ZkK3b",
+              "predecessor_id": "intents.near",
+              "receiver_id": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+              "receipt": {
+                "Action": {
+                  "actions": [
+                    {
+                      "FunctionCall": {
+                        "method_name": "ft_transfer",
+                        "args": "eyJyZWNlaXZlcl9pZCI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsImFtb3VudCI6IjEwMDAwMDAiLCJtZW1vIjoiV0lUSERSQVdfVE86MHhCMjJFQWNEZjExMTc3ZDZENjM1RTg5NTZCQmJCZGQ1NEIzRTZFQjI3In0="
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "receipt_id": "8hAiNNwar1yut3LSSSvYQxp9NA7Xbv187GZRWd68HU2w",
+              "predecessor_id": "intents.near",
+              "receiver_id": "intents.near",
+              "receipt": {
+                "Action": {
+                  "actions": [
+                    {
+                      "FunctionCall": {
+                        "method_name": "ft_resolve_withdraw",
+                        "args": "eyJ0b2tlbiI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsInNlbmRlcl9pZCI6InYwLnByb2Jhcmlvbi5uZWFyIiwiYW1vdW50IjoiMTAwMDAwMCIsImlzX2NhbGwiOmZhbHNlfQ=="
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "receipt_id": "ChNYpWkBdspsT81quDPBLKZ5AWn37x6DkN1nNdzComfY",
+              "predecessor_id": "v0.probarion.near",
+              "receiver_id": "v0.probarion.near",
+              "receipt": {
+                "Action": {
+                  "actions": [
+                    {
+                      "FunctionCall": {
+                        "method_name": "on_withdraw",
+                        "args": "eyJzcGVuZF9pZCI6Mn0="
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "receipts_outcome": [
+            {
+              "id": "FuEKLqzVPpm3Ks9xVMHmNk3A2SJTNYbra17HVeKz96a9",
+              "block_hash": "GM4ojam5J4e91NpzMF1BdbjF65wJcVPvbF6bijT37FTa",
+              "outcome": {
+                "executor_id": "v0.probarion.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"spend_submitted\",\"data\":{\"spend_id\":2,\"mandate_id\":2,\"amount\":\"1000000\",\"invoice_hash\":\"bd45f2327fb0c2c1e960606e5c0bb91e3cfec7883f21315e94f454a83fee8357\",\"decision_hash\":\"d64f0de77c38294cf103439e6b5b0c2623b96b114962afd50f5a3c553df2a336\",\"destination\":{\"type\":\"intents\",\"chain\":\"base\",\"address\":\"0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\",\"asset\":\"base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"}}}"
+                ]
+              }
+            },
+            {
+              "id": "F2BErA5fo6HBPhgwjyER9iiCrs9XHmDHX6dsey1dZmVi",
+              "block_hash": "9yY3gcn9Qa9ZgmngcPuYNhsr2NQsEGBveW8E69FTSE6A",
+              "outcome": {
+                "executor_id": "intents.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"nep245\",\"version\":\"1.0.0\",\"event\":\"mt_burn\",\"data\":[{\"owner_id\":\"v0.probarion.near\",\"token_ids\":[\"nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"],\"amounts\":[\"1000000\"],\"memo\":\"withdraw\"}]}"
+                ]
+              }
+            },
+            {
+              "id": "D7Ux36fgy29tu5jjEoEstVwbLz3FXDP8Q2gDu65ZkK3b",
+              "block_hash": "9p3J9JKpahabecT2pVzmgBJFFegC9xmwQfGmMLFv83z",
+              "outcome": {
+                "executor_id": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"nep141\",\"version\":\"1.0.0\",\"event\":\"ft_burn\",\"data\":[{\"owner_id\":\"intents.near\",\"amount\":\"1000000\",\"memo\":\"WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\"}]}"
+                ]
+              }
+            },
+            {
+              "id": "ChNYpWkBdspsT81quDPBLKZ5AWn37x6DkN1nNdzComfY",
+              "block_hash": "FNEbSNEgnJHMqyZQff8fihDD2pM5RsEysXRsVzkvvoqv",
+              "outcome": {
+                "executor_id": "v0.probarion.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"spend_burned\",\"data\":{\"spend_id\":2,\"mandate_id\":2,\"amount\":\"1000000\",\"chain\":\"base\",\"address\":\"0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\",\"asset\":\"base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\",\"memo\":\"WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\"}}"
+                ]
+              }
+            }
+          ]
+        },
+        "anchor": {
+          "transaction": {
+            "hash": "65eBfw6vMettw5GFc3R2A2WHvDiGeyXs7STGojCveA9Q",
+            "signer_id": "v0.probarion.near",
+            "receiver_id": "v0.probarion.near",
+            "public_key": "ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK",
+            "actions": [
+              {
+                "FunctionCall": {
+                  "method_name": "anchor",
+                  "args": "eyJzZXEiOjMsInJvb3QiOiIyOGFjNGU1OGEzNGY1NDVlN2MzYWI3MWYzY2UxZTlhZGMxMjM5OTcwNDExZjFlYjBjNjk3YmRjNGQzYjNlNmM2IiwiY291bnQiOjR9"
+                }
+              }
+            ]
+          },
+          "transaction_outcome": {
+            "id": "65eBfw6vMettw5GFc3R2A2WHvDiGeyXs7STGojCveA9Q",
+            "block_hash": "8qVjfR9cwqHcyBzdSj59ePU4DbYdC5LEPFeoMR2YwCaH"
+          },
+          "status": {
+            "SuccessValue": ""
+          },
+          "final_execution_status": "FINAL",
+          "receipts": [],
+          "receipts_outcome": [
+            {
+              "id": "FmE1DYismJhxSWVRMdQhV22GwWKk2XdwYMKJZnBL6ewE",
+              "block_hash": "8qVjfR9cwqHcyBzdSj59ePU4DbYdC5LEPFeoMR2YwCaH",
+              "outcome": {
+                "executor_id": "v0.probarion.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"ledger_anchored\",\"data\":{\"seq\":3,\"root\":\"28ac4e58a34f545e7c3ab71f3ce1e9adc1239970411f1eb0c697bdc4d3b3e6c6\",\"count\":4}}"
+                ]
+              }
+            }
+          ]
+        },
+        "base": {
+          "status": "0x1",
+          "transactionHash": "0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71",
+          "blockHash": "0x2f4f4a81d7b0393c8f44453aa594f9aa99d698af95af98eff58a5a71783a304c",
+          "blockNumber": "0x363070a",
+          "logs": [
+            {
+              "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "topics": [
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0x0000000000000000000000002cff890f0378a11913b6129b2e97417a2c302680",
+                "0x000000000000000000000000b22eacdf11177d6d635e8956bbbbdd54b3e6eb27"
+              ],
+              "data": "0x00000000000000000000000000000000000000000000000000000000000f38e0",
+              "blockTimestamp": "0x6af6bb36"
+            }
+          ]
+        },
+        "config": {
+          "block_hash": "GM4ojam5J4e91NpzMF1BdbjF65wJcVPvbF6bijT37FTa",
+          "block_height": 224331722,
+          "value": {
+            "owner": "probarion.near",
+            "approvers": ["probarion-duong.near"],
+            "usdc": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+            "intents": "intents.near",
+            "allowed_assets": [
+              "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+              "sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"
+            ],
+            "daily_backstop": "500000000",
+            "held_ttl_ns": "259200000000000",
+            "frozen": false,
+            "factory": null,
+            "version": "0.1.0",
+            "ledger_key": "ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK"
+          }
+        },
+        "key": {
+          "block_hash": "GM4ojam5J4e91NpzMF1BdbjF65wJcVPvbF6bijT37FTa",
+          "block_height": 224331722,
+          "nonce": 224068463000003,
+          "permission": {
+            "FunctionCall": {
+              "allowance": "48147142696053800000000",
+              "method_names": ["spend"],
+              "receiver_id": "v0.probarion.near"
+            }
+          }
+        },
+        "account": {
+          "block_hash": "GM4ojam5J4e91NpzMF1BdbjF65wJcVPvbF6bijT37FTa",
+          "block_height": 224331722,
+          "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1"
+        }
+      },
+      "hosts": {
+        "mandate": "archival-rpc.mainnet.fastnear.com",
+        "spend": "archival-rpc.mainnet.fastnear.com",
+        "anchor": "archival-rpc.mainnet.fastnear.com",
+        "base": "mainnet.base.org",
+        "config": "archival-rpc.mainnet.fastnear.com",
+        "key": "archival-rpc.mainnet.fastnear.com",
+        "account": "archival-rpc.mainnet.fastnear.com"
+      }
+    },
+    {
+      "payout": {
+        "id": "spend-3",
+        "date": "2026-11-13",
+        "vault": "v0.probarion.near",
+        "intents": "intents.near",
+        "chain": "base",
+        "asset": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+        "baseToken": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        "payee": "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27",
+        "mandate": {
+          "id": 3,
+          "maxPerPayment": "250000",
+          "maxTotal": "250000",
+          "maxUses": 1,
+          "expiresAtNs": "1795132800000000000"
+        },
+        "agentKey": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+        "spendId": 3,
+        "invoiceHash": "c246134881e52b147f9d4416f447e7151b7049d0e31cefcafa0db25027d683b6",
+        "amount": "250000",
+        "received": "247600",
+        "fee": "2400",
+        "anchor": {
+          "seq": 4,
+          "count": 6,
+          "root": "fcacffdcb0271ed35422ad8589b8435d32cf371f0d41c4cb1c959d583cb2c037"
+        },
+        "decision": {
+          "seq": 4,
+          "bodyHash": "d3807956b1e0a0481656862a50a2147d2b0a1f04834a30829529311c9cec32aa"
+        },
+        "links": [
+          {
+            "seq": 4,
+            "prevLink": "28ac4e58a34f545e7c3ab71f3ce1e9adc1239970411f1eb0c697bdc4d3b3e6c6",
+            "bodyHash": "d3807956b1e0a0481656862a50a2147d2b0a1f04834a30829529311c9cec32aa",
+            "sig": "ed25519:2SFU7mDSe8WQipbRcHaTEQJZqJuswWajPQ7CqKeyqb1Ubju4eGWZpNphJJAdGJnmqziHsQxRojRmQdfKZyyHGRBH"
+          },
+          {
+            "seq": 5,
+            "prevLink": "f5272450ea65e7d1e3289cfe1a8a200d2683da3f52908783e80d7e1fb76cd032",
+            "bodyHash": "2294de4ce9a2475ddda3f128f0e233e52fb68a9314e92077f107b2e843148e72",
+            "sig": "ed25519:LWLJVUTaw4Y9uG5kYVyJ3HBUgCkQuxoJ3WbrKHHw3Jqq8vodaXp1E4Qhr6PDHRYrEifmKVp48vHyxDSYtmU35b6"
+          }
+        ],
+        "build": {
+          "codeHash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+          "commit": "64ac3c03547d59a1f563b5ddf5767c38ae781413"
+        },
+        "tx": {
+          "mandate": {
+            "hash": "4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T",
+            "sender": "probarion.near"
+          },
+          "spend": {
+            "hash": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH",
+            "sender": "v0.probarion.near"
+          },
+          "anchor": {
+            "hash": "6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG",
+            "sender": "v0.probarion.near"
+          },
+          "base": "0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7"
+        },
+        "setup": [
+          {
+            "kind": "mandate_created",
+            "tx": "4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T",
+            "amount": null,
+            "at": "2026-11-13T11:39:34.000Z"
+          }
+        ],
+        "trail": [
+          {
+            "seq": 4,
+            "kind": "decision",
+            "at": "2026-11-13T11:40:29.685Z",
+            "verdict": "allow",
+            "decidedBy": "model+rules",
+            "model": "z-ai/glm-5.3-flash",
+            "attested": true,
+            "action": "pay",
+            "refusedBy": [],
+            "rulesPassed": 16,
+            "rulesTotal": 16,
+            "hintIsAsset": false,
+            "spend": null,
+            "bodyHash": "d3807956b1e0a0481656862a50a2147d2b0a1f04834a30829529311c9cec32aa"
+          },
+          {
+            "seq": 5,
+            "kind": "payment",
+            "at": "2026-11-13T11:41:13.970Z",
+            "verdict": null,
+            "decidedBy": null,
+            "model": null,
+            "attested": false,
+            "action": null,
+            "refusedBy": [],
+            "rulesPassed": 0,
+            "rulesTotal": 0,
+            "hintIsAsset": false,
+            "spend": {
+              "id": 3,
+              "status": "burned",
+              "tx": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH"
+            },
+            "bodyHash": "2294de4ce9a2475ddda3f128f0e233e52fb68a9314e92077f107b2e843148e72"
+          }
+        ],
+        "seals": [
+          {
+            "seq": 4,
+            "count": 6,
+            "root": "fcacffdcb0271ed35422ad8589b8435d32cf371f0d41c4cb1c959d583cb2c037",
+            "tx": "6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG",
+            "at": "2026-11-13T11:41:16.701Z"
+          }
+        ],
+        "verify": {
+          "ok": true,
+          "passed": 8,
+          "failed": 0,
+          "unproven": 0,
+          "skipped": 1,
+          "entries": 6,
+          "anchors": 4,
+          "at": "2026-11-13T11:41:27.581Z",
+          "quoteOnline": false
+        },
+        "source": "docs/evidence/mainnet-v0/s2-2026-11-13",
+        "files": {
+          "ledger": "docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl",
+          "verify": "docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt",
+          "poa": "docs/evidence/mainnet-v0/s2-2026-11-13/poa-status.json"
+        },
+        "pin": {
+          "hash": "B7iXoHCJHWLPWbLNispMCJBzSYC5oD8XqEuZr59MvWeB",
+          "height": 224358455,
+          "at": "2026-11-13T11:41:10.407Z"
+        },
+        "base": {
+          "block": 56898526,
+          "at": "2026-11-13T11:41:20.000Z"
+        }
+      },
+      "reads": {
+        "mandate": {
+          "transaction": {
+            "hash": "4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T",
+            "signer_id": "probarion.near",
+            "receiver_id": "v0.probarion.near",
+            "public_key": "ed25519:4jHJSmeUGvpJzXDTUvBkKzGUgXMb3jMXmyKT44htnUxc",
+            "actions": [
+              {
+                "FunctionCall": {
+                  "method_name": "create_mandate",
+                  "args": "eyJpbnB1dCI6eyJhZ2VudF9wayI6ImVkMjU1MTk6R0FEZVZDWHRnY3hTM0U1SnJjVnBFV1R1WmlOTUo0Z3UxN2l5dUVneUN5Y2QiLCJhcHByb3ZhbF9hYm92ZSI6IjI1MDAwMCIsImV4cGlyZXNfYXRfbnMiOiIxNzk1MTMyODAwMDAwMDAwMDAwIiwibGFiZWwiOiJzMiBhdHRlc3RlZCBiYXNlIHBheWVlIiwibWF4X3Blcl9wYXltZW50IjoiMjUwMDAwIiwibWF4X3RvdGFsIjoiMjUwMDAwIiwibWF4X3VzZXMiOjEsInBheWVlIjp7ImFkZHJlc3MiOiIweEIyMkVBY0RmMTExNzdkNkQ2MzVFODk1NkJCYkJkZDU0QjNFNkVCMjciLCJhc3NldCI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsImNoYWluIjoiYmFzZSIsInR5cGUiOiJpbnRlbnRzIn0sInB1cnBvc2VfaGFzaCI6IjE0YTQzOTk4YjgwZThkMzA3OGM4ZWYzNGJmYzY4OTFmYjA5NGYyMjQ5ZWEzODg1MTAwY2YyMWE3NGRmMjdlYTIifX0="
+                }
+              }
+            ]
+          },
+          "transaction_outcome": {
+            "id": "4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T",
+            "block_hash": "ChDvBWs1MgyoXqXp9AD69ScqJF8h3kByHrRWRUcVnvsm"
+          },
+          "status": {
+            "SuccessValue": "Mw=="
+          },
+          "final_execution_status": "FINAL",
+          "receipts": [
+            {
+              "receipt_id": "wCZJ4f3shCzCZpLuPw51ukGAEcHW7LXS6UrVy1dcprs",
+              "predecessor_id": "probarion.near",
+              "receiver_id": "v0.probarion.near",
+              "receipt": {
+                "Action": {
+                  "actions": [
+                    {
+                      "FunctionCall": {
+                        "method_name": "create_mandate",
+                        "args": "eyJpbnB1dCI6eyJhZ2VudF9wayI6ImVkMjU1MTk6R0FEZVZDWHRnY3hTM0U1SnJjVnBFV1R1WmlOTUo0Z3UxN2l5dUVneUN5Y2QiLCJhcHByb3ZhbF9hYm92ZSI6IjI1MDAwMCIsImV4cGlyZXNfYXRfbnMiOiIxNzk1MTMyODAwMDAwMDAwMDAwIiwibGFiZWwiOiJzMiBhdHRlc3RlZCBiYXNlIHBheWVlIiwibWF4X3Blcl9wYXltZW50IjoiMjUwMDAwIiwibWF4X3RvdGFsIjoiMjUwMDAwIiwibWF4X3VzZXMiOjEsInBheWVlIjp7ImFkZHJlc3MiOiIweEIyMkVBY0RmMTExNzdkNkQ2MzVFODk1NkJCYkJkZDU0QjNFNkVCMjciLCJhc3NldCI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsImNoYWluIjoiYmFzZSIsInR5cGUiOiJpbnRlbnRzIn0sInB1cnBvc2VfaGFzaCI6IjE0YTQzOTk4YjgwZThkMzA3OGM4ZWYzNGJmYzY4OTFmYjA5NGYyMjQ5ZWEzODg1MTAwY2YyMWE3NGRmMjdlYTIifX0="
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "receipts_outcome": [
+            {
+              "id": "wCZJ4f3shCzCZpLuPw51ukGAEcHW7LXS6UrVy1dcprs",
+              "block_hash": "4mRskH161P3xbTxboKNnzVERDSjhoKxUEen2Up5xhE7j",
+              "outcome": {
+                "executor_id": "v0.probarion.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"mandate_created\",\"data\":{\"mandate_id\":3,\"payee\":{\"type\":\"intents\",\"chain\":\"base\",\"address\":\"0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\",\"asset\":\"base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"},\"max_total\":\"250000\",\"max_per_payment\":\"250000\",\"expires_at_ns\":\"1795132800000000000\",\"purpose_hash\":\"14a43998b80e8d3078c8ef34bfc6891fb094f2249ea3885100cf21a74df27ea2\",\"agent_pk\":\"ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd\"}}"
+                ]
+              }
+            }
+          ]
+        },
+        "spend": {
+          "transaction": {
+            "hash": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH",
+            "signer_id": "v0.probarion.near",
+            "receiver_id": "v0.probarion.near",
+            "public_key": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+            "actions": [
+              {
+                "FunctionCall": {
+                  "method_name": "spend",
+                  "args": "eyJyZXF1ZXN0Ijp7Im1hbmRhdGVfaWQiOjMsImFtb3VudCI6IjI1MDAwMCIsImludm9pY2VfaGFzaCI6ImMyNDYxMzQ4ODFlNTJiMTQ3ZjlkNDQxNmY0NDdlNzE1MWI3MDQ5ZDBlMzFjZWZjYWZhMGRiMjUwMjdkNjgzYjYiLCJyZWYiOiJJTlYtTTAwMyIsImRlY2lzaW9uX2hhc2giOiJkMzgwNzk1NmIxZTBhMDQ4MTY1Njg2MmE1MGEyMTQ3ZDJiMGExZjA0ODM0YTMwODI5NTI5MzExYzljZWMzMmFhIn19"
+                }
+              }
+            ]
+          },
+          "transaction_outcome": {
+            "id": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH",
+            "block_hash": "B7iXoHCJHWLPWbLNispMCJBzSYC5oD8XqEuZr59MvWeB"
+          },
+          "status": {
+            "SuccessValue": "eyJzcGVuZF9pZCI6Mywic3RhdHVzIjoiYnVybmVkIn0="
+          },
+          "final_execution_status": "FINAL",
+          "receipts": [
+            {
+              "receipt_id": "2HMqxtTBKuKsmvmFeePXm3eELefEtaVGaDWJVMyGaUHq",
+              "predecessor_id": "v0.probarion.near",
+              "receiver_id": "intents.near",
+              "receipt": {
+                "Action": {
+                  "actions": [
+                    {
+                      "FunctionCall": {
+                        "method_name": "ft_withdraw",
+                        "args": "eyJ0b2tlbiI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsInJlY2VpdmVyX2lkIjoiYmFzZS0weDgzMzU4OWZjZDZlZGI2ZTA4ZjRjN2MzMmQ0ZjcxYjU0YmRhMDI5MTMub21mdC5uZWFyIiwiYW1vdW50IjoiMjUwMDAwIiwibWVtbyI6IldJVEhEUkFXX1RPOjB4QjIyRUFjRGYxMTE3N2Q2RDYzNUU4OTU2QkJiQmRkNTRCM0U2RUIyNyIsIm1zZyI6bnVsbH0="
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "receipt_id": "FNAzBqBEWNeA1eJtnPP2h4VxzNuf3Dn68USwnbTHALSQ",
+              "predecessor_id": "intents.near",
+              "receiver_id": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+              "receipt": {
+                "Action": {
+                  "actions": [
+                    {
+                      "FunctionCall": {
+                        "method_name": "ft_transfer",
+                        "args": "eyJyZWNlaXZlcl9pZCI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsImFtb3VudCI6IjI1MDAwMCIsIm1lbW8iOiJXSVRIRFJBV19UTzoweEIyMkVBY0RmMTExNzdkNkQ2MzVFODk1NkJCYkJkZDU0QjNFNkVCMjcifQ=="
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "receipt_id": "2XiTHCCg1shWKoLYedGjwMTnVtBYMkRMz59ak5SRKu4H",
+              "predecessor_id": "intents.near",
+              "receiver_id": "intents.near",
+              "receipt": {
+                "Action": {
+                  "actions": [
+                    {
+                      "FunctionCall": {
+                        "method_name": "ft_resolve_withdraw",
+                        "args": "eyJ0b2tlbiI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsInNlbmRlcl9pZCI6InYwLnByb2Jhcmlvbi5uZWFyIiwiYW1vdW50IjoiMjUwMDAwIiwiaXNfY2FsbCI6ZmFsc2V9"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "receipt_id": "H52yYdd3dxdhhhqQeqauq1YndpFMS3SZ8hWe71v8e1zC",
+              "predecessor_id": "v0.probarion.near",
+              "receiver_id": "v0.probarion.near",
+              "receipt": {
+                "Action": {
+                  "actions": [
+                    {
+                      "FunctionCall": {
+                        "method_name": "on_withdraw",
+                        "args": "eyJzcGVuZF9pZCI6M30="
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "receipts_outcome": [
+            {
+              "id": "VCsoJ1nWMU4ubEsFN8kY4C6j228SnxsVWbhrCYByBoK",
+              "block_hash": "B7iXoHCJHWLPWbLNispMCJBzSYC5oD8XqEuZr59MvWeB",
+              "outcome": {
+                "executor_id": "v0.probarion.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"spend_submitted\",\"data\":{\"spend_id\":3,\"mandate_id\":3,\"amount\":\"250000\",\"invoice_hash\":\"c246134881e52b147f9d4416f447e7151b7049d0e31cefcafa0db25027d683b6\",\"decision_hash\":\"d3807956b1e0a0481656862a50a2147d2b0a1f04834a30829529311c9cec32aa\",\"destination\":{\"type\":\"intents\",\"chain\":\"base\",\"address\":\"0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\",\"asset\":\"base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"}}}"
+                ]
+              }
+            },
+            {
+              "id": "2HMqxtTBKuKsmvmFeePXm3eELefEtaVGaDWJVMyGaUHq",
+              "block_hash": "9c7iTBokAVahrZ5Gw4C4FKPSpMspaLVvYHv3fhkphxCM",
+              "outcome": {
+                "executor_id": "intents.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"nep245\",\"version\":\"1.0.0\",\"event\":\"mt_burn\",\"data\":[{\"owner_id\":\"v0.probarion.near\",\"token_ids\":[\"nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"],\"amounts\":[\"250000\"],\"memo\":\"withdraw\"}]}"
+                ]
+              }
+            },
+            {
+              "id": "FNAzBqBEWNeA1eJtnPP2h4VxzNuf3Dn68USwnbTHALSQ",
+              "block_hash": "GjS98wvUoAfKMFUMH9fYzob2NsvGQpVWD6brFdFxaSNw",
+              "outcome": {
+                "executor_id": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"nep141\",\"version\":\"1.0.0\",\"event\":\"ft_burn\",\"data\":[{\"owner_id\":\"intents.near\",\"amount\":\"250000\",\"memo\":\"WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\"}]}"
+                ]
+              }
+            },
+            {
+              "id": "H52yYdd3dxdhhhqQeqauq1YndpFMS3SZ8hWe71v8e1zC",
+              "block_hash": "4cpYZwTzqxquhEVWL6tZap2XZSHnhnwsuekn9tbadFpE",
+              "outcome": {
+                "executor_id": "v0.probarion.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"spend_burned\",\"data\":{\"spend_id\":3,\"mandate_id\":3,\"amount\":\"250000\",\"chain\":\"base\",\"address\":\"0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\",\"asset\":\"base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\",\"memo\":\"WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\"}}"
+                ]
+              }
+            }
+          ]
+        },
+        "anchor": {
+          "transaction": {
+            "hash": "6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG",
+            "signer_id": "v0.probarion.near",
+            "receiver_id": "v0.probarion.near",
+            "public_key": "ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK",
+            "actions": [
+              {
+                "FunctionCall": {
+                  "method_name": "anchor",
+                  "args": "eyJzZXEiOjQsInJvb3QiOiJmY2FjZmZkY2IwMjcxZWQzNTQyMmFkODU4OWI4NDM1ZDMyY2YzNzFmMGQ0MWM0Y2IxYzk1OWQ1ODNjYjJjMDM3IiwiY291bnQiOjZ9"
+                }
+              }
+            ]
+          },
+          "transaction_outcome": {
+            "id": "6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG",
+            "block_hash": "FAPChyjjChYiC5JmfBT11EsAVwdM3NoiEzWLD91UQjPS"
+          },
+          "status": {
+            "SuccessValue": ""
+          },
+          "final_execution_status": "FINAL",
+          "receipts": [],
+          "receipts_outcome": [
+            {
+              "id": "7S5vnYWpobf75MtqdCkskM9rkwguMdgASvKQgBTe3K8X",
+              "block_hash": "FAPChyjjChYiC5JmfBT11EsAVwdM3NoiEzWLD91UQjPS",
+              "outcome": {
+                "executor_id": "v0.probarion.near",
+                "logs": [
+                  "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"ledger_anchored\",\"data\":{\"seq\":4,\"root\":\"fcacffdcb0271ed35422ad8589b8435d32cf371f0d41c4cb1c959d583cb2c037\",\"count\":6}}"
+                ]
+              }
+            }
+          ]
+        },
+        "base": {
+          "status": "0x1",
+          "transactionHash": "0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7",
+          "blockHash": "0xe9a1733e567d5f5ad205aabcb4682ee27356b303c3bcd6320a636e0c97eef0df",
+          "blockNumber": "0x36433de",
+          "logs": [
+            {
+              "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "topics": [
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0x0000000000000000000000002cff890f0378a11913b6129b2e97417a2c302680",
+                "0x000000000000000000000000b22eacdf11177d6d635e8956bbbbdd54b3e6eb27"
+              ],
+              "data": "0x000000000000000000000000000000000000000000000000000000000003c730",
+              "blockTimestamp": "0x6af6f760"
+            }
+          ]
+        },
+        "config": {
+          "block_hash": "B7iXoHCJHWLPWbLNispMCJBzSYC5oD8XqEuZr59MvWeB",
+          "block_height": 224358455,
+          "value": {
+            "owner": "probarion.near",
+            "approvers": ["probarion-duong.near"],
+            "usdc": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+            "intents": "intents.near",
+            "allowed_assets": [
+              "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+              "sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"
+            ],
+            "daily_backstop": "500000000",
+            "held_ttl_ns": "259200000000000",
+            "frozen": false,
+            "factory": null,
+            "version": "0.1.0",
+            "ledger_key": "ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK"
+          }
+        },
+        "key": {
+          "block_hash": "B7iXoHCJHWLPWbLNispMCJBzSYC5oD8XqEuZr59MvWeB",
+          "block_height": 224358455,
+          "nonce": 224068463000004,
+          "permission": {
+            "FunctionCall": {
+              "allowance": "46723948618892400000000",
+              "method_names": ["spend"],
+              "receiver_id": "v0.probarion.near"
+            }
+          }
+        },
+        "account": {
+          "block_hash": "B7iXoHCJHWLPWbLNispMCJBzSYC5oD8XqEuZr59MvWeB",
+          "block_height": 224358455,
+          "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1"
+        }
+      },
+      "hosts": {
+        "mandate": "archival-rpc.mainnet.fastnear.com",
+        "spend": "archival-rpc.mainnet.fastnear.com",
+        "anchor": "archival-rpc.mainnet.fastnear.com",
+        "base": "mainnet.base.org",
+        "config": "archival-rpc.mainnet.fastnear.com",
+        "key": "archival-rpc.mainnet.fastnear.com",
+        "account": "archival-rpc.mainnet.fastnear.com"
+      }
+    }
+  ]
+}
