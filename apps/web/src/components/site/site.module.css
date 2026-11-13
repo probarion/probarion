@@ -285,13 +285,14 @@ a.netPill:hover {
   gap: 12px;
   margin-top: 28px;
 }
-/* The hero's light third link: text, not a button, with a touch target as tall as a button's. */
+/* The hero's light third link: text, not a button, with a touch target as tall as a button's. No inline padding, so
+   that when it wraps under the buttons it starts on their left edge. */
 .ctaLink {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 44px;
-  padding-inline: 4px;
+  padding-inline: 0;
   font-size: 15px;
   font-weight: 500;
 }
@@ -365,20 +366,6 @@ a.netPill:hover {
   gap: 8px;
   font-size: 14px;
   color: var(--c-mute);
-}
-.state {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 3px 11px;
-  border-radius: 999px;
-}
-.metal .state {
-  background: var(--color-ink);
-  color: var(--color-gold-light);
-}
-.obsidian .state {
-  background: var(--color-band-bad-bg);
-  color: var(--color-band-bad);
 }
 .cardBig {
   font-weight: 300;
@@ -688,12 +675,13 @@ a.netPill:hover {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
+/* The ledger's column heads: the page's label (parts.module.css .label). */
 .table th {
   text-align: left;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: none;
   color: var(--color-mute);
   padding: 10px 14px;
   border-bottom: 1px solid var(--color-line);
@@ -1161,12 +1149,6 @@ a.netPill:hover {
   .status {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .foot {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .foot > div:first-child {
-    grid-column: 1 / -1;
-  }
 }
 /*
  * Built on, from 961px: the sentence beside the heading sits on the heading's last line, at the right. Section heads
@@ -1198,8 +1180,8 @@ a.netPill:hover {
     grid-column: auto;
   }
   /*
-   * The hero's two buttons and its light link keep one row on a phone: the buttons are smaller, and the link takes
-   * the rest of the row, its label on two short lines if it must. Where even that does not fit, it moves below.
+   * The hero's two buttons keep one row on a phone, a little smaller; the light link takes a row of its own under
+   * them, on one line, so that its label never breaks beside them.
    */
   .cta {
     gap: 8px;
@@ -1209,17 +1191,11 @@ a.netPill:hover {
     font-size: 14px;
   }
   .ctaLink {
-    display: block;
-    flex: 1 1 0;
-    align-self: center;
-    padding-inline: 0;
+    flex-basis: 100%;
     font-size: 14px;
   }
   .status {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .foot {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .quietSm {
     display: none;
@@ -1306,8 +1282,7 @@ a.netPill:hover {
   }
   /* A fill is dropped, so the current network, the paid card and the pills get an edge instead. */
   .netPillCurrent,
-  .pill,
-  .state {
+  .pill {
     border: 1px solid CanvasText;
   }
   .metal {

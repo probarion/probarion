@@ -1,5 +1,5 @@
 import { BAND, SPEND_REQUEST_FIELDS } from "@/lib/site/facts";
-import { Rich } from "./Rich";
+import { KeepRich } from "./bits";
 import { ScrollRegion } from "./ScrollRegion";
 import s from "./site.module.css";
 
@@ -10,7 +10,7 @@ export function InkBand() {
         <div>
           <h2 className={s.h2}>{BAND.title}</h2>
           <p className={s.bandSub}>
-            <Rich text={BAND.body} />
+            <KeepRich text={BAND.body} />
           </p>
         </div>
         <ScrollRegion className={s.struct} label={`The ${BAND.structName} fields`}>

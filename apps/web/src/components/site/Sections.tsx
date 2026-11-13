@@ -2,11 +2,11 @@ import Link from "next/link";
 import { ExternalLink } from "@/components/ui";
 import { CHAIN, CLOSING, EVALUATE_ROUTE, LINKS, STATUS, type StatusTone } from "@/lib/site/facts";
 import { NEXT_STEP } from "@/lib/site/next-step";
+import { KeepRich, LIST, Outcome } from "./bits";
 import ch from "./chain.module.css";
-import c from "./console.module.css";
-import { Parts } from "./JourneyRecord";
-import j from "./journey.module.css";
 import { NextStep } from "./NextStep";
+import { Away, Parts, TermRecord } from "./parts";
+import p from "./parts.module.css";
 import { Rich } from "./Rich";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
@@ -17,73 +17,37 @@ const TONE: Readonly<Record<StatusTone, string | undefined>> = {
   plan: s.plan,
 };
 
-/** list-style: none drops a list's semantics in Safari, so the rows say they are one. Spread past noRedundantRoles. */
-const LIST = { role: "list" } as const;
-
-/** The arrow after a link that opens in a new tab, as the journey draws it. ExternalLink says it in words. */
-const NewTab = () => (
-  <span className={j.ext} aria-hidden="true">
-    ↗
-  </span>
-);
-
-/** What the three rows share, said once in the head: the network, the run's date and the vault, on the explorer. */
-function ChainRecord() {
-  return (
-    <dl className={c.record}>
-      <div>
-        <dt>{CHAIN.terms.network}</dt>
-        <dd>{CHAIN.network}</dd>
-      </div>
-      <div>
-        <dt>{CHAIN.terms.date}</dt>
-        <dd>{CHAIN.date}</dd>
-      </div>
-      <div>
-        <dt>{CHAIN.terms.vault}</dt>
-        <dd>
-          <ExternalLink className={`${s.link} ${ch.vault}`} href={CHAIN.vaultUrl}>
-            <code>{CHAIN.vault}</code>
-            <NewTab />
-            <span className="sr-only">{CHAIN.vaultExplorer}</span>
-          </ExternalLink>
-        </dd>
-      </div>
-    </dl>
-  );
-}
-
 /**
- * The smoke run's three transactions: each row's title and the call the agent key made, what the chain shows, and the
- * transaction on the testnet explorer. A short foot points to the demo vault's newer record and to v0's known gap.
+ * The smoke run's three transactions: each row opens with its outcome, then its title and the call the agent key
+ * made, what the chain shows, and the transaction on the testnet explorer. What the rows share is the head's record.
+ * A short foot points to the demo vault's newer record and to v0's known gap.
  */
 export function ChainList() {
   return (
     <LandingSection
       id="chain"
       head={{ eyebrow: CHAIN.eyebrow, title: CHAIN.title, lede: CHAIN.intro }}
-      headAfter={<ChainRecord />}
+      headAfter={<TermRecord rows={CHAIN.record} />}
     >
       <ul className={ch.rows} {...LIST}>
-        {CHAIN.rows.map(({ title, call, body, tx }) => (
+        {CHAIN.rows.map(({ outcome, title, call, body, tx }) => (
           <li key={tx.hash} className={ch.row}>
             <div className={ch.what}>
+              <Outcome tone={outcome.tone} className={ch.out}>
+                {outcome.word}
+              </Outcome>
               <h3 className={ch.title}>{title}</h3>
               <p className={ch.call}>
-                <Rich text={call} />
+                <KeepRich text={call} />
               </p>
             </div>
             <p className={ch.body}>
-              <Rich text={body} />
+              <KeepRich text={body} />
             </p>
             <dl className={ch.ev}>
-              <dt>{CHAIN.evidenceLabel}</dt>
+              <dt className={p.label}>{CHAIN.evidenceLabel}</dt>
               <dd>
-                <ExternalLink className={`${s.link} ${ch.txLink}`} href={tx.url}>
-                  <span className={ch.hash}>{tx.label}</span>
-                  <NewTab />
-                  <span className="sr-only">{CHAIN.txExplorer}</span>
-                </ExternalLink>
+                <Away href={tx.url} tx={tx.label} after={CHAIN.txExplorer} />
               </dd>
             </dl>
           </li>
@@ -147,15 +111,13 @@ export function Closing() {
         </h2>
         <p className={s.closeNote}>{CLOSING.sub}</p>
         <p className={s.closeNote}>
-          <Rich text={CLOSING.live} />
+          <KeepRich text={CLOSING.live} />
         </p>
         <div className={s.cta}>
           <Link className={`${s.btn} ${s.solid} ${s.big}`} href={EVALUATE_ROUTE}>
             {CLOSING.evaluate}
           </Link>
-          <ExternalLink className={`${s.btn} ${s.big}`} href={LINKS.spec}>
-            {CLOSING.spec}
-          </ExternalLink>
+          <Away className={`${s.btn} ${s.big}`} href={LINKS.spec} label={CLOSING.spec} />
         </div>
         <NextStep step={NEXT_STEP.closing} className={s.closeNext} linkClassName={s.link} />
       </div>

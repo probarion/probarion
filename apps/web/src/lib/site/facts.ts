@@ -159,6 +159,12 @@ export const TX = {
 
 // --- hero -----------------------------------------------------------------------------------------
 
+/**
+ * The testnet demo vault's proof page. Its decision cards carry id="seq-N" and its spends id="spend-N"
+ * (lib/proof/decisions.ts seqAnchorId, spendAnchorId; the test holds the hero's anchor to spendAnchorId).
+ */
+const DEMO_PROOF = "/proof/demo.vaults.probarion.testnet";
+
 /** INV-2001's spend on the testnet demo vault: the hero's paid card, and STORY.invoices[0] below. */
 const demoPaid = tx("HFyW61UZXfwpqhgqWq9bXnRXaYiEnpk4WPUHDAEydQp1", "HFyW61UZ…dQp1");
 
@@ -188,12 +194,21 @@ export const HERO = {
   verify: "Verify it yourself",
   /**
    * Under the buttons, ahead of the audience line: what runs where, then the mainnet vault's payment and refusal of
-   * 2026-11-11 (MAINNET_TX), one row each, in the README's words. Its Base payout of 2026-11-13 is left to the page's
-   * mainnet section (#mainnet), which owns that transaction.
+   * 2026-11-11 (MAINNET_TX), one row each, in the README's words, dated so that two rows do not read as the vault's
+   * whole record. `after` points to its two Base payouts of 2026-11-13, told with their transactions in the cross-chain
+   * use (INTEGRATE.who[2]); once the mainnet section (#mainnet) merges, it can point there instead.
    */
   mainnet: {
     lead: "Testnet today.",
-    intro: " On NEAR mainnet, one small vault, `v0.probarion.near`, with real USDC:",
+    intro: " On NEAR mainnet, one small vault, `v0.probarion.near`, with real USDC, on 2026-11-11:",
+    /** The list's name, read without "Testnet today." */
+    listLabel: "Mainnet transactions of v0.probarion.near, 2026-11-11",
+    txLabel: "Mainnet transaction",
+    after: [
+      "On 2026-11-13 it also made ",
+      { label: "two test payouts to the owner's own Base address", href: "#integrate-uses" },
+      ".",
+    ] satisfies readonly CopyPart[],
     rows: [
       {
         tone: "paid",
@@ -209,6 +224,8 @@ export const HERO = {
       },
     ],
   },
+  /** Over each card's hash, so that each link carries its network when it is read on its own. */
+  txLabel: "Testnet transaction",
   /** The line under the mainnet record: who it is for, and what needs no account. */
   fineprint: [
     "For teams whose AI agent pays supplier invoices, and for ",
@@ -227,7 +244,7 @@ export const HERO = {
     /** Spend 1 on the demo vault's proof page (STORY.proof.href), the card's own transaction. */
     proof: {
       label: "Check it on its proof page",
-      href: "/proof/demo.vaults.probarion.testnet#spend-1",
+      href: `${DEMO_PROOF}#spend-1`,
     },
   },
   /** The team's own attempt on the Canary (lib/canary/rehearsal.ts): code refused it, then raw mode sent it anyway. */
@@ -515,7 +532,7 @@ export const JOURNEY = {
         lines: [
           {
             parts: [
-              "The Canary's ledger holds two attested decisions, and the demo vault's ledger five more. All seven pass the offline checks A1 to A7 and the online checks O1 and O2. ",
+              "The Canary's ledger holds two attested decisions, and the demo vault's ledger five more. All seven pass the offline checks A1 to A7 and have passed the online checks O1 and O2. ",
               { label: "The checks, below", href: `#${JOURNEY_IDS.attested}` },
             ],
           },
@@ -707,7 +724,7 @@ export const STORY = {
   proof: {
     text: "The demo vault's proof page runs checks a to i on its ledger and the chain.",
     label: "Open the proof page",
-    href: "/proof/demo.vaults.probarion.testnet",
+    href: DEMO_PROOF,
   },
   files: {
     label: "The demo vault's files and transactions",
@@ -722,8 +739,10 @@ export const STORY = {
  * ending with the verifier output or the record that says so.
  */
 export interface AttestedCell {
-  result: string;
+  result: "Pass" | "Not run" | "Not shown";
   detail: readonly CopyPart[];
+  /** A second run of the same check on the same ledger, on a line of its own under the first. */
+  more?: readonly CopyPart[];
 }
 export interface AttestedRow {
   check: string;
@@ -742,7 +761,7 @@ export const ATTESTED = {
   ledgers: [
     {
       short: "Canary",
-      name: ["The ", { label: "Canary", href: "/canary" }, "'s ledger"],
+      name: ["The ", { label: "Canary", href: withVia("/canary", "home") }, "'s ledger"],
       sub: [
         "2026-11-10, ",
         {
@@ -760,7 +779,7 @@ export const ATTESTED = {
   ] satisfies readonly { short: string; name: readonly CopyPart[]; sub: readonly CopyPart[] }[],
   rows: [
     {
-      check: "A1 to A7, offline",
+      check: "A1 to A7 (offline checks)",
       cells: [
         {
           result: "Pass",
@@ -776,7 +795,7 @@ export const ATTESTED = {
       ],
     },
     {
-      check: "O1 and O2, online",
+      check: "O1 and O2 (online checks)",
       cells: [
         {
           result: "Pass",
@@ -790,7 +809,9 @@ export const ATTESTED = {
           detail: [
             " on all five, entry 15 included, 2026-11-12 at 16:13 UTC. ",
             output(`${DEMO_EVIDENCE}/verify-online-a8-2026-11-12.txt`),
-            " Entries 10 to 13 passed first, at 01:10 UTC; entry 15 came later. ",
+          ],
+          more: [
+            "Entries 10 to 13 passed first, at 01:10 UTC; entry 15 came later. ",
             output(`${DEMO_EVIDENCE}/verify-online-2026-11-12.txt`),
           ],
         },
@@ -846,9 +867,10 @@ export const ATTESTED = {
       },
     ],
   },
+  /** A page of the docs, through RouteLink like every docs link of the landing. */
   more: {
     label: "What each check covers, and what it does not",
-    href: "/docs/trust/verifier-checks",
+    route: "/docs/trust/verifier-checks",
   },
 } as const;
 
@@ -899,7 +921,10 @@ export const CONSOLE_SHOTS = {
   ],
   /** The name over a shot's transaction link. The invoice's page has no transaction, and nothing stands in for one. */
   txLabel: "Testnet transaction",
-  /** Under each shot below 1100px, where the page shows it smaller than the capture. */
+  /**
+   * Under each shot below 924px, where the page draws the capture smaller than its 856px file. From 924px to 1099px
+   * the stacked capture is drawn at its own size, so the link would open the same picture (console.module.css).
+   */
   fullSize: "Open full size",
   shots: [
     {
@@ -938,7 +963,7 @@ export const CONSOLE_SHOTS = {
   proof: {
     text: "The proof page lists this vault's spends and runs checks a to i on its ledger and the chain.",
     label: "Open the proof page",
-    href: "/proof/demo.vaults.probarion.testnet",
+    href: DEMO_PROOF,
   },
   open: { label: "Open console", href: CONSOLE_ROUTE },
 } as const;
@@ -1031,42 +1056,66 @@ export const TAMPER_COPY = {
 
 // --- on chain -------------------------------------------------------------------------------------
 
+/** The smoke run that CHAIN's rows come from: its network, date and vault, and the vault's explorer page. */
+const CHAIN_RUN = {
+  network: "Testnet",
+  date: "2026-11-01",
+  vault: "v0.probarion.testnet",
+  vaultUrl: explorerAccountUrl("testnet", "v0.probarion.testnet"),
+  vaultExplorer: ", the account on the testnet explorer",
+} as const;
+
 export const CHAIN = {
   eyebrow: "Read it on chain",
   /**
    * Its count is the number of rows (test/section-heads.test.ts). "The smoke run" is the name Known gaps gives v0's run
    * (STATUS.gaps.v0), so the heading, the record's "Run" and the foot's pointer all name one run.
    */
-  title: "Three transactions from the smoke run.",
+  title: "Three testnet transactions from the smoke run.",
   /** What the run exercised (README, "NEAR testnet, 2026-11-01"). Its missing ledger is told once, in Known gaps (P1-10). */
   intro:
     "The contract alone, with test tokens: the agent key called `spend` directly, with no SDK or model in between. Each hash opens its transaction on testnet.nearblocks.io.",
   /** What the three rows share, said once in the head under the record's terms, as the console's record says its own. */
-  network: "Testnet",
-  date: "2026-11-01",
-  vault: "v0.probarion.testnet",
-  vaultUrl: explorerAccountUrl("testnet", "v0.probarion.testnet"),
-  terms: { network: "Network", date: "Run", vault: "Vault" },
+  network: CHAIN_RUN.network,
+  date: CHAIN_RUN.date,
+  vault: CHAIN_RUN.vault,
+  vaultUrl: CHAIN_RUN.vaultUrl,
   /** Read after the vault's name and after each hash. ExternalLink adds " (opens in a new tab)" itself. */
-  vaultExplorer: ", the account on the testnet explorer",
+  vaultExplorer: CHAIN_RUN.vaultExplorer,
   txExplorer: ", on the testnet explorer",
+  /** The record in the head, in the console's shape (parts.tsx TermRecord): the vault opens its explorer page. */
+  record: [
+    { term: "Network", value: CHAIN_RUN.network },
+    { term: "Run", value: CHAIN_RUN.date },
+    {
+      term: "Vault",
+      value: `\`${CHAIN_RUN.vault}\``,
+      link: { url: CHAIN_RUN.vaultUrl, after: CHAIN_RUN.vaultExplorer },
+    },
+  ],
   /** Over each row's hash, so that each link carries its network when it is read on its own. */
   evidenceLabel: "Testnet transaction",
-  /** `call` is the README's "The agent key called `spend` on mandate N" for the row's transaction. */
+  /**
+   * `call` is the README's "The agent key called `spend` on mandate N" for the row's transaction, and `outcome` the
+   * spend's end as the README's smoke table has it (paid, burned, refused).
+   */
   rows: [
     {
+      outcome: { tone: "paid", word: "Paid" },
       title: "Paid a NEAR account",
       call: "Called `spend` on mandate 1",
       body: "1 test USDC to `probarion-payee.testnet`. Events `spend_submitted`, `ft_transfer`, `spend_paid`.",
       tx: TX.nearPayment,
     },
     {
+      outcome: { tone: "paid", word: "Burned" },
       title: "Withdrawal for a Base address",
       call: "Called `spend` on mandate 2",
       body: "The vault burned 1 test USDC with the memo `WITHDRAW_TO:0x1111…1111`, which it built from the mandate. On testnet nothing leaves NEAR.",
       tx: TX.baseBurn,
     },
     {
+      outcome: { tone: "refused", word: "Refused" },
       title: "Refused a mandate that does not exist",
       call: "Called `spend` on mandate 999",
       body: "The contract answered `PROBARION:NoMandate`. Nothing was paid.",
@@ -1173,9 +1222,6 @@ export function statusOf(row: StatusRow["row"]): StatusRow {
 }
 
 // --- built on -------------------------------------------------------------------------------------
-
-/** The testnet demo vault's proof page. Its decision cards carry id="seq-N" (lib/proof/decisions.ts). */
-const DEMO_PROOF = "/proof/demo.vaults.probarion.testnet";
 
 export interface BuiltOnRow {
   id: string;
@@ -1366,6 +1412,8 @@ export const COMPARE = {
    * readers, which hear the column headers above.
    */
   short: { diy: "Your contract", probarion: "Probarion" },
+  /** Read between a status pill and the name of its row, by a screen reader only: "On testnet, from the status row Vault contract". */
+  sourceJoin: ", from the status row ",
   /** The rows in two groups, in this order. Each row names its group; a group's rows are next to each other. */
   groups: [
     { id: "pays", label: "When the agent pays" },

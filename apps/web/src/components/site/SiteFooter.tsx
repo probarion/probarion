@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import { RouteLink } from "@/components/RouteLink";
-import { ExternalLink } from "@/components/ui";
 import { FOOTER } from "@/lib/site/facts";
 import { BrandMark } from "./BrandMark";
 import f from "./footer.module.css";
+import { Away } from "./parts";
 import s from "./site.module.css";
 
 /*
@@ -14,34 +14,16 @@ import s from "./site.module.css";
  * and the legal links start where Product starts.
  */
 
-const NBSP = " ";
 /** The motto's two sentences, each with its period, one per line. */
 const MOTTO = FOOTER.motto.split(/(?<=\.)\s+/);
 /** The note around its license words: what comes before them, and what follows (the closing period). */
 const [NOTE_BEFORE = "", NOTE_AFTER = ""] = FOOTER.note.split(FOOTER.license.label);
 
-/**
- * ↗ marks a link that leaves this site; a link to a page of this site has none. The arrow is joined to its label by a
- * no-break space, so that it never wraps onto a line by itself, and it is hidden from screen readers. It sits inside
- * ExternalLink's children, so that its "(opens in a new tab)" is still read last.
+/*
+ * ↗ marks a link that leaves this site; a link to a page of this site has none. The arrow is the page's one (parts.tsx
+ * Away): glued to the label's last word, so that it never wraps onto a line by itself, hidden from screen readers, and
+ * inside ExternalLink's children, so that its "(opens in a new tab)" is still read last.
  */
-function Away({
-  href,
-  className,
-  children,
-}: {
-  href: string;
-  className?: string;
-  children: string;
-}) {
-  return (
-    <ExternalLink className={className} href={href}>
-      {children}
-      {NBSP}
-      <span aria-hidden="true">↗</span>
-    </ExternalLink>
-  );
-}
 
 export function SiteFooter() {
   return (
@@ -79,7 +61,7 @@ export function SiteFooter() {
               <ul>
                 {FOOTER.developers.map(({ href, label }) => (
                   <li key={href}>
-                    <Away href={href}>{label}</Away>
+                    <Away href={href} label={label} className={null} />
                   </li>
                 ))}
               </ul>
@@ -89,7 +71,7 @@ export function SiteFooter() {
               <ul>
                 {FOOTER.follow.map(({ href, label }) => (
                   <li key={href}>
-                    <Away href={href}>{label}</Away>
+                    <Away href={href} label={label} className={null} />
                   </li>
                 ))}
               </ul>
@@ -99,7 +81,7 @@ export function SiteFooter() {
         <div className={f.base}>
           <p className={f.note}>
             {NOTE_BEFORE}
-            <Away href={FOOTER.license.href}>{FOOTER.license.label}</Away>
+            <Away href={FOOTER.license.href} label={FOOTER.license.label} className={null} />
             {NOTE_AFTER}
           </p>
           <nav aria-label="Legal" className={f.legal}>

@@ -1,89 +1,74 @@
 import Link from "next/link";
 import { RouteLink } from "@/components/RouteLink";
-import { ExternalLink } from "@/components/ui";
-import { type CopyPart, HERO, NUMBERS, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
+import { HERO, NUMBERS, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
+import { KeepLast, KeepRich, LIST, Outcome, type OutcomeTone } from "./bits";
 import h from "./hero.module.css";
-import { Outcome } from "./JourneyRecord";
-import { Rich } from "./Rich";
+import { Away, Parts } from "./parts";
+import p from "./parts.module.css";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
-/** The id of the mainnet record's sentence, which names its list of transactions. */
-const MAINNET_ID = "hero-mainnet";
-
-/** A short hash that opens its explorer in a new tab: mono, then the arrow, which ExternalLink also says in words. */
-function TxLink({ tx, className }: { tx: TxFact; className: string }) {
-  return (
-    <ExternalLink className={`${s.link} ${h.tx} ${className}`} href={tx.url}>
-      {tx.label}
-      <span className={h.ext} aria-hidden="true">
-        ↗
-      </span>
-    </ExternalLink>
-  );
-}
-
+/** A card's transaction: the page's evidence label, then the short hash in mono and its arrow. */
 function TxRow({ tx }: { tx: TxFact }) {
   return (
     <div>
-      <dt>Tx</dt>
+      <dt>{HERO.txLabel}</dt>
       <dd>
-        <TxLink tx={tx} className={s.cardHash} />
+        <Away className={`${s.link} ${s.cardHash}`} href={tx.url} tx={tx.label} />
       </dd>
     </div>
   );
 }
 
-/** A line of copy with links in it: a link to a place on this page stays in the tab, any other opens a new one. */
-function Parts({ parts }: { parts: readonly CopyPart[] }) {
-  return parts.map((p) =>
-    typeof p === "string" ? (
-      <Rich key={p} text={p} />
-    ) : p.href.startsWith("#") ? (
-      <a key={p.href} className={s.link} href={p.href}>
-        {p.label}
-      </a>
-    ) : (
-      <ExternalLink key={p.href} className={s.link} href={p.href}>
-        {p.label}
-      </ExternalLink>
-    ),
-  );
-}
-
 /** A card's label, its last part (a date, an invoice number) kept whole, so that it never breaks at its hyphen. */
 function CardLabel({ text }: { text: string }) {
-  const cut = text.lastIndexOf(", ") + 2;
   return (
     <span className={h.cardLabel}>
-      {text.slice(0, cut)}
-      <span className={h.nowrap}>{text.slice(cut)}</span>
+      <KeepLast text={text} />
     </span>
   );
 }
 
-/** The mainnet record: what runs where, then one ruled row per transaction, its outcome, what happened and its hash. */
+/** A card's state, said as every outcome on the page is: its mark and its word, on the card's own ground. */
+function CardState({ tone, children }: { tone: OutcomeTone; children: string }) {
+  return (
+    <Outcome tone={tone} className={h.state}>
+      {children}
+    </Outcome>
+  );
+}
+
+/**
+ * The mainnet record: what runs where, then one ruled row per transaction (its outcome, what happened, then the
+ * transaction under it), then a line that points to the vault's later payouts. The list is named without "Testnet today".
+ */
 function MainnetRecord() {
   const m = HERO.mainnet;
   return (
     <div className={h.evidence}>
-      <p className={h.evLead} id={MAINNET_ID}>
+      <p className={h.evLead}>
         <strong>{m.lead}</strong>
-        <Rich text={m.intro} />
+        <KeepRich text={m.intro} />
       </p>
-      <ul className={h.evRows} aria-labelledby={MAINNET_ID}>
+      <ul className={h.evRows} aria-label={m.listLabel} {...LIST}>
         {m.rows.map((r) => (
           <li key={r.tx.hash} className={h.evRow}>
-            <Outcome tone={r.tone}>{r.state}</Outcome>
+            <Outcome tone={r.tone} className={h.evOut}>
+              {r.state}
+            </Outcome>
             <span className={h.evWhat}>
-              <Rich text={r.what} />
+              <KeepRich text={r.what} />
             </span>
             <span className={h.evTx}>
-              Tx <TxLink tx={r.tx} className={h.evHash} />
+              <span className={p.label}>{m.txLabel}</span>{" "}
+              <Away className={`${s.link} ${h.evHash}`} href={r.tx.url} tx={r.tx.label} />
             </span>
           </li>
         ))}
       </ul>
+      <p className={h.evAfter}>
+        <Parts parts={m.after} />
+      </p>
     </div>
   );
 }
@@ -99,7 +84,7 @@ function PaidCard() {
     <article className={`${s.card} ${s.metal} ${h.paid}`} aria-label={c.aria}>
       <div className={s.cardTop}>
         <CardLabel text={c.label} />
-        <span className={s.state}>{c.state}</span>
+        <CardState tone="paid">{c.state}</CardState>
       </div>
       <div className={s.cardBig}>{c.big}</div>
       <dl className={`${s.rows} ${h.cardRows}`}>
@@ -132,7 +117,7 @@ function RefusedCard() {
     <article className={`${s.card} ${s.obsidian} ${h.canary}`} aria-label={c.aria}>
       <div className={s.cardTop}>
         <CardLabel text={c.label} />
-        <span className={s.state}>{c.state}</span>
+        <CardState tone="refused">{c.state}</CardState>
       </div>
       <div className={s.cardBig}>{c.big}</div>
       <dl className={`${s.rows} ${h.cardRows}`}>
@@ -198,7 +183,7 @@ export function Hero() {
             </p>
             <PaidCard />
             <RefusedCard />
-            <ol className={h.steps} aria-label={HERO.canarySteps.label}>
+            <ol className={h.steps} aria-label={HERO.canarySteps.label} {...LIST}>
               {HERO.canarySteps.items.map((step) => (
                 <li key={step}>{step}</li>
               ))}
@@ -226,7 +211,7 @@ export function Problem() {
                   ✕
                 </span>
                 <span>
-                  <Rich text={line} />
+                  <KeepRich text={line} />
                 </span>
               </li>
             ))}
@@ -241,7 +226,7 @@ export function Problem() {
                   ✓
                 </span>
                 <span>
-                  <Rich text={line} />
+                  <KeepRich text={line} />
                 </span>
               </li>
             ))}
@@ -254,7 +239,7 @@ export function Problem() {
             <b>{value}</b>
             <p>
               <strong>{name}</strong>
-              <Rich text={rest} />
+              <KeepRich text={rest} />
             </p>
           </div>
         ))}

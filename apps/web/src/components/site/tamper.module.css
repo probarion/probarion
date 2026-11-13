@@ -4,9 +4,9 @@
  * then the readout (PASS or FAIL in column 1, its sentence across 2 and 3, then the nine checks a to i, three by
  * three). The edit buttons, the verdict word and checks a, d and g share column 1. From 621 to 960px the bench stacks
  * and the readout goes two by two; at 620px and under everything is one column, in the same order. The buttons, the
- * sheet and the table are the page's own (site.module.css .act, .sheet, .table). One status system: a word in its
- * tone colour (pass, fail, skipped, not proven, not run), no pills, no fills. Every colour is a token from
- * app/globals.css. Nothing moves on scroll.
+ * sheet and the table are the page's own (site.module.css .act, .sheet, .table). One status system, the page's
+ * outcome: the verifier's word in ink with its mark (pass, fail, skipped, not proven, not run), no pills, no fills.
+ * Every colour is a token from app/globals.css. Nothing moves on scroll.
  */
 
 .tamper {
@@ -18,38 +18,22 @@
   column-gap: var(--tamper-gap);
 }
 
-/* One small label for both parts: "Try one edit" and "Verifier result". */
-.kicker {
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  line-height: 1.5;
-  color: var(--color-mute);
-}
+/* Both parts, "Try one edit" and "Verifier result", open with the page's part head (bits.tsx PartHead). */
 
 /* The bench. The rail and the sheet end on one line: Restore sits at the rail's foot, as the files do in the sheet. */
 .bench {
   align-items: stretch;
 }
-/* 17px down, so that the label sits on the line of the sheet's title (its 1px border and 16px of padding). */
 .rail {
   grid-column: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding-top: 17px;
-}
-.railNote {
-  margin-top: 2px;
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--color-mute);
 }
 .edits {
   display: grid;
   gap: 16px;
-  margin: 20px 0;
+  margin: 0 0 20px;
   padding: 0;
   list-style: none;
 }
@@ -113,11 +97,9 @@
   font-size: 13px;
 }
 
-/* The readout: the only live region. */
+/* The readout: its part head draws the rule above it. Only its verdict block and the line under it are live regions. */
 .readout {
   margin-top: clamp(32px, 4vw, 48px);
-  padding-top: clamp(24px, 3vw, 32px);
-  border-top: 1px solid var(--color-line);
 }
 .verdict {
   row-gap: 6px;
@@ -202,10 +184,12 @@
   min-width: 0;
   font-weight: 500;
 }
-.checkWord {
+/* The check's word: the page's outcome (bits.tsx Outcome), its mark in the tone and the word in ink, pass or not.
+   Two classes, so that it wins over the outcome's own weight whatever order the modules load in. */
+.check .checkWord {
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-ok);
+  color: var(--color-ink);
 }
 /* What the check means, in one line, the same whether it passed or failed. */
 .checkHint {
@@ -221,14 +205,14 @@
   line-height: 1.5;
   color: var(--color-wait);
 }
-/* A check that did not pass: a heavier red rule, and its id, name and word in red. The word says it without colour. */
+/* A check that did not pass: a heavier red rule, its id and name in red, and its word's struck mark. The word says it
+   without colour. */
 .checkBad {
   padding-top: 13px;
   border-top: 2px solid var(--color-bad);
 }
 .checkBad .checkId,
-.checkBad .checkLabel,
-.checkBad .checkWord {
+.checkBad .checkLabel {
   color: var(--color-bad);
 }
 
@@ -292,9 +276,6 @@
   .rail,
   .ledger {
     grid-column: 1;
-  }
-  .rail {
-    padding-top: 0;
   }
   .edits {
     grid-template-columns: max-content minmax(0, 1fr);

@@ -1,38 +1,16 @@
 import { createElement, type ReactNode } from "react";
 import { RouteLink } from "@/components/RouteLink";
-import { ExternalLink } from "@/components/ui";
-import { INTEGRATE, SDK_SNIPPET, type StatusTone, statusOf } from "@/lib/site/facts";
+import { INTEGRATE, SDK_SNIPPET } from "@/lib/site/facts";
+import { KeepRich, LIST, PartHead } from "./bits";
 import m from "./integrate.module.css";
-import { Rich } from "./Rich";
+import { Away, StatusPill } from "./parts";
+import p from "./parts.module.css";
 import { ScrollRegion } from "./ScrollRegion";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
-const TONE: Readonly<Record<StatusTone, string | undefined>> = {
-  live: s.live,
-  work: s.work,
-  plan: s.plan,
-};
-
-/**
- * The lists' role, said out loud: the stylesheet removes their markers, and Safari then drops their list semantics. It
- * is spread from here because Biome's noRedundantRoles reads the markup, not the stylesheet.
- */
-const LIST = { role: "list" } as const;
-
-/**
- * A STATUS row's pill, in the page's one status style (site.module.css `.pill` and its tones, as the comparison draws
- * it). Its words and its tone come from the row, never from here.
- */
-function Pill({ row }: { row: Parameters<typeof statusOf>[0] }) {
-  const st = statusOf(row);
-  return (
-    <span className={`${s.pill} ${s.pillInline} ${TONE[st.tone]}`}>
-      <span className="sr-only">{INTEGRATE.statusPrefix}</span>
-      {st.pill}
-    </span>
-  );
-}
+/** The uses' part: the hero's pointer to the mainnet payouts lands on its heading. */
+export const USES_ID = "integrate-uses";
 
 /** The snippet as written, each comment in a span of its own so that it reads quieter than the code beside it. */
 function Snippet({ code }: { code: string }) {
@@ -50,21 +28,9 @@ function Snippet({ code }: { code: string }) {
   return createElement("pre", null, ...parts);
 }
 
-/** An evidence label whose last part, after its last comma (an entry, a date, a transaction), never splits. */
-function Kept({ text }: { text: string }) {
-  const cut = text.lastIndexOf(", ") + 2;
-  if (cut < 2) return text;
-  return (
-    <>
-      {text.slice(0, cut)}
-      <span className={m.keep}>{text.slice(cut)}</span>
-    </>
-  );
-}
-
 type Link = { route: string; label: string } | { href: string; label: string; after?: string };
 
-/** A link of the section: a page of this site in this tab, anything else in a new one. */
+/** A link of the section: a page of this site in this tab, anything else in a new one, with its arrow. */
 function Go({ link, className = s.link }: { link: Link; className?: string }) {
   if ("route" in link) {
     return (
@@ -73,30 +39,23 @@ function Go({ link, className = s.link }: { link: Link; className?: string }) {
       </RouteLink>
     );
   }
-  return (
-    <ExternalLink className={className} href={link.href}>
-      {link.label}
-      {link.after === undefined ? null : <span className="sr-only">{link.after}</span>}
-    </ExternalLink>
-  );
+  return <Away className={className} href={link.href} label={link.label} after={link.after} />;
 }
 
 /** Part 1: the four ways in, as equal cards whose title, text, status and link line up across a row. */
 function Ways() {
   return (
     <div className={m.part}>
-      <div className={m.partHead}>
-        <h3 className={m.partTitle}>{INTEGRATE.parts.ways}</h3>
-      </div>
+      <PartHead title={INTEGRATE.parts.ways} />
       <ul className={m.ways} {...LIST}>
         {INTEGRATE.cards.map((c) => (
           <li key={c.title} className={m.way}>
             <h4 className={m.wayTitle}>{c.title}</h4>
             <p className={m.wayBody}>
-              <Rich text={c.body} />
+              <KeepRich text={c.body} />
             </p>
             <div className={m.wayStatus}>
-              <Pill row={c.status} />
+              <StatusPill row={c.status} />
             </div>
             {"route" in c.link ? (
               // The console's link is left out while its page is planned, not shown as plain text.
@@ -122,11 +81,11 @@ function Addresses() {
   const a = INTEGRATE.addresses;
   return (
     <div>
-      <h4 className={m.lab}>{a.title}</h4>
+      <h4 className={p.label}>{a.title}</h4>
       <div className={m.addr}>
         {a.networks.map((n) => (
           <div key={n.name}>
-            <p className={`${m.lab} ${m.net}`}>{n.name}</p>
+            <p className={`${p.label} ${m.net}`}>{n.name}</p>
             <dl className={m.addrList}>
               {n.rows.map((r) => (
                 <div key={r.term}>
@@ -135,10 +94,7 @@ function Addresses() {
                     <dd className={m.none}>{r.none}</dd>
                   ) : (
                     <dd>
-                      <ExternalLink className={s.link} href={r.account.url}>
-                        <code>{r.account.id}</code>
-                        <span className="sr-only">{n.explorer}</span>
-                      </ExternalLink>
+                      <Away href={r.account.url} code={r.account.id} after={n.explorer} />
                       {"after" in r ? r.after : null}
                     </dd>
                   )}
@@ -159,9 +115,9 @@ function Addresses() {
 function Statuses() {
   return (
     <div>
-      <h4 className={m.lab}>{INTEGRATE.statusesTitle}</h4>
+      <h4 className={p.label}>{INTEGRATE.statusesTitle}</h4>
       <p className={m.lead}>
-        <Rich text={INTEGRATE.statusesLead} />
+        <KeepRich text={INTEGRATE.statusesLead} />
       </p>
       <ul className={m.chips} {...LIST}>
         {INTEGRATE.statuses.map((x) => (
@@ -181,10 +137,7 @@ function Statuses() {
 function Code() {
   return (
     <div className={m.part}>
-      <div className={m.partHead}>
-        <h3 className={m.partTitle}>{INTEGRATE.parts.code}</h3>
-        <p className={m.partNote}>{INTEGRATE.parts.codeNote}</p>
-      </div>
+      <PartHead title={INTEGRATE.parts.code} note={INTEGRATE.parts.codeNote} />
       <div className={m.dev}>
         <div className={`${s.codeBox} ${m.code}`}>
           <div className={s.codeHead}>
@@ -201,7 +154,7 @@ function Code() {
         </div>
       </div>
       <div className={m.docsRow}>
-        <h4 className={m.lab}>{INTEGRATE.docs.title}</h4>
+        <h4 className={p.label}>{INTEGRATE.docs.title}</h4>
         <dl className={m.docs}>
           {INTEGRATE.docs.groups.map((g) => (
             <div key={g.name}>
@@ -224,11 +177,9 @@ function Uses() {
   const [, controls] = INTEGRATE.usesHead;
   return (
     <div className={m.part}>
-      <div className={m.partHead}>
-        <h3 className={m.partTitle}>{INTEGRATE.parts.uses}</h3>
-      </div>
+      <PartHead title={INTEGRATE.parts.uses} id={USES_ID} />
       {/* The heads are for the eye; the cell that needs its head carries it for a screen reader. */}
-      <div className={`${m.useHead} ${m.lab}`} aria-hidden="true">
+      <div className={`${m.useHead} ${p.label}`} aria-hidden="true">
         {INTEGRATE.usesHead.map((h) => (
           <span key={h}>{h}</span>
         ))}
@@ -239,11 +190,11 @@ function Uses() {
             <div className={m.name}>
               <h4 className={m.useTitle}>{w.title}</h4>
               <p className={m.useBody}>
-                <Rich text={w.body} />
+                <KeepRich text={w.body} />
               </p>
             </div>
             <p className={m.ctl}>
-              <span className={`${m.lab} ${m.cellLab}`}>
+              <span className={`${p.label} ${m.cellLab}`}>
                 {controls}
                 <span className="sr-only">: </span>
               </span>
@@ -253,19 +204,21 @@ function Uses() {
               {w.runs.map((r) => (
                 <div key={r.network} className={m.run}>
                   <p className={m.what}>
-                    <span className={`${m.lab} ${m.net}`}>
+                    <span className={`${p.label} ${m.net}`}>
                       {r.network}
                       <span className="sr-only">: </span>
                     </span>
-                    <Rich text={r.outcome} />
+                    <KeepRich text={r.outcome} />
                   </p>
                   <div className={m.ev}>
-                    <Pill row={r.status} />
-                    {r.evidence.map((e) => (
-                      <ExternalLink key={e.url} className={s.link} href={e.url}>
-                        <Kept text={e.label} />
-                      </ExternalLink>
-                    ))}
+                    <StatusPill row={r.status} />
+                    {r.evidence.map((e) =>
+                      e.label.includes(", tx ") ? (
+                        <Away key={e.url} href={e.url} tx={e.label} />
+                      ) : (
+                        <Away key={e.url} href={e.url} label={e.label} />
+                      ),
+                    )}
                   </div>
                 </div>
               ))}

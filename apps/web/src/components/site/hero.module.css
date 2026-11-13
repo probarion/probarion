@@ -21,15 +21,13 @@
 }
 
 /*
- * The mainnet record: what runs where, then one row per transaction, ruled like the cards' rows. A row is the
- * outcome (the journey's mark and word), what happened, and the hash. The rows share three columns (subgrid), so the
- * words and the hashes line up. The block lays itself out by its own width, not the window's: under 440px the hash
- * goes under what happened.
+ * The mainnet record: what runs where, then one row per transaction, ruled like the cards' rows. A row is the outcome
+ * (the page's mark and word) beside what happened, and the transaction on a line under it, its label and hash, so the
+ * words and the hashes line up from row to row at every width. A line under the rows points to the later payouts.
  */
 .evidence {
   margin-top: 30px;
   max-width: 34em;
-  container-type: inline-size;
   font-size: 15px;
 }
 .evLead {
@@ -45,7 +43,7 @@
 }
 .evRows {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-columns: max-content minmax(0, 1fr);
   column-gap: 16px;
   margin-top: 12px;
   border-bottom: 1px solid var(--color-line);
@@ -60,40 +58,19 @@
   border-top: 1px solid var(--color-line);
   line-height: 1.5;
 }
+.evOut {
+  font-size: 15px;
+}
 .evWhat {
   min-width: 0;
 }
 .evTx {
-  justify-self: end;
-  white-space: nowrap;
+  grid-column: 2;
   font-size: 14px;
-  color: var(--color-mute);
 }
-.evHash {
-  font-family: var(--font-mono);
-  font-size: 13px;
+/* Two classes, so that the hash link is in ink whatever order the modules load in. */
+.evTx .evHash {
   color: var(--color-ink);
-}
-@container (max-width: 440px) {
-  .evRows {
-    grid-template-columns: max-content minmax(0, 1fr);
-  }
-  .evTx {
-    grid-column: 2;
-    justify-self: start;
-  }
-}
-/* A browser without container queries gets the same two lines where the block is that narrow: a phone, and 961px to 1165px. */
-@supports not (container-type: inline-size) {
-  @media (max-width: 620px), (min-width: 961px) and (max-width: 1165px) {
-    .evRows {
-      grid-template-columns: max-content minmax(0, 1fr);
-    }
-    .evTx {
-      grid-column: 2;
-      justify-self: start;
-    }
-  }
 }
 /* A browser without subgrid lets each row wrap on its own: the columns do not line up, and nothing is cut. */
 @supports not (grid-template-columns: subgrid) {
@@ -103,16 +80,32 @@
     align-items: baseline;
     column-gap: 16px;
   }
+  .evTx {
+    flex-basis: 100%;
+  }
+}
+.evAfter {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-mute);
 }
 
-/* A transaction hash that opens its explorer: the hash and its new-tab arrow on one line, the arrow not underlined. */
-.tx {
-  white-space: nowrap;
+/* A card's state: the page's outcome (bits.tsx Outcome), its mark in the card's own tone. Two classes, so that the
+   card's tone wins over the mark's default whatever order the modules load in. */
+.paid .state,
+.canary .state {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-fg);
 }
-.ext {
-  display: inline-block;
-  margin-left: 3px;
-  text-decoration: none;
+.canary .state {
+  --mark: var(--color-band-bad);
+}
+/* A card's new-tab arrow (bits.tsx NewTab) in the card's own mute, which reads on its gold or obsidian ground. */
+.paid,
+.canary {
+  --ext: var(--c-mute);
 }
 
 /*
@@ -127,9 +120,6 @@
 }
 .cardLabel {
   min-width: 0;
-}
-.nowrap {
-  white-space: nowrap;
 }
 .cap {
   max-width: var(--container-measure);

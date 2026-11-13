@@ -33,6 +33,7 @@ const MODULES: Readonly<Record<string, string>> = {
   chain: "src/components/site/chain.module.css",
   live: "src/components/site/live.module.css",
   footer: "src/components/site/footer.module.css",
+  parts: "src/components/site/parts.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -327,7 +328,7 @@ describe("text contrast at WCAG AAA (1.4.6), from the tokens and the CSS modules
 
   it("keeps gold-small off small text: only the 42px step numbers, a large text, use it as a text colour", () => {
     const uses = MODULE_RULES.filter((r) => r.decls.color === "var(--color-gold-small)");
-    expect(uses.map(where)).toEqual(["journey: .stepN"]);
+    expect(uses.map(where)).toEqual(["parts: .stepN"]);
     for (const r of uses) expect(minPx(r.decls["font-size"]), where(r)).toBeGreaterThanOrEqual(24);
     const tsx = walk(SRC).filter((f) => f.endsWith(".tsx") && !isTestFile(f));
     const found = tsx.filter((f) =>
@@ -517,19 +518,21 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["canary", ".rules", "gap", 16, "site", ".site"],
       ["canary", ".reading :where(p + p)", "margin-top", 17, "site", ".site"],
       ["usage", ".defs", "gap", 16, "site", ".site"],
-      // The journey: a step's note under its text, the note's lines, the record's caption over its intro, an invoice's
-      // asked, happened and evidence stacked on a tablet or a phone, and the two lines under the attested decisions.
+      // The shared parts: a record of terms under a section's lede, and its terms where they wrap onto a second row.
+      ["parts", ".record", "margin-top", 17, "site", ".site"],
+      ["parts", ".record", "row-gap", 15, "site", ".site"],
+      // The journey: a step's note under its text, the note's lines, an invoice's asked, happened and evidence stacked
+      // on a tablet or a phone, a second run of an attested check, and the two lines under the attested decisions.
       ["journey", ".note", "margin-top", 15, "journey", ".note"],
       ["journey", ".noteLine + .noteLine", "margin-top", 15, "journey", ".note"],
-      ["journey", ".recHead", "row-gap", 16, "site", ".site"],
+      ["journey", ".resultLine + .resultLine", "margin-top", 15, "journey", ".matrix"],
       ["journey", ".invRow", "row-gap", 15, "site", ".site"],
       ["journey", ".attFoot", "gap", 15, "journey", ".attFoot"],
       // Integrate: a use's control over its runs when the columns stack, and a run's outcome over its evidence.
       ["integrate", ".use", "row-gap", 15, "site", ".site"],
       ["integrate", ".run", "row-gap", 15, "site", ".site"],
-      // The console: the record under the head's lede, and a capture's full-size link over its transaction.
-      ["console", ".record", "margin-top", 17, "site", ".site"],
-      ["console", ".ev", "gap", 15, "site", ".site"],
+      // The console: a step's transaction under its sentence.
+      ["console", ".tx", "margin-top", 15, "site", ".site"],
       // The chain: a row's call, what the chain shows and its transaction stacked, and the foot's two lines.
       ["chain", ".row", "row-gap", 15, "site", ".site"],
       ["chain", ".foot", "gap", 15, "site", ".site"],
@@ -566,15 +569,13 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
     );
     const capped: [string, string][] = [
       ["site", ".lede"],
-      ["journey", ".stepBody"],
+      ["parts", ".stepBody"],
+      ["parts", ".partNote"],
       ["journey", ".note"],
-      ["journey", ".recLede"],
-      ["journey", ".attCap"],
       ["journey", ".attFoot p"],
       ["site", ".statusNote"],
       ["site", ".gaps"],
       ["site", ".closeNote"],
-      ["integrate", ".partNote"],
       ["integrate", ".useBody"],
       ["console", ".actionsText"],
       ["hero", ".cap"],
@@ -742,9 +743,12 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     expect(decl("live", '.scenario[aria-pressed="true"]', "border-width")).toBe("2px");
     // The red rule of the live check's hijack note takes the forced text colour, so it shows on a dark Canvas.
     expect(inForced("live", ".inj")[0]?.["border-left-color"]).toBe("CanvasText");
-    for (const s of [".netPillCurrent", ".pill", ".state"]) {
+    for (const s of [".netPillCurrent", ".pill"]) {
       expect(inForced("site", s)[0]?.border, s).toBe("1px solid CanvasText");
     }
+    // An outcome's mark (bits.tsx Outcome) takes the forced text colour; its word says the same.
+    expect(inForced("parts", ".fill")[0]?.fill).toBe("CanvasText");
+    expect(inForced("parts", ".ring")[0]?.stroke).toBe("CanvasText");
     expect(inForced("site", ".gold")[0]?.color).toBe("CanvasText");
     expect(inForced("docs", ".gold")[0]?.color).toBe("CanvasText");
     expect(inForced("docs", ".chipDot")[0]?.background).toBe("CanvasText");
@@ -765,5 +769,56 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     expect(content.length).toBeGreaterThan(10);
     const found = content.filter((f) => /^\s*```diff\b/m.test(readFileSync(f, "utf8")));
     expect(found.map((f) => toPosix(relative(WEB, f)))).toEqual([]);
+  });
+});
+
+describe("one small label (parts.module.css .label)", () => {
+  it("sets every column head, group label and run-in label of the redesigned tables in the label's own type", () => {
+    // Sentence case, 13px, 500, a hair of tracking, in mute: gold stays for the section's eyebrow.
+    const token = [
+      "font-size",
+      "font-weight",
+      "letter-spacing",
+      "text-transform",
+      "color",
+    ] as const;
+    const label = Object.fromEntries(token.map((p) => [p, decl("parts", ".label", p)]));
+    expect(label).toEqual({
+      "font-size": "13px",
+      "font-weight": "500",
+      "letter-spacing": "0.01em",
+      "text-transform": "none",
+      color: "var(--color-mute)",
+    });
+    for (const [file, selector] of [
+      ["compare", ".table .head th"],
+      ["compare", ".table .group th"],
+      ["compare", ".runIn"],
+      ["site", ".table th"],
+      ["parts", ".partLabel"],
+    ] as const) {
+      for (const p of token) {
+        if (selector === ".partLabel" && (p === "letter-spacing" || p === "text-transform"))
+          continue;
+        expect(decl(file, selector, p), `${file} ${selector} ${p}`).toBe(label[p]);
+      }
+    }
+    // No uppercase label is left in the sections that use it.
+    for (const file of [
+      "compare",
+      "integrate",
+      "journey",
+      "console",
+      "chain",
+      "hero",
+      "tamper",
+      "parts",
+    ])
+      expect(
+        MODULE_RULES.filter(
+          (r) => r.file === file && r.decls["text-transform"] === "uppercase",
+        ).map(where),
+        file,
+      ).toEqual([]);
   });
 });

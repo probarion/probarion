@@ -138,8 +138,8 @@ describe("the landing's section heads", () => {
     const first = (CHAIN.title.split(" ")[0] ?? "").toLowerCase();
     expect(WORDS).toContain(first);
     expect(WORDS.indexOf(first)).toBe(CHAIN.rows.length);
-    // The heading names the run as Known gaps does; the network is said in the record and over every hash.
-    expect(CHAIN.title).toBe("Three transactions from the smoke run.");
+    // The heading names the network and the run as Known gaps does; the record and every hash's label say testnet too.
+    expect(CHAIN.title).toBe("Three testnet transactions from the smoke run.");
     expect(CHAIN.network).toBe("Testnet");
     expect(CHAIN.evidenceLabel).toBe("Testnet transaction");
     expect(CHAIN.intro).toContain("with test tokens");

@@ -4,6 +4,7 @@ import { LIVE_CHECK } from "@/lib/site/facts";
 import { fill, LIVE_VAULT, type RecordedFile } from "@/lib/site/live-check";
 import recordedJson from "@/lib/site/live-check-recorded.json";
 import { answerFromRecorded, verdictWord } from "@/lib/site/live-check-view";
+import { ArrowLabel } from "./bits";
 import { LiveCheckClient } from "./LiveCheckClient";
 import lc from "./live.module.css";
 import { LandingSection } from "./SectionHead";
@@ -49,10 +50,7 @@ export function LiveCheck() {
         codes={LIVE_CHECK.codes}
         explorer={
           <ExternalLink className={lc.explorer} href={explorerAccountUrl("testnet", LIVE_VAULT)}>
-            {LIVE_CHECK.copy.explorer}
-            <span className={lc.ext} aria-hidden="true">
-              ↗
-            </span>
+            <ArrowLabel text={LIVE_CHECK.copy.explorer} />
           </ExternalLink>
         }
       />

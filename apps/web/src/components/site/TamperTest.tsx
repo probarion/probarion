@@ -13,6 +13,7 @@ import {
   statusLine,
   VERIFIER_DETAIL,
 } from "@/lib/site/tamper-view";
+import { LIST, Outcome, type OutcomeTone, PartHead } from "./bits";
 import { ScrollRegion } from "./ScrollRegion";
 import s from "./site.module.css";
 import t from "./tamper.module.css";
@@ -86,12 +87,18 @@ function Counts({ summary, firstBroken }: { summary: string; firstBroken: string
   );
 }
 
+/** A check's word with the page's outcome mark: a pass a dot, a failure a struck circle, the rest (skipped, not
+ * proven, not run) an empty ring. The words are the verifier's own. */
+const checkTone = (word: string, bad: boolean): OutcomeTone =>
+  !bad ? "paid" : word === "fail" ? "refused" : "none";
+
 /**
- * The verifier's result, inside the live region. Its title, then one block read whole: PASS or FAIL, one plain
- * sentence, the counts when they say more than that sentence, and whether this is the recorded result or a run just
- * now. Under that block, outside it so that a press that did not finish does not read the old verdict again as new:
- * `next`, which TamperTest passes only when `offersNext`, and `error`. Then each check's word, and the verifier's own
- * words on the checks that did not pass, in a closed disclosure.
+ * The verifier's result. Its title, then one block read whole, the only part announced when it changes: PASS or FAIL,
+ * one plain sentence, the counts when they say more than that sentence, and whether this is the recorded result or a
+ * run just now. Under that block, in a live region of its own so that a press that did not finish does not read the
+ * old verdict again as new: `next`, which TamperTest passes only when `offersNext`, and `error`. Then each check's
+ * word, read on demand and never announced, and the verifier's own words on the checks that did not pass, in a closed
+ * disclosure.
  */
 export function TamperVerdict({
   result,
@@ -100,6 +107,7 @@ export function TamperVerdict({
   copy,
   next,
   error,
+  busy = false,
 }: {
   result: TamperResult;
   checks: readonly { id: CheckId; label: string; hint: string }[];
@@ -108,6 +116,8 @@ export function TamperVerdict({
   next?: ReactNode;
   /** What to say when the last press produced no result. */
   error?: string;
+  /** While a press is running: the verdict block is busy, so it is not read until the new one is in. */
+  busy?: boolean;
 }) {
   const views = checks.map(({ id, label, hint }) => ({
     id,
@@ -120,8 +130,13 @@ export function TamperVerdict({
   const summary = resultSummary(result, copy.firstBroken);
   return (
     <>
-      <h3 className={t.kicker}>{copy.resultTitle}</h3>
-      <div className={`${t.grid} ${t.verdict}`} aria-atomic="true">
+      <PartHead title={copy.resultTitle} />
+      <div
+        className={`${t.grid} ${t.verdict}`}
+        aria-live="polite"
+        aria-atomic="true"
+        aria-busy={busy}
+      >
         <b className={`${t.word} ${result.ok ? s.pass : s.fail}`}>{result.ok ? "PASS" : "FAIL"}</b>
         <p className={t.plain}>{plain}</p>
         {summary === plain ? null : (
@@ -131,18 +146,22 @@ export function TamperVerdict({
         )}
         <p className={t.note}>{live ? copy.live : copy.recorded}</p>
       </div>
-      {next === undefined && error === undefined ? null : (
-        <div className={`${t.grid} ${t.after}`}>
-          {next}
-          {error === undefined ? null : <p className={t.runError}>{error}</p>}
-        </div>
-      )}
-      <ul className={`${t.grid} ${t.checks}`}>
+      {/* Always in the page, so that what comes into it is announced; with nothing in it, it takes no room. */}
+      <div
+        className={next === undefined && error === undefined ? undefined : `${t.grid} ${t.after}`}
+        aria-live="polite"
+      >
+        {next}
+        {error === undefined ? null : <p className={t.runError}>{error}</p>}
+      </div>
+      <ul className={`${t.grid} ${t.checks}`} {...LIST}>
         {views.map(({ id, label, hint, word, bad, caveat }) => (
-          <li key={id} className={bad ? `${t.check} ${t.checkBad}` : t.check} aria-atomic="true">
+          <li key={id} className={bad ? `${t.check} ${t.checkBad}` : t.check}>
             <span className={t.checkId}>{id}</span>
             <span className={t.checkLabel}>{label}</span>
-            <span className={t.checkWord}>{word}</span>
+            <Outcome tone={checkTone(word, bad)} className={t.checkWord}>
+              {word}
+            </Outcome>
             <span className={t.checkHint}>{hint}</span>
             {caveat === "" ? null : <span className={t.caveat}>{caveat}</span>}
           </li>
@@ -223,11 +242,8 @@ export function TamperTest({
     <div className={t.tamper}>
       <div className={`${t.grid} ${t.bench}`}>
         <div className={t.rail}>
-          <h3 className={t.kicker} id={editsTitle}>
-            {copy.editsTitle}
-          </h3>
-          <p className={t.railNote}>{copy.editsNote}</p>
-          <ul className={t.edits} aria-labelledby={editsTitle}>
+          <PartHead title={copy.editsTitle} id={editsTitle} note={copy.editsNote} />
+          <ul className={t.edits} aria-labelledby={editsTitle} {...LIST}>
             {edits.map(({ id, label, effect }) => (
               <li key={id} className={t.edit}>
                 <button
@@ -295,8 +311,9 @@ export function TamperTest({
           {source}
         </div>
       </div>
-      <div className={t.readout} aria-live="polite" aria-busy={busy !== null}>
+      <div className={t.readout}>
         <TamperVerdict
+          busy={busy !== null}
           result={shown.result}
           checks={checks}
           live={shown.live}

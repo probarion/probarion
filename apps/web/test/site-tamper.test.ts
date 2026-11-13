@@ -9,6 +9,7 @@ import { renderToStaticMarkup, renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import { NextStep } from "@/components/site/NextStep";
+import p from "@/components/site/parts.module.css";
 import { LedgerTest, TamperPanel } from "@/components/site/TamperPanel";
 import { TamperVerdict } from "@/components/site/TamperTest";
 import {
@@ -462,7 +463,7 @@ describe("the verdict panel after a run", () => {
     expect(await panel(null, true)).not.toContain("<details");
   });
 
-  /** The block a screen reader hears whole: from the only aria-atomic div to its end. */
+  /** The block a screen reader hears whole, the verdict: from the only aria-atomic div to its end. */
   const atomic = (html: string) => {
     const at = html.indexOf('aria-atomic="true"');
     return html.slice(at, html.indexOf("</div>", at));
@@ -472,7 +473,7 @@ describe("the verdict panel after a run", () => {
     for (const id of TAMPER_EDITS.map((e) => e.id)) {
       const html = await panel(id, true);
       expect(html, id).toMatch(
-        /<p[^>]*>Run in your browser just now\.<\/p><\/div><div class="[^"]*"><a href="\/proof">next step<\/a><\/div><ul/,
+        /<p[^>]*>Run in your browser just now\.<\/p><\/div><div class="[^"]*" aria-live="polite"><a href="\/proof">next step<\/a><\/div><ul/,
       );
       // Outside the block read whole, so that a press that did not finish does not read it again.
       expect(atomic(html), id).not.toContain("next step");
@@ -480,7 +481,7 @@ describe("the verdict panel after a run", () => {
     expect(await panel("amount", true, false)).not.toContain("next step");
   });
 
-  it("says a press did not finish under the verdict, outside the block read whole, in the one live region", () => {
+  it("says a press did not finish under the verdict, outside the block read whole, in a live region of its own", () => {
     const html = renderToStaticMarkup(
       createElement(TamperVerdict, {
         result: RECORDED_RESULT,
@@ -494,10 +495,18 @@ describe("the verdict panel after a run", () => {
     expect(error).toBeGreaterThan(html.indexOf("</div>"));
     expect(error).toBeLessThan(html.indexOf("<ul"));
     expect(atomic(html)).not.toContain(TAMPER_COPY.runFailed);
-    expect(html.match(/aria-atomic="true"/g)).toHaveLength(10);
-    // TamperTest renders the result, the error with it, inside the readout that is the live region.
+    // Only the verdict is read whole; the checks under it stay still, readable on demand.
+    expect(html.match(/aria-atomic="true"/g)).toHaveLength(1);
+    // The error, and a next step, come into a polite region that is always in the page, after the verdict's.
+    expect(html.match(/aria-live="polite"/g)).toHaveLength(2);
+    expect(html.lastIndexOf('aria-live="polite"', error)).toBeGreaterThan(
+      html.indexOf('aria-atomic="true"'),
+    );
+    // The verdict is busy while a press runs, so it is read once, when the new one is in.
     const source = read("components", "site", "TamperTest.tsx");
-    expect(source).toMatch(/aria-live="polite" aria-busy=\{busy !== null\}>\s*<TamperVerdict\b/);
+    expect(source).toMatch(/aria-live="polite"\s+aria-atomic="true"\s+aria-busy=\{busy\}/);
+    expect(source).toMatch(/<TamperVerdict\b[^>]*busy=\{busy !== null\}/);
+    expect(source).not.toMatch(/className=\{t\.readout\}[^>]*aria-live/);
     expect(source).toMatch(
       /error=\{\s*failed === null\s*\? undefined\s*: failed === "load_failed"\s*\? copy\.loadFailed\s*: copy\.runFailed\s*\}/,
     );
@@ -534,7 +543,8 @@ describe("the verdict panel after a run", () => {
 
   it("titles the readout, outside the block read whole", async () => {
     const html = await panel(null, false);
-    expect(html).toMatch(/^<h3 class="[^"]*">Verifier result<\/h3><div /);
+    // Opened as every part of the page is (bits.tsx PartHead).
+    expect(html).toMatch(/^<div class="[^"]*"><h3 class="[^"]*">Verifier result<\/h3><\/div><div /);
     expect(atomic(html)).not.toContain("Verifier result");
   });
 
@@ -618,9 +628,9 @@ describe("the ledger test's markup", () => {
       "<table",
       "</table>",
       "<dt>Fixture</dt>",
-      `<code>${FIXTURE_PATH}</code>`,
+      `<code>${FIXTURE_PATH.split("/").at(-1)}</code>`,
       "<dt>Verifier</dt>",
-      `<code>${VERIFIER_PATH}</code>`,
+      `<code>${VERIFIER_PATH.split("/").at(-1)}</code>`,
       ">Verifier result</h3>",
     ];
     for (const [i, part] of order.entries()) {
@@ -637,7 +647,7 @@ describe("the ledger test's markup", () => {
   it("ties each button to the line under it and the list to its heading, with ids React makes", () => {
     const heading = /<h3 [^>]*id="([^"]+)">Try one edit<\/h3>/.exec(html)?.[1];
     expect(heading).toBeDefined();
-    expect(html).toMatch(new RegExp(`<ul class="[^"]*" aria-labelledby="${heading}">`));
+    expect(html).toMatch(new RegExp(`<ul class="[^"]*" aria-labelledby="${heading}" role="list">`));
     for (const { label, effect } of TAMPER_EDITS) {
       const button = new RegExp(
         `<button [^>]*aria-describedby="([^"]+)"[^>]*><span>${label}</span>`,
@@ -667,25 +677,36 @@ describe("the ledger test's markup", () => {
     );
   });
 
-  it("names the two files under the ledger by their role, each a link to GitHub in a new tab", () => {
+  it("names the two files under the ledger by their role, each a link to GitHub in a new tab, with the arrow", () => {
     for (const { label, path, href } of TAMPER_EVIDENCE) {
+      // The folders may break after each "/" on a phone; the file name stays on one line with the arrow.
+      const cut = path.lastIndexOf("/") + 1;
+      const folders = path
+        .slice(0, cut)
+        .split("/")
+        .slice(0, -1)
+        .map((d) => `${d}/<wbr/>`)
+        .join("");
       expect(html, label).toContain(
-        `<dt>${label}</dt><dd><a class="${/class="([^"]*link[^"]*)" href="https:\/\/github/.exec(html)?.[1]}" href="${href}" target="_blank" rel="noreferrer"><code>${path}</code><span class="sr-only"> (opens in a new tab)</span></a></dd>`,
+        `<dt>${label}</dt><dd><a class="${/class="([^"]*link[^"]*)" href="https:\/\/github/.exec(html)?.[1]}" href="${href}" target="_blank" rel="noreferrer"><code>${folders}</code><span class="${p.glue}"><code>${path.slice(cut)}</code><span class="${p.ext}" aria-hidden="true">↗</span></span><span class="sr-only"> (opens in a new tab)</span></a></dd>`,
       );
     }
     expect(TAMPER_EVIDENCE[0]?.href).toBe(LINKS.fixture);
   });
 
-  it("announces the verdict and each check whole, in a polite panel", () => {
+  it("announces the verdict whole, in a polite region, and leaves the checks still", () => {
     expect(html).toContain('aria-live="polite"');
-    expect(html.match(/aria-atomic="true"/g)?.length).toBe(10);
+    expect(html.match(/aria-atomic="true"/g)?.length).toBe(1);
+    const verdict = html.indexOf('aria-atomic="true"');
+    expect(html.slice(verdict, html.indexOf("</div>", verdict))).toContain(">PASS</b>");
+    expect(html.slice(html.indexOf("<ul", verdict))).not.toMatch(/aria-(live|atomic)=/);
   });
 
-  it("puts the verdict word in the ledger's status line, after the buttons and outside the only live region", () => {
+  it("puts the verdict word in the ledger's status line, after the buttons and outside the live regions", () => {
     const line = at(">PASS. As recorded.</span>");
     expect(line).toBeGreaterThan(at("Signed ledger, test fixture"));
     expect(line).toBeGreaterThan(at(">Restore</span>"));
-    expect(html.match(/aria-live=/g)?.length).toBe(1);
+    expect(html.match(/aria-live=/g)?.length).toBe(2);
     expect(line).toBeLessThan(at("aria-live="));
   });
 

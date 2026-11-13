@@ -42,8 +42,8 @@ import {
   verdictText,
   verdictTone,
 } from "@/lib/site/live-check-view";
+import { Keep, KeepRich, Mark, type OutcomeTone } from "./bits";
 import lc from "./live.module.css";
-import { Rich } from "./Rich";
 import { ScrollRegion } from "./ScrollRegion";
 import s from "./site.module.css";
 
@@ -76,29 +76,22 @@ const TONE_CLASS: Readonly<Record<Tone, string | undefined>> = {
   none: lc.none,
 };
 
+/** Each verdict's tone as the page's outcome mark draws it (bits.tsx Mark). */
+const MARK_TONE: Readonly<Record<Exclude<Tone, "none">, OutcomeTone>> = {
+  pay: "paid",
+  refuse: "refused",
+  hold: "held",
+};
+
 /**
- * The verdict's mark, the journey's three shapes: a dot for would pay, a struck circle for refused, a half-filled circle
- * for held. It is drawn in currentColor, the verdict's own colour, so forced colours reach it too. The word says it, so
- * the mark is hidden from a screen reader; with no verdict to show (asking, no answer, not an amount) there is none.
+ * The verdict's mark, the page's outcome shapes: a dot for would pay, a struck circle for refused, a half-filled
+ * circle for held. It is drawn in currentColor, the verdict's own colour, so forced colours reach it too. The word
+ * says it, so the mark is hidden from a screen reader; with no verdict to show (asking, no answer, not an amount)
+ * there is none.
  */
-function Mark({ tone }: { tone: Tone }) {
+function VerdictMark({ tone }: { tone: Tone }) {
   if (tone === "none") return null;
-  return (
-    <svg className={lc.mark} viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-      {tone === "pay" ? (
-        <circle cx="6" cy="6" r="5" fill="currentColor" />
-      ) : (
-        <>
-          <circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" strokeWidth="1.6" />
-          {tone === "refuse" ? (
-            <path d="M2.8 9.2 9.2 2.8" fill="none" stroke="currentColor" strokeWidth="1.6" />
-          ) : (
-            <path d="M6 1.4a4.6 4.6 0 0 1 0 9.2z" fill="currentColor" />
-          )}
-        </>
-      )}
-    </svg>
-  );
+  return <Mark tone={MARK_TONE[tone]} className={lc.mark} />;
 }
 
 /** The raw answer as code, with a line break offered after each comma between its members and nowhere else. */
@@ -365,11 +358,11 @@ export function LiveCheckClient({
           className={shown.kind === "loading" ? lc.busy : undefined}
         >
           <p className={`${lc.verdict} ${TONE_CLASS[tone]}`}>
-            <Mark tone={tone} />
+            <VerdictMark tone={tone} />
             <span className={lc.word}>{verdictText(shown, copy)}</span>
           </p>
           <p id="live-why" className={lc.why}>
-            {sentenceText(shown, copy, codes, injectedIds)}
+            <Keep text={sentenceText(shown, copy, codes, injectedIds)} />
           </p>
         </div>
         <p className={lc.source}>
@@ -384,7 +377,7 @@ export function LiveCheckClient({
         ) : null}
         <div className={lc.request}>
           <p id="live-request-cap" className={lc.requestCap}>
-            <Rich text={copy.requestLabel} />
+            <KeepRich text={copy.requestLabel} />
           </p>
           <ScrollRegion className={lc.requestBody} labelledBy="live-request-cap">
             <pre>
@@ -408,7 +401,7 @@ export function LiveCheckClient({
             <div className={lc.footRow}>
               <dt>{method.label}</dt>
               <dd>
-                <Rich text={method.value} />
+                <KeepRich text={method.value} />
               </dd>
             </div>
             {rpc === null ? null : (

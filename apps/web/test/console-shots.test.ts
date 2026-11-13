@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import c from "@/components/site/console.module.css";
 import h from "@/components/site/head.module.css";
-import j from "@/components/site/journey.module.css";
+import p from "@/components/site/parts.module.css";
 import { explorerTxUrl } from "@/lib/config";
 import { CONSOLE_ROUTE, CONSOLE_SHOTS } from "@/lib/site/facts";
 
@@ -112,19 +112,20 @@ describe("the console screenshots on the landing (audit P1-23)", () => {
     // The label is the eyebrow, over the heading that says what the screenshots show.
     expect(CONSOLE_SHOTS.eyebrow).toBe("The console");
     expect(words).toContain(`${CONSOLE_SHOTS.eyebrow} ${CONSOLE_SHOTS.title}`);
-    expect(words).toContain(text(CONSOLE_SHOTS.intro.replace(/`/g, "")));
-    // The record is in the head, under the lede.
+    // The lede as one run of text: its identifiers are kept whole in spans of their own (bits.tsx KeepRich).
+    expect(decode(part.replace(/<[^>]+>/g, ""))).toContain(CONSOLE_SHOTS.intro.replace(/`/g, ""));
+    // The record is in the head, under the lede: the page's one record of terms (parts.tsx TermRecord).
     const head = part.slice(part.indexOf(`<header class="${h.head}">`), part.indexOf("</header>"));
-    expect(head).toContain(`<dl class="${c.record}">`);
-    expect(head.indexOf(`class="${c.record}"`)).toBeGreaterThan(head.indexOf(`class="${h.lede}"`));
+    expect(head).toContain(`<dl class="${p.record}">`);
+    expect(head.indexOf(`class="${p.record}"`)).toBeGreaterThan(head.indexOf(`class="${h.lede}"`));
     expect(text(head)).toContain(`Network Testnet Captured 2026-11-09 Vault ${demo.account}`);
     expect(head).toContain(`<code>${demo.account}</code>`);
-    // Three steps in one list, each a figure that opens with its caption; the numbers are the journey's.
+    // Three steps in one list, each a figure that opens with its caption; the numbers are the journey's (parts.module.css).
     expect(part).toContain(`<ol class="${c.steps}" role="list">`);
     expect(part.split(`<li class="${c.step}">`).length - 1).toBe(3);
     for (const [i, s] of CONSOLE_SHOTS.shots.entries()) {
       expect(part).toContain(
-        `<figure class="${c.row}"><figcaption class="${c.cap}"><div class="${j.stepN}" aria-hidden="true">${i + 1}</div>`,
+        `<figure class="${c.row}"><figcaption class="${c.cap}"><div class="${p.stepN}" aria-hidden="true">${i + 1}</div>`,
       );
       expect(words).toContain(`Step ${i + 1}: ${s.title}`);
       expect(decode(part)).toContain(`alt="${s.alt}"`);
@@ -136,13 +137,27 @@ describe("the console screenshots on the landing (audit P1-23)", () => {
     // The 856px file is what a wide screen gets, and the section is too far down the page to load it first.
     expect(part).toContain('sizes="(max-width: 1099px) 100vw, 856px"');
     expect(part).not.toMatch(/fetchPriority|rel="preload"/i);
-    // Each transaction: its slot's name, the verb, the short hash in mono, the arrow, and the new-tab words.
-    expect(part.split(`class="${c.txLabel}"`).length - 1).toBe(2);
+    // Each transaction, in its step's caption under the sentence: the page's one label, the verb, the short hash in
+    // mono glued to the shared arrow, and the new-tab words.
+    expect(CONSOLE_SHOTS.txLabel).toBe("Testnet transaction");
+    const slot = `<p class="${c.tx}"><span class="${p.label}">${CONSOLE_SHOTS.txLabel}</span>`;
+    expect(part.split(slot).length - 1).toBe(2);
     for (const s of CONSOLE_SHOTS.shots) {
       if (s.link === undefined) continue;
       const [verb, hash] = s.link.label.split(" ");
+      // The link sits in its own step's caption, after the step's title.
+      const at = part.indexOf(`href="${s.link.url}"`);
+      const own = part.slice(part.lastIndexOf(`<figcaption class="${c.cap}">`, at), at);
+      expect(own, s.id).toContain(s.title);
+      expect(own, s.id).not.toContain("</figcaption>");
       expect(part).toContain(
-        `>${verb} <span class="${c.hash}">${hash}</span>\u00a0<span aria-hidden="true">↗</span><span class="sr-only"> (opens in a new tab)</span></a>`,
+        `>${verb} <span class="${p.glue}"><span class="${p.hash}">${hash}</span><span class="${p.ext}" aria-hidden="true">↗</span></span><span class="sr-only"> (opens in a new tab)</span></a>`,
+      );
+    }
+    // Below 924px each capture's own link names the step it opens, so three links never share one name (2.4.9).
+    for (const s of CONSOLE_SHOTS.shots) {
+      expect(decode(part)).toContain(
+        `${CONSOLE_SHOTS.fullSize}<span class="sr-only">: ${s.title}</span></a>`,
       );
     }
     // Nothing joins a link to a line of metadata.
@@ -162,7 +177,12 @@ describe("the console screenshots on the landing (audit P1-23)", () => {
     expect(css).not.toMatch(/overflow(-x)?:\s*(auto|scroll)/);
     expect(css).not.toMatch(/scroll-snap/);
     expect(css).not.toMatch(/cursor:\s*zoom-in/);
-    expect(css).toMatch(/\.txLink \{[^}]*white-space: nowrap;/);
+    // A transaction's hash and its arrow never break apart: the shared glue (parts.module.css), through Away's tx.
+    const parts = readFileSync(join(WEB, "src/components/site/parts.module.css"), "utf8");
+    expect(parts).toMatch(/\.glue,\s*\.keep \{[^}]*white-space: nowrap;/);
+    expect(readFileSync(join(WEB, "src/components/site/ConsoleShots.tsx"), "utf8")).toContain(
+      "<Away href={shot.link.url} tx={shot.link.label} />",
+    );
     expect(css).toMatch(/\.cap p code \{[^}]*white-space: nowrap;/);
     // A capture is never drawn wider than its file: 856px plus its 1px border each side.
     expect(css).toMatch(/\.shot \{[^}]*max-width: 858px;/);

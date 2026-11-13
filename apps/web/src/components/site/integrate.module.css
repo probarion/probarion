@@ -1,47 +1,21 @@
 /*
  * Plug in your agent (Integrate.tsx), in three labelled parts: the four ways in as equal cards, the SDK's one call
  * with its reference beside it and the docs under both, and the three uses as ruled rows, each run next to its
- * evidence. The status pills are the page's own (site.module.css .pill), and so are the code box and the link style.
- * One small label style serves every label. Every colour is a token from app/globals.css. Nothing moves on scroll.
+ * evidence. The parts' heads, the label, the status pills and the links are the page's shared pieces (parts.tsx and
+ * parts.module.css, site.module.css .pill), and so are the code box and the link style. Every colour is a token from
+ * app/globals.css. Nothing moves on scroll.
  */
 
-/* One label style for every label of the section: the column heads, the rail's heads, the network names. */
-.lab {
-  font-size: 12.5px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  line-height: 1.5;
-  color: var(--color-mute);
-}
-.net {
+/* A network's name: the page's label (parts.module.css .label), in ink. Two classes, so that it wins whatever order
+   the modules load in. */
+.addr .net,
+.what .net {
   color: var(--color-ink);
 }
 
-/* A part: a hairline, its name, and on the right a line that says what is in it. */
+/* Each part opens with the page's part head (bits.tsx PartHead): a hairline, its title, the line under it. */
 .part + .part {
   margin-top: clamp(44px, 5vw, 64px);
-}
-.partHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px 32px;
-  padding-top: 18px;
-  border-top: 1px solid var(--color-line);
-  margin-bottom: 22px;
-}
-.partTitle {
-  font-weight: 400;
-  font-size: clamp(21px, 1.9vw, 25px);
-  line-height: 1.2;
-  letter-spacing: -0.015em;
-}
-.partNote {
-  max-width: var(--container-measure);
-  font-size: 15px;
-  color: var(--color-mute);
 }
 
 /* --- Part 1: the four ways in ---------------------------------------------------------------------------------- */
@@ -211,10 +185,11 @@
 /* --- Part 3: the uses ------------------------------------------------------------------------------------------ */
 
 /* One ruled row per use, four aligned columns. Each run (testnet, mainnet) is a sub-row on the last two columns. */
+/* The evidence column is as wide as what happened, so that a status pill and a link keep to one or two lines. */
 .useHead,
 .use {
   display: grid;
-  grid-template-columns: minmax(0, 3.1fr) minmax(0, 2fr) minmax(0, 4fr) minmax(0, 2.9fr);
+  grid-template-columns: minmax(0, 2.9fr) minmax(0, 2fr) minmax(0, 3.55fr) minmax(0, 3.55fr);
   column-gap: 28px;
 }
 .useHead {
@@ -295,10 +270,6 @@
   font-size: 15px;
   line-height: 1.5;
 }
-/* The end of an evidence label: "tx 3u4ffrwp…dcvYe" or a date stays whole on its line. */
-.keep {
-  white-space: nowrap;
-}
 
 /* --- Narrower screens ------------------------------------------------------------------------------------------ */
 
@@ -358,10 +329,6 @@
   .part + .part {
     margin-top: 40px;
   }
-  .partHead {
-    padding-top: 14px;
-    margin-bottom: 16px;
-  }
   .ways {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
@@ -399,6 +366,19 @@
   .use > .name {
     grid-column: 1;
     grid-row: auto;
+  }
+}
+/* A narrow phone: each account under its term, so that a long one stays whole on its line with its arrow. */
+@media (max-width: 400px) {
+  .addrList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .addrList dt {
+    padding-bottom: 0;
+  }
+  .addrList dd {
+    padding-top: 0;
+    border-top: 0;
   }
 }
 @media (forced-colors: active) {

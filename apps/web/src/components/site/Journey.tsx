@@ -1,15 +1,14 @@
 import { JOURNEY, type JourneyStep, type PanelLine } from "@/lib/site/facts";
-import { JourneyRecord, Parts } from "./JourneyRecord";
+import { KeepRich, LIST } from "./bits";
+import { JourneyRecord } from "./JourneyRecord";
 import j from "./journey.module.css";
-import { Rich } from "./Rich";
+import { Parts } from "./parts";
+import p from "./parts.module.css";
 import { ScrollRegion } from "./ScrollRegion";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
 const TONE = { pass: s.pass, fail: s.fail } as const;
-
-/** list-style: none drops a list's semantics in Safari, so the steps say they are one. Spread past noRedundantRoles. */
-const LIST = { role: "list" } as const;
 
 function Line({ line }: { line: PanelLine }) {
   if ("note" in line) return <div className={j.panelNote}>{line.note}</div>;
@@ -57,16 +56,16 @@ function Note({ note }: { note: NonNullable<JourneyStep["note"]> }) {
 function Step({ step }: { step: JourneyStep }) {
   return (
     <li className={j.step}>
-      <div className={j.stepN} aria-hidden="true">
+      <div className={p.stepN} aria-hidden="true">
         {step.n}
       </div>
       <div className={j.stepText}>
-        <h3 className={j.stepTitle}>
+        <h3 className={p.stepTitle}>
           <span className="sr-only">Step {step.n}: </span>
           {step.title}
         </h3>
-        <p className={j.stepBody}>
-          <Rich text={step.body} />
+        <p className={p.stepBody}>
+          <KeepRich text={step.body} />
         </p>
         {step.note === undefined ? null : <Note note={step.note} />}
         {step.tryIt === undefined ? null : (
@@ -77,7 +76,7 @@ function Step({ step }: { step: JourneyStep }) {
       </div>
       <div className={j.panel}>
         <p className={j.panelCap}>
-          <Rich text={step.caption} />
+          <KeepRich text={step.caption} />
         </p>
         <ScrollRegion className={j.panelBody} label={step.panelLabel}>
           {step.panel.map((line) => (

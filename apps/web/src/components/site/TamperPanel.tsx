@@ -1,10 +1,10 @@
 import type { Snapshot } from "@probarion/core";
-import { ExternalLink } from "@/components/ui";
 import { CHECK_LIST, RECORDED_RESULT, TAMPER_COPY, TAMPER_EVIDENCE } from "@/lib/site/facts";
 import { NEXT_STEP } from "@/lib/site/next-step";
 import { ledgerRows, TAMPER_EDITS } from "@/lib/site/tamper";
 import fixture from "@/lib/site/valid-snapshot.json";
 import { NextStep } from "./NextStep";
+import { Away } from "./parts";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 import { TamperTest } from "./TamperTest";
@@ -31,9 +31,7 @@ export function TamperPanel({ next = false }: { next?: boolean }) {
             <div key={path} className={t.footRow}>
               <dt>{label}</dt>
               <dd>
-                <ExternalLink className={s.link} href={href}>
-                  <code>{path}</code>
-                </ExternalLink>
+                <Away href={href} code={path} />
               </dd>
             </div>
           ))}

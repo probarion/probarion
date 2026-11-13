@@ -11,11 +11,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import j from "@/components/site/journey.module.css";
+import p from "@/components/site/parts.module.css";
 import { explorerTxUrl } from "@/lib/config";
 import { findPage } from "@/lib/docs/registry";
 import { REPO_URL } from "@/lib/proof/cli";
 import {
   ATTESTED,
+  type AttestedCell,
   type CopyPart,
   type EvidenceSlot,
   JOURNEY,
@@ -106,9 +108,11 @@ const RECORD_LINKS = [
     [c.evidence.invoice, c.evidence.tx, c.evidence.ledger].flatMap(linksOf).map((l) => l.url),
   ),
   ...ATTESTED.ledgers.flatMap((l) => [...hrefsOf(l.name), ...hrefsOf(l.sub)]),
-  ...ATTESTED.rows.flatMap((r) => r.cells.flatMap((c) => hrefsOf(c.detail))),
+  ...ATTESTED.rows.flatMap((r) =>
+    r.cells.flatMap((c: AttestedCell) => [...hrefsOf(c.detail), ...hrefsOf(c.more ?? [])]),
+  ),
   ...ATTESTED.paid.txs.map((t) => t.tx.url),
-  ATTESTED.more.href,
+  ATTESTED.more.route,
   ...JOURNEY.steps.flatMap((s) => s.note?.lines.flatMap((l) => hrefsOf(l.parts)) ?? []),
   ...JOURNEY.steps.flatMap((s) => (s.tryIt === undefined ? [] : [s.tryIt.href])),
   STORY.proof.href,
@@ -155,11 +159,12 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
     expect(record).toBeGreaterThan(0);
     expect(invoices).toBeGreaterThan(record);
     expect(attested).toBeGreaterThan(invoices);
+    // Each table opens as every part of the page does (bits.tsx PartHead): the record's label over its title.
     expect(html).toContain(
-      `<h3 class="${j.partTitle}" id="${JOURNEY_IDS.invoices}">${STORY.title}</h3>`,
+      `<hgroup><p class="${p.partLabel}">${STORY.eyebrow}</p><h3 class="${p.partTitle}" id="${JOURNEY_IDS.invoices}">${STORY.title}</h3></hgroup>`,
     );
     expect(html).toContain(
-      `<h3 class="${j.partTitle}" id="${JOURNEY_IDS.attested}-title">${ATTESTED.title}</h3>`,
+      `<h3 class="${p.partTitle}" id="${JOURNEY_IDS.attested}-title">${ATTESTED.title}</h3>`,
     );
     // Both tables keep their semantics when the stylesheet turns them into blocks on a phone.
     for (const role of ["table", "rowgroup", "row", "columnheader", "rowheader", "cell"]) {
@@ -318,8 +323,8 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
   it("marks each outcome with a quiet label and its own mark, not a status pill", () => {
     expect(STORY.invoices.map((c) => c.tone)).toEqual(["paid", "refused", "refused", "held"]);
     const table = invoiceTable();
-    for (const tone of [j.outPaid, j.outRefused, j.outHeld]) {
-      expect(table).toContain(`<span class="${j.out} ${tone}"><svg class="${j.mark}"`);
+    for (const tone of [p.outPaid, p.outRefused, p.outHeld]) {
+      expect(table).toContain(`<span class="${p.out} ${tone} ${j.invOut}"><svg class="${p.mark}"`);
     }
     expect(table).not.toMatch(/pill/i);
   });
@@ -361,9 +366,17 @@ describe("the journey's attested decisions on testnet", () => {
     expect(
       canary.filter((e) => e.kind === "decision" && Boolean(e.evidence)).map((e) => e.seq),
     ).toEqual([1, 2]);
-    expect(html).toContain(
-      `<p class="${j.attCap}">${ATTESTED.caption.replace(/'/g, "&#x27;")}</p>`,
+    // The caption is the note under the table's title, its dates and ranges each kept on one line.
+    const note = html.indexOf(
+      `<p class="${p.partNote}">`,
+      html.indexOf(`id="${JOURNEY_IDS.attested}-title"`),
     );
+    expect(note).toBeGreaterThan(0);
+    const words = html
+      .slice(note, html.indexOf("</p>", note))
+      .replace(/<[^>]+>/g, "")
+      .replace(/&#x27;/g, "'");
+    expect(words).toBe(ATTESTED.caption);
   });
 
   it("pays spends 4 and 5 on the two of the five the code allowed, as the ledger records them", () => {

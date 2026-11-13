@@ -1,7 +1,7 @@
 /*
  * Read it on chain (ChainList in Sections.tsx): the smoke run's three transactions as three rows of one shape, then a
  * short foot. What the rows share (the network, the run's date and the vault) is said once in the head, in the
- * console's record (console.module.css .record). From 961px each row is one line of a 12-column grid: the title and
+ * record the console uses too (parts.module.css .record). From 961px each row is one line of a 12-column grid: the title and
  * the call in columns 1 to 4, what the chain shows in 5 to 9, the transaction in 10 to 12, all on the row's first
  * baseline. From 960px down to 621px the title and the call keep the left and the rest stacks at the right; at 620px
  * and below a row is one column in reading order. Nothing scrolls sideways and nothing moves on scroll. Every colour
@@ -26,6 +26,11 @@
 .body,
 .ev {
   min-width: 0;
+}
+/* The row's outcome over its title, as the hero and the invoices say one (bits.tsx Outcome). */
+.out {
+  margin-bottom: 4px;
+  font-size: 14px;
 }
 .title {
   font-weight: 400;
@@ -62,24 +67,11 @@
   white-space: nowrap;
 }
 
-/* A row's transaction: its label, then the short hash in mono with the new-tab arrow, as the console's slot has it. */
-.ev dt {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-mute);
-}
+/* A row's transaction: the page's label, then the short hash in mono with its arrow (parts.tsx Away), as the console's
+   slot has it. */
 .ev dd {
   margin-top: 2px;
   font-size: 15px;
-}
-/* A hash link never wraps, and its arrow stays with it. So does the vault's name in the head's record. */
-.txLink,
-.vault {
-  white-space: nowrap;
-}
-.hash {
-  font-family: var(--font-mono);
-  font-size: 14px;
 }
 
 /* Where to read on: one quiet block under the rows, on the head's left edge. 1.55 + 15/15 = 2.55em between its lines. */

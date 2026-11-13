@@ -1,9 +1,12 @@
 import type { ReactNode } from "react";
+import { KeepRich } from "./bits";
 import h from "./head.module.css";
-import { Rich } from "./Rich";
 import s from "./site.module.css";
 
-/** What a section's head says, from `lib/site/facts.ts`. Parts of the lede in backticks render as code. */
+/**
+ * What a section's head says, from `lib/site/facts.ts`. Parts of the lede in backticks render as code, and its
+ * identifiers (dates, accounts, re-signed) stay whole on their line (bits.tsx KeepRich).
+ */
 export interface HeadCopy {
   eyebrow: string;
   title: string;
@@ -31,7 +34,7 @@ export function SectionHead({
         </h2>
       </hgroup>
       <p className={h.lede}>
-        <Rich text={lede} />
+        <KeepRich text={lede} />
       </p>
       {after}
     </header>

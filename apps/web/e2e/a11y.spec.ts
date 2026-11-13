@@ -91,6 +91,32 @@ for (const path of PAGES) {
         expect(sideways, wide.join("\n")).toBeLessThanOrEqual(0);
       });
     }
+
+    // The site's 12px floor, as the browser computes it: test/typography-aaa.test.ts reads declared px sizes only, and
+    // an em size through its parents (code at .site code's 0.86em in a 13.5px list is 11.6px) slips past it.
+    for (const width of [320, 1440]) {
+      test(`shows no text under 12px at ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await load(page, path);
+        const tiny = await page.evaluate(() => {
+          const out: string[] = [];
+          for (const el of document.body.querySelectorAll("*")) {
+            const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent?.trim());
+            if (!own) continue;
+            const box = el.getBoundingClientRect();
+            const s = getComputedStyle(el);
+            if (box.width <= 1 || box.height <= 1 || s.visibility === "hidden") continue;
+            const size = Number.parseFloat(s.fontSize);
+            if (size < 12)
+              out.push(
+                `${size.toFixed(2)}px ${el.tagName.toLowerCase()}: ${(el.textContent ?? "").trim().slice(0, 50)}`,
+              );
+          }
+          return out;
+        });
+        expect(tiny).toEqual([]);
+      });
+    }
   });
 }
 

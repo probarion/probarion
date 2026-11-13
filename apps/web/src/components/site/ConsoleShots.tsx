@@ -1,63 +1,38 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ExternalLink } from "@/components/ui";
 import { CONSOLE_SHOTS, type ConsoleShot } from "@/lib/site/facts";
+import { KeepRich, LIST } from "./bits";
 import c from "./console.module.css";
-import j from "./journey.module.css";
-import { Rich } from "./Rich";
+import { Away, TermRecord } from "./parts";
+import p from "./parts.module.css";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
-const NBSP = "\u00a0";
-
-/** list-style: none drops a list's semantics in Safari, so the steps say they are one. Spread past noRedundantRoles. */
-const LIST = { role: "list" } as const;
-
-/** What the three shots share: the network, the day they were taken and the vault, said once in the head. */
-function Record() {
-  return (
-    <dl className={c.record}>
-      {CONSOLE_SHOTS.record.map((r) => (
-        <div key={r.term}>
-          <dt>{r.term}</dt>
-          <dd>
-            <Rich text={r.value} />
-          </dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-/** A shot's transaction: the verb, the short hash in mono, then the new-tab arrow, all on one line. */
-function TxLink({ link }: { link: NonNullable<ConsoleShot["link"]> }) {
-  const at = link.label.indexOf(" ");
-  return (
-    <ExternalLink className={`${s.link} ${c.txLink}`} href={link.url}>
-      {link.label.slice(0, at + 1)}
-      <span className={c.hash}>{link.label.slice(at + 1)}</span>
-      {NBSP}
-      <span aria-hidden="true">↗</span>
-    </ExternalLink>
-  );
-}
-
-/** One step: its number, title and sentence, then the capture, linked to its file, then its transaction, if it has one. */
+/**
+ * One step: its number, title and sentence, then its transaction, if it has one, under the sentence; then the
+ * capture, linked to its file. The number, title and text are the page's shared step (parts.module.css).
+ */
 function Shot({ shot, n }: { shot: ConsoleShot; n: number }) {
   return (
     <li className={c.step}>
       <figure className={c.row}>
         <figcaption className={c.cap}>
-          <div className={j.stepN} aria-hidden="true">
+          <div className={p.stepN} aria-hidden="true">
             {n}
           </div>
-          <h3 className={`${j.stepTitle} ${c.capTitle}`}>
+          <h3 className={`${p.stepTitle} ${c.capTitle}`}>
             <span className="sr-only">Step {n}: </span>
             {shot.title}
           </h3>
-          <p className={j.stepBody}>
-            <Rich text={shot.body} />
+          <p className={p.stepBody}>
+            <KeepRich text={shot.body} />
           </p>
+          {shot.link === undefined ? null : (
+            <p className={c.tx}>
+              <span className={p.label}>{CONSOLE_SHOTS.txLabel}</span>
+              <Away href={shot.link.url} tx={shot.link.label} />
+            </p>
+          )}
         </figcaption>
         <a className={c.shot} href={shot.src}>
           <Image
@@ -68,19 +43,12 @@ function Shot({ shot, n }: { shot: ConsoleShot; n: number }) {
             sizes="(max-width: 1099px) 100vw, 856px"
           />
         </a>
-        <div className={shot.link === undefined ? `${c.ev} ${c.bare}` : c.ev}>
-          <p className={c.full}>
-            <a className={s.link} href={shot.src}>
-              {CONSOLE_SHOTS.fullSize}
-            </a>
-          </p>
-          {shot.link === undefined ? null : (
-            <p className={c.tx}>
-              <span className={c.txLabel}>{CONSOLE_SHOTS.txLabel}</span>
-              <TxLink link={shot.link} />
-            </p>
-          )}
-        </div>
+        <p className={c.full}>
+          <a className={s.link} href={shot.src}>
+            {CONSOLE_SHOTS.fullSize}
+            <span className="sr-only">: {shot.title}</span>
+          </a>
+        </p>
       </figure>
     </li>
   );
@@ -99,7 +67,7 @@ export function ConsoleShots() {
         title: CONSOLE_SHOTS.title,
         lede: CONSOLE_SHOTS.intro,
       }}
-      headAfter={<Record />}
+      headAfter={<TermRecord rows={CONSOLE_SHOTS.record} />}
     >
       <ol className={c.steps} {...LIST}>
         {CONSOLE_SHOTS.shots.map((shot, i) => (

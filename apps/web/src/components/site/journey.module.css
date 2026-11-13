@@ -20,29 +20,8 @@
   padding-block: clamp(20px, 2.2vw, 28px);
   border-top: 1px solid var(--color-line);
 }
-.stepN {
-  font-weight: 300;
-  font-size: 42px;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  color: var(--color-gold-small);
-  font-variant-numeric: tabular-nums;
-}
 .stepText {
   min-width: 0;
-}
-.stepTitle {
-  font-weight: 400;
-  font-size: clamp(23px, 2.2vw, 30px);
-  line-height: 1.14;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-}
-.stepBody {
-  margin-top: 10px;
-  max-width: var(--container-measure);
-  font-size: 16px;
-  color: var(--color-mute);
 }
 .stepLink {
   display: inline-block;
@@ -126,76 +105,11 @@
 .record {
   margin-top: clamp(48px, 5vw, 72px);
 }
-/* On the steps' grid, so that the intro on the right starts where the panels do. */
-.recHead {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 5fr) minmax(0, 6fr);
-  column-gap: clamp(20px, 4vw, 56px);
-  row-gap: 22px;
-  align-items: end;
-  margin-bottom: clamp(22px, 2.6vw, 32px);
-}
-.recIntro {
-  grid-column: 1 / 3;
-  min-width: 0;
-}
-/* The site's eyebrow, in mute rather than gold: a part of the section, not a section of its own. */
-.recIntro .partLabel {
-  color: var(--color-mute);
-}
-/* Both headings of part 2 take this one size, well under the section's h2. */
-.partTitle {
-  font-weight: 300;
-  font-size: clamp(26px, 2.6vw, 34px);
-  line-height: 1.1;
-  letter-spacing: -0.025em;
-  text-wrap: balance;
-}
-.recIntro .partTitle {
-  margin-top: 10px;
-}
-.caption {
-  margin-top: 10px;
+/* The invoice's outcome under its number (bits.tsx Outcome): the journey's size for it. */
+.invOut {
+  margin-top: 6px;
   font-size: 15px;
-  color: var(--color-mute);
 }
-.recLede {
-  max-width: var(--container-measure);
-  font-size: 16px;
-}
-
-/* An outcome: a quiet label with a small mark, unlike the filled pills the page keeps for what is shipped. */
-.out {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.5;
-}
-.mark {
-  flex: none;
-  width: 11px;
-  height: 11px;
-}
-.outPaid {
-  --mark: var(--color-ok);
-}
-.outRefused {
-  --mark: var(--color-bad);
-}
-.outHeld {
-  --mark: var(--color-gold-deep);
-}
-.fill {
-  fill: var(--mark);
-}
-.ring {
-  fill: none;
-  stroke: var(--mark);
-  stroke-width: 1.6;
-}
-
 /* The four invoices: one table, the same columns and the same three evidence slots on every row. */
 .inv {
   width: 100%;
@@ -216,7 +130,7 @@
 }
 .invHead th {
   padding: 0 24px 10px 0;
-  border-bottom: 1px solid var(--color-ink);
+  border-bottom: 1px solid var(--color-line);
   font-size: 13px;
   font-weight: 500;
   line-height: 1.5;
@@ -254,9 +168,6 @@
   font-size: 14px;
   color: var(--color-mute);
 }
-.invTh .out {
-  margin-top: 6px;
-}
 .asked {
   font-size: 16px;
 }
@@ -287,47 +198,26 @@
   grid-column: 2;
   min-width: 0;
 }
+/* Two links in one slot sit 26px apart, centre to centre, so that each keeps a 24px target (WCAG 2.5.8). */
+.evl dd + dd {
+  margin-top: 2px;
+}
 .none {
   color: var(--color-mute);
 }
 .evLink {
   display: inline-block;
+  min-height: 24px;
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
 }
-/* A hash: mono, and free to break, so that it never widens a narrow column (WCAG 1.4.10). */
-.mono {
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
-}
-/* After a link that opens a new tab. Inline-block, so that the link's underline does not run under it. */
-.ext {
-  display: inline-block;
-  margin-left: 3px;
-  font-size: 0.9em;
-  color: var(--color-mute);
-  text-decoration: none;
-}
-.glue {
-  white-space: nowrap;
-}
-
 /* The attested decisions: one row per check, one column per ledger, on the invoice table's columns. */
 .att {
   margin-top: clamp(40px, 4.5vw, 60px);
 }
-.attCap {
-  margin-top: 8px;
-  max-width: var(--container-measure);
-  font-size: 15px;
-  color: var(--color-mute);
-}
 .matrix {
   width: 100%;
-  margin-top: 18px;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 15px;
@@ -356,7 +246,7 @@
 .matrix thead th {
   padding-top: 0;
   border-top: 0;
-  border-bottom: 1px solid var(--color-ink);
+  border-bottom: 1px solid var(--color-line);
   font-weight: 500;
 }
 .matrix .checkHead {
@@ -377,9 +267,15 @@
   font-weight: 400;
   color: var(--color-mute);
 }
-/* Pass, Not run and Not shown wear one style: no limit is faded out. */
+/* Pass, Not run and Not shown wear one style, the ledger test's (bits.tsx Outcome): no limit is faded out. A second
+   run of the same check is a line of its own, a paragraph's 2.5em (1.5 + 15/15) from line top to line top. */
+.resultLine {
+  display: block;
+}
+.resultLine + .resultLine {
+  margin-top: 15px;
+}
 .result {
-  font-weight: 500;
   color: var(--color-ink);
 }
 /* Shown on a phone only, where the column heads have scrolled away. */
@@ -413,7 +309,7 @@
   gap: 14px 28px;
   margin-top: clamp(28px, 3vw, 40px);
   padding-top: 22px;
-  border-top: 1px solid var(--color-ink);
+  border-top: 1px solid var(--color-line);
 }
 .proofText {
   max-width: 30em;
@@ -429,18 +325,9 @@
   .step {
     grid-template-columns: 48px minmax(0, 1fr);
   }
-  .stepN {
-    font-size: 34px;
-  }
   .step > .panel {
     grid-column: 2;
     max-width: 600px;
-  }
-  .recHead {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .recIntro {
-    grid-column: 1;
   }
   .inv,
   .inv tbody {
@@ -466,7 +353,7 @@
     padding-block: 16px;
   }
   .invRow:first-child {
-    border-top: 1px solid var(--color-ink);
+    border-top: 1px solid var(--color-line);
   }
   .invRow > th,
   .invRow > td,
@@ -506,11 +393,6 @@
     grid-template-columns: 30px minmax(0, 1fr);
     column-gap: 12px;
     row-gap: 16px;
-  }
-  .stepN {
-    font-size: 26px;
-    line-height: 1.1;
-    padding-top: 1px;
   }
   .step > .panel {
     grid-column: 1 / -1;
@@ -553,7 +435,7 @@
     align-items: baseline;
     gap: 0 8px;
   }
-  .invTh .out {
+  .invTh .invOut {
     margin-top: 0;
   }
   .evl {
@@ -576,7 +458,7 @@
   }
   .matrix thead tr {
     padding-bottom: 10px;
-    border-bottom: 1px solid var(--color-ink);
+    border-bottom: 1px solid var(--color-line);
   }
   .matrix thead th {
     padding: 0;
@@ -622,14 +504,8 @@
   }
 }
 
-/* Windows contrast themes drop a mark's colour and the note's gold: both take the forced text colour. */
+/* Windows contrast themes drop the note's gold: it takes the forced text colour (parts.module.css does the marks). */
 @media (forced-colors: active) {
-  .fill {
-    fill: CanvasText;
-  }
-  .ring {
-    stroke: CanvasText;
-  }
   .note {
     border-left-color: CanvasText;
   }

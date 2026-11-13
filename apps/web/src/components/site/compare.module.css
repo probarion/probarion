@@ -1,9 +1,10 @@
 /*
  * Why not just a spending limit? (Compare.tsx). One real table in three layouts: four columns from 961px (question,
  * your contract, Probarion, status), a question line over three aligned columns from 621 to 960px, and one column with
- * short run-in labels at 620px and under. The eight rows sit in two groups, each opened by a label in the eyebrow's
- * style. The status is the page's own pill (site.module.css .pill and its tones), with the name of the status row it
- * comes from under it. Every colour is a token from app/globals.css. Nothing moves on scroll.
+ * short run-in labels at 620px and under. The eight rows sit in two groups, each opened by a label. The column heads
+ * and the group labels are the page's one label (parts.module.css .label; test/site-facts.test.ts holds them to it),
+ * and the status is the page's own pill (parts.tsx StatusPill), with the name of the status row it comes from under
+ * it. Every colour is a token from app/globals.css. Nothing moves on scroll.
  */
 
 .table {
@@ -28,16 +29,16 @@
   font-weight: 400;
 }
 
-/* The header row: small mono capitals on paper. Only "Probarion" is in ink. */
+/* The header row: the page's label on paper. Only "Probarion" is in ink. */
 .table .head th {
   padding-block: 12px;
   border-top: 0;
   background: var(--color-paper);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  text-transform: none;
   color: var(--color-mute);
 }
 .table .head .headOurs {
@@ -56,14 +57,16 @@
   width: 20%;
 }
 
-/* A group's label, in the eyebrow's style. The first row under it hangs from it, with no rule between them. */
+/* A group's label: the page's label, as the column heads. The first row under it hangs from it, with no rule between
+   them. Gold is the section eyebrow's alone. */
 .table .group th {
   padding: 22px 20px 2px;
   font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--color-gold-ink);
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  text-transform: none;
+  color: var(--color-mute);
 }
 .table tbody:first-of-type .group th {
   padding-top: 18px;
@@ -242,11 +245,11 @@
   .runIn {
     display: inline;
     margin-right: 8px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    line-height: 1.5;
+    text-transform: none;
     color: var(--color-mute);
   }
   .ours .runIn {

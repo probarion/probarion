@@ -960,7 +960,9 @@ describe("the landing page and the menu", () => {
     expect(renderToStaticMarkup(createElement(SiteHeader))).toContain(`href="/proof"`);
     expect(text(out)).not.toMatch(/are coming/);
     expect(text(out)).toContain(cli("verify --offline"));
-    expect(text(out)).toContain("packages/core/test/fixtures/valid-snapshot.json");
+    // A file path reads as one (bits.tsx CodeLabel draws its folders and its file name as two code runs).
+    const joined = out.replace(/<wbr\/>/g, "").replace(/<\/code><span class="[^"]*"><code>/g, "");
+    expect(text(joined)).toContain("packages/core/test/fixtures/valid-snapshot.json");
     // Step 5's labelled note, read as a person reads it: no new-tab arrow, no screen-reader words.
     const note = text(out.replace(/<span[^>]*aria-hidden="true"[^>]*>↗<\/span>/g, ""))
       .replace(/ \(opens in a new tab\)/g, "")

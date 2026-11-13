@@ -236,7 +236,10 @@ export function hintParts(
   };
 }
 
-/** The line under the verdict as one string: where the answer came from. Empty when there is no answer to describe. */
+/**
+ * The line under the verdict as one string: where the answer came from. Empty when there is no answer to describe.
+ * Test-only: the client renders hintParts, and live-check-view.test.ts reads the line through this to hold its words.
+ */
 export function hintText(
   shown: Shown,
   copy: Pick<LiveCopy, "asking" | "answeredAt" | "recordedAt">,

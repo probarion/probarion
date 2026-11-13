@@ -27,7 +27,7 @@
   font-size: 14px;
   line-height: 1.55;
   color: var(--color-mute);
-  text-wrap: balance;
+  text-wrap: pretty;
 }
 
 /* --- What the agent tries: four scenarios, then four fields on one label column ------------------------------- */
@@ -205,11 +205,9 @@
   white-space: nowrap;
 }
 /* After a link that opens a new tab. Inline-block, so that the link's underline does not run under it. */
-.ext {
-  display: inline-block;
-  margin-left: 4px;
-  color: var(--color-band-mute);
-  text-decoration: none;
+/* The page's new-tab arrow (bits.tsx NewTab) takes the dark panel's mute. */
+.explorer {
+  --ext: var(--color-band-mute);
 }
 
 /* The verdict: its mark, then the word. The mark is a flex item, so it never sits on a line apart from the word. */
@@ -351,6 +349,10 @@
 }
 .footList dd {
   overflow-wrap: anywhere;
+}
+/* Two classes and an element: code in the 13.5px list keeps the list's size, never .site code's 0.86em (11.6px). */
+.footList dd code {
+  font-size: 1em;
 }
 
 /* --- The mandate, as the chain has it: eight fields on a grid, who and how much first ------------------------- */

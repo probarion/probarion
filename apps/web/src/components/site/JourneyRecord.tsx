@@ -1,18 +1,16 @@
 import Link from "next/link";
-import { createElement, Fragment, type ReactNode } from "react";
-import { ExternalLink } from "@/components/ui";
+import { RouteLink } from "@/components/RouteLink";
 import {
   ATTESTED,
   type AttestedCell,
-  type CopyPart,
   type EvidenceSlot,
   JOURNEY_IDS,
   STORY,
   type StoryInvoice,
-  type StoryTone,
 } from "@/lib/site/facts";
+import { KeepRich, Outcome, type OutcomeTone, PartHead } from "./bits";
 import j from "./journey.module.css";
-import { Rich } from "./Rich";
+import { Away, Parts } from "./parts";
 import s from "./site.module.css";
 
 /**
@@ -29,99 +27,12 @@ const ROLE = {
   cell: { role: "cell" },
 } as const;
 
-/** An arrow after a link that opens in a new tab, which ExternalLink says in words. */
-const NewTab = () => (
-  <span className={j.ext} aria-hidden="true">
-    ↗
-  </span>
-);
-
-/** The end of a link and its arrow, on one line: the arrow never wraps alone onto the next one. */
-const Glued = ({ children }: { children: ReactNode }) => (
-  <span className={j.glue}>
-    {children}
-    <NewTab />
-  </span>
-);
-
-/** A link's words, the part after its last space or hyphen glued to the arrow: a file name still wraps at a hyphen. */
-function Label({ text }: { text: string }) {
-  const cut = Math.max(text.lastIndexOf(" "), text.lastIndexOf("-")) + 1;
-  return (
-    <>
-      {text.slice(0, cut)}
-      <Glued>{text.slice(cut)}</Glued>
-    </>
-  );
-}
-
-/**
- * One part of a line of copy, as facts.ts writes it: text (backticks are code), a link on the page (#), a page of the
- * site (/), or a file or transaction elsewhere, which opens in a new tab.
- */
-function part(p: CopyPart): ReactNode {
-  if (typeof p === "string") return <Rich text={p} />;
-  if (p.href.startsWith("#")) {
-    return (
-      <a className={s.link} href={p.href}>
-        {p.label}
-      </a>
-    );
-  }
-  if (p.href.startsWith("/")) {
-    return (
-      <Link className={s.link} href={p.href}>
-        {p.label}
-      </Link>
-    );
-  }
-  return (
-    <ExternalLink className={s.link} href={p.href}>
-      <Label text={p.label} />
-    </ExternalLink>
-  );
-}
-
-/** A line of copy with its links. Its parts are spread as children, so a line that repeats a word needs no keys. */
-export function Parts({ parts }: { parts: readonly CopyPart[] }) {
-  return createElement(Fragment, null, ...parts.map(part));
-}
-
-/** The outcome's mark: a dot for paid, a struck circle for refused, a half-filled circle for held. Its words say it too. */
-function Mark({ tone }: { tone: StoryTone }) {
-  return (
-    <svg className={j.mark} viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-      {tone === "paid" ? (
-        <circle className={j.fill} cx="6" cy="6" r="5" />
-      ) : (
-        <>
-          <circle className={j.ring} cx="6" cy="6" r="4.6" />
-          {tone === "refused" ? (
-            <path className={j.ring} d="M2.8 9.2 9.2 2.8" />
-          ) : (
-            <path className={j.fill} d="M6 1.4a4.6 4.6 0 0 1 0 9.2z" />
-          )}
-        </>
-      )}
-    </svg>
-  );
-}
-
-const OUT_TONE: Readonly<Record<StoryTone, string | undefined>> = {
-  paid: j.outPaid,
-  refused: j.outRefused,
-  held: j.outHeld,
+/** Each verifier result with the mark the ledger test gives a check: a pass a dot, a check not run or not shown none. */
+const RESULT_TONE: Readonly<Record<AttestedCell["result"], OutcomeTone>> = {
+  Pass: "paid",
+  "Not run": "none",
+  "Not shown": "none",
 };
-
-/** An outcome in words with its mark: the journey's invoices, and the hero's mainnet record, say it the same way. */
-export function Outcome({ tone, children }: { tone: StoryTone; children: ReactNode }) {
-  return (
-    <span className={`${j.out} ${OUT_TONE[tone]}`}>
-      <Mark tone={tone} />
-      {children}
-    </span>
-  );
-}
 
 /** One evidence slot: its name, then its links, or the words that say why it has none. */
 function Slot({ name, slot, mono }: { name: string; slot: EvidenceSlot; mono: boolean }) {
@@ -133,16 +44,15 @@ function Slot({ name, slot, mono }: { name: string; slot: EvidenceSlot; mono: bo
       ) : (
         slot.map((l) => (
           <dd key={l.url}>
-            <ExternalLink className={j.evLink} href={l.url}>
-              {l.verb === undefined ? null : `${l.verb} `}
-              {mono ? (
-                <Glued>
-                  <span className={j.mono}>{l.label}</span>
-                </Glued>
-              ) : (
-                <Label text={l.label} />
-              )}
-            </ExternalLink>
+            {mono ? (
+              <Away
+                className={j.evLink}
+                href={l.url}
+                tx={l.verb === undefined ? l.label : `${l.verb} ${l.label}`}
+              />
+            ) : (
+              <Away className={j.evLink} href={l.url} label={l.label} />
+            )}
           </dd>
         ))
       )}
@@ -158,15 +68,17 @@ function InvoiceRow({ card }: { card: StoryInvoice }) {
           <span className={j.invId}>{card.invoice}</span>
           {card.again === undefined ? null : <span className={j.again}>{card.again}</span>}
         </span>
-        <Outcome tone={card.tone}>{card.outcome}</Outcome>
+        <Outcome tone={card.tone} className={j.invOut}>
+          {card.outcome}
+        </Outcome>
       </th>
       <td className={j.asked} {...ROLE.cell}>
-        <Rich text={card.asks} />
+        <KeepRich text={card.asks} />
       </td>
       <td className={j.what} {...ROLE.cell}>
-        <Rich text={card.body} />
+        <KeepRich text={card.body} />
       </td>
-      <td className={j.evCell} {...ROLE.cell}>
+      <td {...ROLE.cell}>
         <dl className={j.evl}>
           <Slot name={STORY.slots.invoice} slot={card.evidence.invoice} mono={false} />
           <Slot name={STORY.slots.tx} slot={card.evidence.tx} mono />
@@ -207,12 +119,24 @@ function Invoices() {
   );
 }
 
-/** A result word, set the same whether it passes or says what was not run or shown, then what it rests on. */
+/**
+ * A result word with its mark, the words set the same whether it passes or says what was not run or shown, then what
+ * it rests on; a second run of the same check is a line of its own under it.
+ */
 function Result({ cell }: { cell: AttestedCell }) {
   return (
     <>
-      <span className={j.result}>{cell.result}</span>
-      <Parts parts={cell.detail} />
+      <span className={j.resultLine}>
+        <Outcome tone={RESULT_TONE[cell.result]} className={j.result}>
+          {cell.result}
+        </Outcome>
+        <Parts parts={cell.detail} />
+      </span>
+      {cell.more === undefined ? null : (
+        <span className={j.resultLine}>
+          <Parts parts={cell.more} />
+        </span>
+      )}
     </>
   );
 }
@@ -222,10 +146,7 @@ function Attested() {
   const titleId = `${JOURNEY_IDS.attested}-title`;
   return (
     <div className={j.att} id={JOURNEY_IDS.attested}>
-      <h3 className={j.partTitle} id={titleId}>
-        {ATTESTED.title}
-      </h3>
-      <p className={j.attCap}>{ATTESTED.caption}</p>
+      <PartHead title={ATTESTED.title} id={titleId} note={<KeepRich text={ATTESTED.caption} />} />
       <table className={j.matrix} aria-labelledby={titleId} {...ROLE.table}>
         <colgroup>
           <col className={j.colCheck} />
@@ -283,22 +204,23 @@ function Attested() {
       </table>
       <div className={j.attFoot}>
         <p>
-          <span className={j.lead}>{ATTESTED.paid.lead}</span> {ATTESTED.paid.text}{" "}
+          <span className={j.lead}>{ATTESTED.paid.lead}</span>{" "}
+          <KeepRich text={ATTESTED.paid.text} />{" "}
           <span className={j.txs}>
             {ATTESTED.paid.txs.map((t) => (
-              <ExternalLink key={t.tx.hash} className={j.evLink} href={t.tx.url}>
-                {t.label},{" "}
-                <Glued>
-                  <span className={j.mono}>{t.tx.label}</span>
-                </Glued>
-              </ExternalLink>
+              <Away
+                key={t.tx.hash}
+                className={j.evLink}
+                href={t.tx.url}
+                tx={`${t.label}, ${t.tx.label}`}
+              />
             ))}
           </span>
         </p>
         <p>
-          <Link className={s.link} href={ATTESTED.more.href}>
+          <RouteLink route={ATTESTED.more.route} className={s.link}>
             {ATTESTED.more.label}
-          </Link>
+          </RouteLink>
         </p>
       </div>
     </div>
@@ -312,20 +234,16 @@ function Attested() {
 export function JourneyRecord() {
   return (
     <div className={j.record} id={JOURNEY_IDS.record}>
-      <div className={j.recHead}>
-        <div className={j.recIntro}>
-          <hgroup>
-            <p className={`${s.eyebrow} ${j.partLabel}`}>{STORY.eyebrow}</p>
-            <h3 className={j.partTitle} id={JOURNEY_IDS.invoices}>
-              {STORY.title}
-            </h3>
-          </hgroup>
-          <p className={j.caption}>{STORY.caption}</p>
-        </div>
-        <p className={j.recLede}>
-          <Rich text={STORY.intro} />
-        </p>
-      </div>
+      <PartHead
+        label={STORY.eyebrow}
+        title={STORY.title}
+        id={JOURNEY_IDS.invoices}
+        note={
+          <>
+            {STORY.caption} <KeepRich text={STORY.intro} />
+          </>
+        }
+      />
       <Invoices />
       <Attested />
       <div className={j.proofRow}>
@@ -333,9 +251,7 @@ export function JourneyRecord() {
         <Link className={s.btn} href={STORY.proof.href}>
           {STORY.proof.label} <span aria-hidden="true">→</span>
         </Link>
-        <ExternalLink className={`${s.link} ${j.quiet}`} href={STORY.files.url}>
-          <Label text={STORY.files.label} />
-        </ExternalLink>
+        <Away className={`${s.link} ${j.quiet}`} href={STORY.files.url} label={STORY.files.label} />
       </div>
     </div>
   );
