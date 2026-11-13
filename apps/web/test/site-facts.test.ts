@@ -548,7 +548,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(JSON.stringify(note)).not.toMatch(/not recorded/);
     const row = README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter"));
     expect(row).toContain("**Built**");
-    expect(row).toContain("**Recorded on NEAR testnet**");
+    expect(row).toContain("**Recorded on NEAR testnet and, since 2026-11-13, on mainnet**");
     expect(row).toContain("pass A1 to A7 offline");
     expect(row).toContain("pass A1 to A7 offline and, on 2026-11-11, the online checks O1 and O2");
     expect(row).toContain("(docs/evidence/canary-vault/verify-online-2026-11-11.txt)");
@@ -1029,7 +1029,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
         {
           start: "NEAR AI Cloud adapter",
           says: [
-            "**Recorded on NEAR testnet**",
+            "**Recorded on NEAR testnet and, since 2026-11-13, on mainnet**",
             "pass A1 to A7 offline",
             "the online checks O1 and O2",
             "the four attested decisions the demo vault held then, entries 10 to 13, passed O1 and O2",
@@ -1072,7 +1072,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Mainnet vault",
-      pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
+      pill: "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
       readme: [
         {
           start: "Mainnet vault",
@@ -1081,6 +1081,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
             "2026-11-11",
             "`PROBARION:NoMandate`",
             "the POA bridge released 0.9976 USDC on Base",
+            "the POA bridge released 0.2476 USDC on Base",
           ],
         },
       ],
@@ -1319,7 +1320,7 @@ describe("the status list", () => {
       {
         id: "mainnet-vault",
         row: "Mainnet vault",
-        pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
+        pill: "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
         tone: "live",
       },
     ]);
@@ -2136,13 +2137,15 @@ describe("the problem, the comparison and the integrate section", () => {
       for (const r of w.runs) {
         const row = statusOf(r.status);
         expect(read, w.title).toContain(`${r.network}: ${r.outcome.replace(/`/g, "")}`);
-        expect(html, w.title).toContain(`href="${r.evidence.url}"`);
         expect(read, w.title).toContain(
-          `Status: ${row.pill}${r.evidence.label} (opens in a new tab)`,
+          `Status: ${row.pill}${r.evidence.map((e) => `${e.label} (opens in a new tab)`).join("")}`,
         );
-        // The label's end (an entry, a date, a transaction) stays whole on its line.
-        const tail = r.evidence.label.slice(r.evidence.label.lastIndexOf(", ") + 2);
-        expect(html, w.title).toContain(`<span class="${ig.keep}">${tail}</span>`);
+        for (const e of r.evidence) {
+          expect(html, w.title).toContain(`href="${e.url}"`);
+          // The label's end (an entry, a date, a transaction) stays whole on its line.
+          const tail = e.label.slice(e.label.lastIndexOf(", ") + 2);
+          expect(html, w.title).toContain(`<span class="${ig.keep}">${tail}</span>`);
+        }
       }
     }
   });
@@ -2159,7 +2162,7 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(r.outcome).toContain(`\`${refusal?.rule}\``);
     // The label names the invoice and the ledger: it is read out alone as a link, and it follows the status pill.
     expect(demo.account).toBe("demo.vaults.probarion.testnet");
-    expect(r.evidence.label).toBe(
+    expect(r.evidence[0].label).toBe(
       `${refusal?.invoice} in the demo vault's ledger, entry ${refusal?.ledger_seq}`,
     );
     // Entry seq 3 is line 4 of the ledger file, and it refused for that rule.
@@ -2173,7 +2176,7 @@ describe("the problem, the comparison and the integrate section", () => {
     };
     expect(body.seq).toBe(refusal?.ledger_seq);
     expect(JSON.stringify(body.rules)).toContain(refusal?.rule ?? "?");
-    expect(r.evidence.url).toBe(
+    expect(r.evidence[0].url).toBe(
       `${LINKS.github}/blob/main/docs/evidence/demo-vault/ledger-2026-11-09.jsonl#L4`,
     );
     expect(text(ROOT, "docs", "evidence", "demo-vault", "README.md")).toContain(
@@ -2188,9 +2191,9 @@ describe("the problem, the comparison and the integrate section", () => {
     const w = INTEGRATE.who[1];
     const [r] = w.runs;
     const evidence = text(ROOT, "docs", "evidence", "402-vault", "README.md");
-    expect(r.evidence.url).toBe(`${LINKS.github}/blob/main/docs/evidence/402-vault/README.md`);
+    expect(r.evidence[0].url).toBe(`${LINKS.github}/blob/main/docs/evidence/402-vault/README.md`);
     // The run the label names, by the example and its date: the MCP server pill before it is of a later release.
-    expect(r.evidence.label).toBe("The 402 example's own agent on testnet, 2026-11-09");
+    expect(r.evidence[0].label).toBe("The 402 example's own agent on testnet, 2026-11-09");
     expect(evidence).toContain("# The 402 example on testnet, 2026-11-09");
     expect(evidence).toContain(
       "[`agent-run-2026-11-09.txt`](agent-run-2026-11-09.txt) is what the agent printed.",
@@ -2222,8 +2225,10 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(w.control).toBe("Address fixed by the mandate");
     // Testnet: a stand-in takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR.
     expect(t.network).toBe("Testnet");
-    expect(t.evidence.url).toBe(TX.baseBurn.url);
-    expect(t.evidence.label).toBe(`The testnet burn for a Base address, tx ${TX.baseBurn.label}`);
+    expect(t.evidence[0].url).toBe(TX.baseBurn.url);
+    expect(t.evidence[0].label).toBe(
+      `The testnet burn for a Base address, tx ${TX.baseBurn.label}`,
+    );
     expect(CHAIN.rows[1].title).toBe("Withdrawal for a Base address");
     expect(README).toContain(
       "Spend 2 `burned`: 1 test USDC, `mt_burn` and `ft_burn` with the memo `WITHDRAW_TO:0x1111111111111111111111111111111111111111` the vault built from the mandate",
@@ -2238,26 +2243,41 @@ describe("the problem, the comparison and the integrate section", () => {
       "The vault built the memo `WITHDRAW_TO:0x1111…1111` from the mandate and burned 1 test USDC.",
     );
     expect(t.status).toBe("Vault contract");
-    // Mainnet: the one payout through NEAR Intents so far, its transaction as the deployment record has it.
+    // The body says what the use is; what ran is told per network, so the mainnet count lives in one place.
+    expect(w.body).not.toContain("mainnet");
+    // Mainnet: both payouts through NEAR Intents, S1 then S2, as the README's NEAR Intents row tells them, each with
+    // its transaction as the deployment record has it. A third payout, or a count that went stale, fails here.
     const mainnet = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
-      proof: { first_base_payout_tx: string };
+      proof: { first_base_payout_tx: string; attested_base_payout_tx: string };
     };
-    const hash = mainnet.proof.first_base_payout_tx;
     expect(mn.network).toBe("Mainnet");
-    expect(mn.evidence.url).toBe(explorerTxUrl("mainnet", hash));
-    expect(mn.evidence.url).toBe(`https://nearblocks.io/txns/${hash}`);
-    expect(mn.evidence.label).toBe(
-      `The mainnet payout to a Base address, tx ${hash.slice(0, 8)}…${hash.slice(-4)}`,
-    );
     expect(mn.outcome).toBe(
-      "One payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+      "Two payouts through NEAR Intents have run, tests to the owner's own Base address on 2026-11-13: 1.00 USDC decided by code rules alone, then 0.25 USDC decided by an attested model and the code rules.",
     );
     expect(prose).toContain(
-      "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to the owner's own Base address this way, a test decided by code rules alone",
+      "On mainnet two payouts have run this way, both tests to the owner's own Base address on 2026-11-13. In S1 `v0.probarion.near` paid 1.00 USDC, a test decided by code rules alone",
+    );
+    expect(prose).toContain(
+      "In S2 it paid 0.25 USDC, decided by an attested model and the code rules, and the bridge released 0.2476 USDC",
     );
     expect(prose).toContain("the POA bridge released 0.9976 USDC on Base, keeping a fee of 0.0024");
+    const short = (h: string) => `${h.slice(0, 8)}…${h.slice(-4)}`;
+    const [s1, s2] = [mainnet.proof.first_base_payout_tx, mainnet.proof.attested_base_payout_tx];
+    expect(mn.evidence).toEqual([
+      {
+        label: `The 1.00 USDC payout to Base, tx ${short(s1)}`,
+        url: explorerTxUrl("mainnet", s1),
+      },
+      {
+        label: `The 0.25 USDC payout to Base, tx ${short(s2)}`,
+        url: explorerTxUrl("mainnet", s2),
+      },
+    ]);
+    for (const e of mn.evidence) expect(e.url.startsWith("https://nearblocks.io/txns/")).toBe(true);
+    expect(prose).toContain(`https://nearblocks.io/txns/${s1}`);
+    expect(prose).toContain(`https://nearblocks.io/txns/${s2}`);
     expect(mn.status).toBe("Mainnet vault");
-    expect(statusOf(mn.status).pill).toContain("1 to Base, rules-only");
+    expect(statusOf(mn.status).pill).toContain("(2 to Base)");
   });
 
   it("links the full comparison, with its date and what Probarion lacks", () => {

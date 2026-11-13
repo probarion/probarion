@@ -754,3 +754,151 @@ test("S1 of 2026-11-13: the deployment record, the proof file, the committed led
     assert.ok(gate.includes(part), `the S1 gate lacks: ${part}`);
   }
 });
+
+test("S2 of 2026-11-13: the deployment record, the proof file, the committed ledger and the S2 gate agree", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const record = JSON.parse(read("contracts/deployments/mainnet.json"));
+  const proof = JSON.parse(read("docs/mainnet-proof.json"));
+  const payout = proof.txs.attested_base_payout;
+  // The NEAR spend and the Base transfer are the same in both records, and S1's records stay as they were.
+  assert.equal(record.proof.attested_base_payout_tx, payout.hash);
+  assert.equal(record.proof.attested_base_payout_base_tx, payout.base_tx);
+  assert.equal(record.setup.s2_base_mandate_tx, proof.txs.v0_mandate_base_s2.hash);
+  assert.equal(payout.kind, "base_payout");
+  assert.equal(payout.spend_id, 3);
+  assert.equal(payout.amount_usdc, "0.25");
+  assert.equal(
+    proof.links.attested_base_payout_base,
+    `https://basescan.org/tx/${record.proof.attested_base_payout_base_tx}`,
+  );
+  assert.equal(record.proof.first_base_payout_tx, proof.txs.first_base_payout.hash);
+  // S2's ledger is the whole ledger: S1's committed file, byte for byte, then entries 4 and 5.
+  const s1 = read("docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl");
+  const dir = "docs/evidence/mainnet-v0/s2-2026-11-13";
+  const s2 = read(`${dir}/ledger-2026-11-13.jsonl`);
+  assert.ok(s2.startsWith(s1), "S1's ledger is not the start of S2's");
+  const entries = s2
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line).body);
+  assert.deepEqual(
+    entries.map((b) => [b.seq, b.kind, b.verdict ?? null, b.decided_by ?? null]),
+    [
+      [0, "decision", "refuse", "model+rules"],
+      [1, "decision", "refuse", "model+rules"],
+      [2, "decision", "allow", "rules-only"],
+      [3, "payment", null, null],
+      [4, "decision", "allow", "model+rules"],
+      [5, "payment", null, null],
+    ],
+  );
+  // Entry 4 is attested, for mandate 3 and 0.25 USDC, and its hint names the Base address and no NEAR account.
+  const decision = entries[4];
+  assert.equal(decision.evidence.provider, "near-ai-cloud");
+  assert.equal(decision.mandate_id, 3);
+  assert.equal(decision.amount, "250000");
+  assert.equal(decision.proposal.payee_hint.address, "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27");
+  assert.equal(decision.proposal.payee_hint.near_account, undefined);
+  assert.ok(decision.rules.every((r) => r.outcome === "pass"));
+  const payment = entries[5];
+  assert.equal(payment.contract.spend_id, 3);
+  assert.equal(payment.contract.status, "burned");
+  assert.equal(payment.contract.tx_hash, payout.hash);
+  // The burn memo is WITHDRAW_TO: plus the Base address of mandate 3, the same address as mandate 2.
+  const burn = JSON.parse(read(`${dir}/burn.json`));
+  assert.equal(burn.memo, "WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27");
+  assert.equal(burn.amount, "250000");
+  // The invoice is the bytes whose sha256 the decision and spend 3 hold.
+  const sha = (path) =>
+    createHash("sha256")
+      .update(readFileSync(new URL(`../${path}`, import.meta.url)))
+      .digest("hex");
+  assert.equal(sha(`${dir}/invoice-INV-M003.txt`), decision.invoice_hash);
+  const gate = runbook.split("\n").find((line) => line.startsWith("- S2 gate (2026-11-13):"));
+  assert.ok(gate, "no S2 gate line");
+  for (const part of [
+    "attested_base_payout_tx",
+    "attested_base_payout_base_tx",
+    "WITHDRAW_TO:",
+    `--ledger ${dir}/ledger-2026-11-13.jsonl`,
+    "decided by code rules alone",
+    "decided by an attested model and the code rules",
+  ]) {
+    assert.ok(gate.includes(part), `the S2 gate lacks: ${part}`);
+  }
+});
+
+test("S2 of 2026-11-13: the proof file and the deployment record hold the hashes of the run's own records", () => {
+  const dir = "docs/evidence/mainnet-v0/s2-2026-11-13";
+  const record = JSON.parse(read("contracts/deployments/mainnet.json"));
+  const proof = JSON.parse(read("docs/mainnet-proof.json"));
+  const payout = proof.txs.attested_base_payout;
+  const lines = read(`${dir}/ledger-2026-11-13.jsonl`)
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const poa = JSON.parse(read(`${dir}/poa-status.json`));
+  const receipt = JSON.parse(read(`${dir}/base-receipt.json`));
+  const outcome = JSON.parse(read(`${dir}/outcome-20261113T114028Z.json`));
+  const spendDecision = JSON.parse(read(`${dir}/spend-decision-20261113T114124Z.json`));
+  const snapshot = JSON.parse(read(`${dir}/snapshot-2026-11-13.json`));
+  // txs.log: one row per transaction the kit sent or saw, tab-separated, with a header row.
+  const [head, ...rows] = read(`${dir}/txs.log`).trim().split("\n");
+  assert.deepEqual(head.split("\t"), ["utc", "label", "hash", "signer", "receiver", "status"]);
+  const logged = Object.fromEntries(
+    rows.map((r) => r.split("\t")).map(([, label, hash, signer]) => [label, { hash, signer }]),
+  );
+  // The Base transfer: the bridge's status, the kit's Base receipt and both records name the same transaction.
+  assert.equal(poa.status, "COMPLETED");
+  assert.equal(poa.data.tx_hash, payout.hash);
+  assert.equal(poa.data.transfer_tx_hash, payout.base_tx);
+  assert.equal(poa.data.amount, 250000);
+  assert.equal(poa.data.withdrawal_fee, "2400");
+  assert.equal(poa.data.withdraw_amount, "247600");
+  assert.equal(receipt.tx, payout.base_tx);
+  assert.equal(receipt.status, "0x1");
+  assert.equal(receipt.match, true);
+  assert.deepEqual(
+    receipt.transfers.map((t) => [t.to, t.value]),
+    [["0xb22eacdf11177d6d635e8956bbbbdd54b3e6eb27", "247600"]],
+  );
+  assert.equal(record.proof.attested_base_payout_base_tx, receipt.tx);
+  assert.equal(logged.base_release.hash, payout.base_tx);
+  // The NEAR transactions: the mandate, the spend and the anchor, each as the kit logged it.
+  assert.deepEqual(logged.mandate_s2, {
+    hash: proof.txs.v0_mandate_base_s2.hash,
+    signer: proof.txs.v0_mandate_base_s2.signer_id,
+  });
+  assert.equal(record.setup.s2_base_mandate_tx, logged.mandate_s2.hash);
+  assert.deepEqual(logged.spend_3, { hash: payout.hash, signer: payout.signer_id });
+  assert.equal(record.proof.attested_base_payout_tx, logged.spend_3.hash);
+  assert.equal(outcome.spend_tx, payout.hash);
+  assert.deepEqual(logged.anchor_cycle, {
+    hash: proof.txs.v0_anchor_4.hash,
+    signer: proof.txs.v0_anchor_4.signer_id,
+  });
+  assert.equal(outcome.anchor_tx, proof.txs.v0_anchor_4.hash);
+  // The decision: entry 4's body hash is the hash the kit read from spend 3 and the one the chain holds.
+  assert.equal(spendDecision.spend_id, 3);
+  assert.equal(spendDecision.decision_seq, 4);
+  assert.equal(lines[4].body.seq, 4);
+  assert.equal(lines[4].body_hash, spendDecision.decision_hash);
+  assert.equal(lines[4].body_hash, outcome.decision_hash);
+  const spend3 = snapshot.chain.spends.find((s) => s.id === 3);
+  assert.equal(spend3.decision_hash, lines[4].body_hash);
+  assert.equal(spend3.status, "burned");
+  // The anchor: anchor 4 on chain covers the 6 entries, with the link of the last one as its root.
+  const anchor4 = snapshot.chain.anchors.find((a) => a.seq === 4);
+  assert.equal(anchor4.count, 6);
+  assert.equal(anchor4.root, lines[5].link);
+  // The purpose and the invoice: the sha256 of the committed texts are the hashes mandate 3 and spend 3 hold.
+  const sha = (path) =>
+    createHash("sha256")
+      .update(readFileSync(new URL(`../${path}`, import.meta.url)))
+      .digest("hex");
+  const mandate3 = snapshot.chain.mandates.find((m) => m.id === 3);
+  assert.equal(sha(`${dir}/po-PO-M003.txt`), mandate3.purpose_hash);
+  assert.equal(sha(`${dir}/invoice-INV-M003.txt`), spend3.invoice_hash);
+  assert.equal(mandate3.payee.address, "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27");
+  assert.equal(mandate3.max_per_payment, "250000");
+});

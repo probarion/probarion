@@ -166,7 +166,7 @@ export const TERMS_PAGE = {
     { title: "Unaudited beta.", body: "No third party has audited this code. Use small amounts." },
     {
       title: "Testnet today.",
-      body: "The vault runs on NEAR testnet with test tokens. One small mainnet vault, made by no factory, has run since 2026-11-11, and on 2026-11-13 it paid a test of 1.00 USDC to the owner's own Base address, decided by code rules alone.",
+      body: "The vault runs on NEAR testnet with test tokens. One small mainnet vault, made by no factory, has run since 2026-11-11, and on 2026-11-13 it paid two tests to the owner's own Base address: 1.00 USDC decided by code rules alone, then 0.25 USDC decided by an attested model and the code rules.",
     },
     {
       title: "At your own risk.",
@@ -241,7 +241,7 @@ export const PRIVACY_PAGE = {
       title: "Invoices",
       paragraphs: [
         "The file of an invoice you upload is encrypted before it is stored. The facts read from it, such as the amount and its references, and its file name are stored with it, not encrypted. With zero-retention on, the invoice's record keeps only its hashes and the outcome, and, for an invoice that asked for your Confirm, its amount: not the file, its text, its other facts or its name. The signed ledger still records the amount, any PO reference the model was shown, and the model's answer, which may quote details of the invoice.",
-        "When the payables agent runs, the invoice text goes to a private model on NEAR AI Cloud. The attested decisions recorded in the repository so far are all on testnet: two of the Canary's, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, and five of the payables agent's on the demo vault, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. The TEE measurement is not pinned, and A8 was not run on the Canary's two; on the demo vault's five it passed on 2026-11-12, with the invoices committed in the repository.",
+        "When the payables agent runs, the invoice text goes to a private model on NEAR AI Cloud. The attested decisions recorded in the repository so far: on testnet, two of the Canary's, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, and five of the payables agent's on the demo vault, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. On mainnet, three on v0.probarion.near of 2026-11-13, which pass A1 to A7 and, with the invoice texts, A8 offline, and have not been checked online; one of them led to a 0.25 USDC test payout to the owner's own Base address. The TEE measurement is not pinned, and A8 was not run on the Canary's two; on the demo vault's five it passed on 2026-11-12, with the invoices committed in the repository.",
       ],
     },
     {

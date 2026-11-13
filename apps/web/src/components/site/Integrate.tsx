@@ -261,9 +261,11 @@ function Uses() {
                   </p>
                   <div className={m.ev}>
                     <Pill row={r.status} />
-                    <ExternalLink className={s.link} href={r.evidence.url}>
-                      <Kept text={r.evidence.label} />
-                    </ExternalLink>
+                    {r.evidence.map((e) => (
+                      <ExternalLink key={e.url} className={s.link} href={e.url}>
+                        <Kept text={e.label} />
+                      </ExternalLink>
+                    ))}
                   </div>
                 </div>
               ))}
