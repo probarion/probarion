@@ -45,8 +45,8 @@ key anchor only, gas allowance 0.2492 NEAR
 key spend only, gas allowance 0.2462 NEAR
 ```
 
-Mandate 1 pays at most 1 USDC a payment and holds only a payment above 1 USDC for an approver, so its last payment
-needs no approval. A new payee or a higher cap needs a new mandate, signed from the owner's account.
+Mandate 1 pays at most 1 USDC a payment and holds a payment for an approver when it is above 1 USDC, so its last
+payment needs no approval. A new payee or a higher cap needs a new mandate, signed from the owner's account.
 
 ## Open these five links
 
@@ -111,14 +111,21 @@ pnpm judge                     # also the live read-only steps on testnet and ma
 ```
 
 `pnpm judge` builds the four packages, prints one row per step with the README line it proves, and exits 0 when no
-step failed. JUDGE_RUNS_PARAGRAPH
+step failed. On 2026-11-13, on Windows with other builds running on the same machine, a fresh clone of commit
+2b97c27 installed in 1 min 0 s (its packages were already in the local pnpm store) and its offline quick run ended
+with the first line below. The full run, on the same branch before its last edit to the README's test counts, ended
+with the second, in 4 min 15 s:
 
 ```text
-JUDGE_OFFLINE_LINE
-JUDGE_FULL_LINE
+judge: 21 PASS, 1 EXPECTED-FAIL, 14 SKIPPED, 0 FAIL in 75.7 s. Nothing was signed or sent. Report: judge-report.json. Exit 0.
+judge: 30 PASS, 3 EXPECTED-FAIL, 3 SKIPPED, 0 FAIL in 251.8 s. Nothing was signed or sent. Report: judge-report.json. Exit 0.
 ```
 
-The EXPECTED-FAIL is the Canary's snapshot of 2026-11-10, which has no ledger, as the README says. The times vary.
+In the offline run the EXPECTED-FAIL is the Canary's snapshot of 2026-11-10, which has no ledger, as the README says.
+The full run adds two by design, both as the README says: the live verify of `v0.probarion.testnet` fails d and h,
+and the live verify of the Canary fails c. Its three SKIPPED rows are the web console's tests (too long for this
+run: `pnpm --filter @probarion/web test`), the Rust tests (they need Rust), and the online `check-claims` step: the
+testnet archival RPC answered HTTP 429 to that run, so its 16 online checks did not run. The times vary.
 
 - In a clone, run the CLI as `node packages/cli/dist/bin.js`. `npx probarion` runs release 0.1.1 from npm instead,
   with no clone. For example, in a clone,

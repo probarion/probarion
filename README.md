@@ -48,11 +48,11 @@ pay out. It has no full-access key and is not frozen. Its ledger key can call `a
 
 ## Re-check every decision
 
-Every decision Probarion's code makes, refusals included, is signed, hash-chained and anchored on the vault, and
-the verifier re-checks it against the chain without Probarion's servers. On the mainnet vault, `verify` with the
-committed ledger of 6 entries passes checks a to h; check i skips, because no factory made this vault. On
-2026-11-13 at 17:52 UTC a read-only `verify --online` also passed O1 (the Intel TDX quote) and O2 (the GPU evidence,
-verified by NVIDIA NRAS) on the vault's 3 attested decisions
+Every decision Probarion's code makes, refusals included, is signed and hash-chained, a vault with a ledger key
+anchors the ledger's root on chain, and the verifier re-checks it all without Probarion's servers. On the mainnet
+vault, `verify` with the committed ledger of 6 entries passes checks a to h; check i skips, because no factory made
+this vault. On 2026-11-13 at 17:52 UTC a read-only `verify --online` also passed O1 (the Intel TDX quote) and O2
+(the GPU evidence, verified by NVIDIA NRAS) on the vault's 3 attested decisions
 ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)). The TEE measurement is not
 pinned, so this does not show which model image ran. Spend 1 of 2026-11-11 came before the ledger: its decision is
 a file in this repository, and no attestation covers it.
