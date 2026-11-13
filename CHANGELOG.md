@@ -15,6 +15,16 @@ The software is an unaudited beta.
 
 ### Added
 
+- `JUDGES.md`, a two-minute page for judges and screeners: the mechanism in one sentence, three links to open (the
+  live TEE check, the demo vault's proof page and the mainnet transactions of 2026-11-11), `pnpm judge` with the line
+  its offline quick run printed on 2026-11-13, what is proven with its evidence and transactions, assume breach (a
+  fooled model, the software inside the TEE, the agent host and its keys) and why the TEE verdict is not enforced on
+  chain, the worst case with the agent key public, priced on `v0.probarion.near` by view calls on 2026-11-13, who it
+  is for as a labeled hypothesis with the unit costs the repository and the chain record, and what is not done yet. A
+  marked line waits for the mainnet Base payout, which has not run. The README gets a "For judges: start here" block
+  of 11 lines under its header and a link in its top row. `scripts/check-claims.mjs` checks `JUDGES.md` as it checks
+  the README and `AGENTS.md` (links, tx hashes, accounts, paths and commands, facts), and a test holds it to that.
+
 - `probarion verify --invoice <file>` (repeatable) and `--invoices <dir>` (every `.txt` file of a
   folder) run A8 with invoice texts the auditor holds, live or with `--offline`, in the CLI built from
   this repository; release 0.1.1 on npm does not have them. The CLI reads each file on the auditor's

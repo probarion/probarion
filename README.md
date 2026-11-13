@@ -15,11 +15,23 @@
 <a href="#how-to-evaluate-probarion-in-5-minutes"><img src="docs/assets/readme/verify-a-ledger.png" alt="Verify a ledger: checks a to i, offline" height="48"></a>
 <a href="https://x.com/probarionhq"><img src="docs/assets/readme/follow-the-build.png" alt="Follow the build: @probarionhq on X" height="48"></a>
 
-**[Live site](https://probarion.xyz)** · **[Demo video](https://x.com/probarionhq/status/2120882499689836651)** · **[Docs](https://probarion.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[NEAR tech](#near-technology-used-and-how)** · **[Privacy](#privacy--private-ai)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
+**[For judges](JUDGES.md)** · **[Live site](https://probarion.xyz)** · **[Demo video](https://x.com/probarionhq/status/2120882499689836651)** · **[Docs](https://probarion.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[NEAR tech](#near-technology-used-and-how)** · **[Privacy](#privacy--private-ai)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
 
 <sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) · NEAR Intents payouts (a testnet stand-in so far) · NEAR AI Cloud private models · TypeScript SDK, CLI and MCP server on npm</sub>
 
 </div>
+
+> [!TIP]
+> **For judges: start here.** The agent's NEAR key can call `spend` and nothing else, and `spend` takes no address, so
+> the vault contract pays the payee of a mandate the owner signed, within its caps; a private model in a TEE proposes
+> and does not decide; and every decision Probarion's code makes is signed into a hash-chained ledger, anchored on the
+> vault once it has a ledger key. Open the
+> [live TEE check](https://probarion.xyz/proof/demo.vaults.probarion.testnet#tee-check), the
+> [demo vault's proof page](https://probarion.xyz/proof/demo.vaults.probarion.testnet) and the mainnet transactions of
+> 2026-11-11: [1 USDC paid](https://nearblocks.io/txns/22oqhgruo7JqdpPg5Cb2ts25mLK2fto8y1YAxNA56ieE) and
+> [a spend refused with `PROBARION:NoMandate`](https://nearblocks.io/txns/2Dabq4uMh9VvttH3uj85samfYoX2wbQheADHS96AtwYh).
+> Then, in a clone, run `pnpm install --frozen-lockfile` and `pnpm judge --offline --quick`. What is proven and what
+> is not, assume breach, the worst case and the business hypothesis: [JUDGES.md](JUDGES.md).
 
 Giving an AI agent a wallet means trusting a prompt with money. Probarion moves the rule into a NEAR
 contract. An owner puts USDC in a vault and signs mandates: who gets paid, how much per payment and in
