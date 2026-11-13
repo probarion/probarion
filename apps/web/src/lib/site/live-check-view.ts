@@ -202,24 +202,83 @@ export function sentenceText(
   return `${shown.reason === "answer" ? copy.failedAnswer : copy.failed} ${said}`;
 }
 
-/** The line above the headline: where the answer came from. Empty when there is no answer to describe. */
+/**
+ * The line under the verdict, in parts: the words before the raw answer, the raw answer itself (null when there is
+ * none to show), and any words after it. The panel sets the raw answer as code, so the template is cut at its `{raw}`
+ * slot before it is filled: nothing is cut out of a filled sentence.
+ */
+export interface HintParts {
+  lead: string;
+  raw: string | null;
+  tail: string;
+}
+
+const NO_HINT: HintParts = { lead: "", raw: null, tail: "" };
+
+export function hintParts(
+  shown: Shown,
+  copy: Pick<LiveCopy, "asking" | "answeredAt" | "recordedAt">,
+  vault: string,
+  timeOf: (iso: string) => string,
+): HintParts {
+  if (shown.kind === "loading") return { ...NO_HINT, lead: fill(copy.asking, { vault }) };
+  if (shown.kind === "failed" && shown.reason === "badAmount") return NO_HINT;
+  const a = lastAnswer(shown);
+  if (a === null) return NO_HINT;
+  const template = a.recorded ? copy.recordedAt : copy.answeredAt;
+  const vars = { vault, block: a.blockHeight, date: a.at.slice(0, 10), time: timeOf(a.at) };
+  const slot = template.indexOf("{raw}");
+  if (slot < 0) return { ...NO_HINT, lead: fill(template, vars) };
+  return {
+    lead: fill(template.slice(0, slot), vars),
+    raw: String(JSON.stringify(a.raw)),
+    tail: fill(template.slice(slot + "{raw}".length), vars),
+  };
+}
+
+/**
+ * The line under the verdict as one string: where the answer came from. Empty when there is no answer to describe.
+ * Test-only: the client renders hintParts, and live-check-view.test.ts reads the line through this to hold its words.
+ */
 export function hintText(
   shown: Shown,
   copy: Pick<LiveCopy, "asking" | "answeredAt" | "recordedAt">,
   vault: string,
   timeOf: (iso: string) => string,
 ): string {
-  if (shown.kind === "loading") return fill(copy.asking, { vault });
-  if (shown.kind === "failed" && shown.reason === "badAmount") return "";
-  const a = lastAnswer(shown);
-  if (a === null) return "";
-  return fill(a.recorded ? copy.recordedAt : copy.answeredAt, {
-    vault,
-    block: a.blockHeight,
-    date: a.at.slice(0, 10),
-    time: timeOf(a.at),
-    raw: JSON.stringify(a.raw),
-  });
+  const p = hintParts(shown, copy, vault, timeOf);
+  return `${p.lead}${p.raw ?? ""}${p.tail}`;
+}
+
+/**
+ * A raw JSON answer cut after each comma between its members, so the panel can offer a line break there and nowhere
+ * else. A comma inside a string stays where it is. The pieces join back to the input.
+ */
+export function rawPieces(raw: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  let inString = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === ",") {
+      out.push(raw.slice(start, i + 1));
+      start = i + 1;
+    }
+  }
+  if (start < raw.length) out.push(raw.slice(start));
+  return out;
+}
+
+/** A line of copy that names a thing, then gives it ("Method: ...", "RPC: ..."), cut at its first ": ". */
+export function labelled(line: string): { label: string; value: string } {
+  const at = line.indexOf(": ");
+  return at < 0
+    ? { label: "", value: line }
+    : { label: line.slice(0, at), value: line.slice(at + 2) };
 }
 
 /** What to show after an answer arrives: only the answer to the latest request counts. */

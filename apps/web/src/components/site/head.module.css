@@ -1,0 +1,30 @@
+/*
+ * The shared head of a landing section, and the section around it (SectionHead.tsx). One layout at every width: a
+ * hairline, then the eyebrow, the heading and the lede, stacked on the left edge the section's body starts on. Only the
+ * clamps scale. Every colour is a token from app/globals.css.
+ *
+ * The rhythm: a section owns G (--space-section) of paper below itself and none above, so that the gap between any
+ * two sections is G whichever sections they are. The hero and the ink band own G below themselves too (site.module.css).
+ */
+
+.section {
+  padding-block: 0 var(--space-section);
+}
+/* Close under the hairline, so that the rule belongs to the head below it; the body then starts a step further down. */
+.head {
+  border-top: 1px solid var(--color-line);
+  padding-top: clamp(20px, 2vw, 28px);
+  margin-bottom: clamp(32px, 4vw, 56px);
+}
+/* Two classes, so that it beats .h2's 13em whatever order the modules load in: the head owns its whole row. */
+.head .title {
+  margin-top: clamp(12px, 1.4vw, 18px);
+  max-width: 16em;
+}
+.lede {
+  max-width: var(--container-measure);
+  color: var(--color-mute);
+}
+.head .lede {
+  margin-top: clamp(16px, 1.8vw, 24px);
+}

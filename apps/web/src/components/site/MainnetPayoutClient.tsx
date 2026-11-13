@@ -270,7 +270,7 @@ export function MainnetPayoutClient({
                 {problem === null ? (
                   <span className={m.state}>
                     <span className={m.word}>{state.word}</span>
-                    {state.note === null ? null : <span className={m.where}> {state.note}</span>}
+                    {state.note === null ? null : <span> {state.note}</span>}
                   </span>
                 ) : null}
                 <span className={m.sources}>{sources[id]}</span>

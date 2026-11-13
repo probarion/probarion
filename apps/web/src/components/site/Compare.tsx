@@ -1,67 +1,89 @@
-import { ExternalLink } from "@/components/ui";
-import { COMPARE } from "@/lib/site/facts";
-import { Rich } from "./Rich";
-import { StatusPill } from "./StatusPill";
-import s from "./site.module.css";
+import { COMPARE, statusOf } from "@/lib/site/facts";
+import { KeepRich } from "./bits";
+import c from "./compare.module.css";
+import { Away, StatusPill } from "./parts";
+import { LandingSection } from "./SectionHead";
 
 /**
  * The table's roles, said out loud. They are redundant on paper, but the stylesheet turns the table into blocks below
- * 960 px, and some readers then drop its table semantics: an explicit role keeps them. They are spread from here
+ * 961 px, and some readers then drop its table semantics: an explicit role keeps them. They are spread from here
  * because Biome's noRedundantRoles reads the markup, not the stylesheet.
  */
 const ROLE = {
   table: { role: "table" },
+  rowgroup: { role: "rowgroup" },
   row: { role: "row" },
   columnheader: { role: "columnheader" },
   rowheader: { role: "rowheader" },
   cell: { role: "cell" },
 } as const;
 
+/** One class per column header, in COMPARE.head's order: on a wide screen they set the four column widths. */
+const COLUMN = [c.colQuestion, c.colDiy, `${c.colOurs} ${c.headOurs}`, c.colStatus] as const;
+
+/** The groups in their order, each with its rows in the rows' own order. */
+const GROUPS = COMPARE.groups.map((g) => ({
+  ...g,
+  rows: COMPARE.rows.filter((r) => r.group === g.id),
+}));
+
 export function Compare() {
   return (
-    <section className={`${s.section} ${s.flush}`} id="compare">
-      <div className={s.wrap}>
-        <p className={s.eyebrow}>{COMPARE.eyebrow}</p>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2} id="compare-title">
-            {COMPARE.title}
-          </h2>
-          <p>{COMPARE.sub}</p>
-        </div>
-        <table className={s.compare} aria-labelledby="compare-title" {...ROLE.table}>
-          <thead className={s.compareHead}>
-            <tr {...ROLE.row}>
-              {COMPARE.head.map((h) => (
-                <th key={h} scope="col" {...ROLE.columnheader}>
-                  {h}
-                </th>
-              ))}
+    <LandingSection
+      id="compare"
+      head={{ eyebrow: COMPARE.eyebrow, title: COMPARE.title, lede: COMPARE.sub }}
+    >
+      <table className={c.table} aria-labelledby="compare-title" {...ROLE.table}>
+        <thead className={c.head} {...ROLE.rowgroup}>
+          <tr {...ROLE.row}>
+            {COMPARE.head.map((h, i) => (
+              <th key={h} scope="col" className={COLUMN[i]} {...ROLE.columnheader}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        {GROUPS.map((g) => (
+          <tbody key={g.id} {...ROLE.rowgroup}>
+            <tr className={c.group} {...ROLE.row}>
+              <th colSpan={COMPARE.head.length} scope="rowgroup" {...ROLE.rowheader}>
+                {g.label}
+              </th>
             </tr>
-          </thead>
-          <tbody>
-            {COMPARE.rows.map((r) => {
-              return (
-                <tr key={r.question} {...ROLE.row}>
-                  <th scope="row" {...ROLE.rowheader} className={s.compareRow}>
-                    {r.question}
-                  </th>
-                  <td {...ROLE.cell} className={s.compareDiy} data-label={COMPARE.head[1]}>
-                    {r.diy}
-                  </td>
-                  <td {...ROLE.cell} data-label={COMPARE.head[2]}>
-                    <Rich text={r.probarion} /> <StatusPill row={r.status} />
-                  </td>
-                </tr>
-              );
-            })}
+            {g.rows.map((r) => (
+              <tr key={r.question} {...ROLE.row}>
+                <th scope="row" className={c.question} {...ROLE.rowheader}>
+                  {r.question}
+                </th>
+                <td className={c.diy} {...ROLE.cell}>
+                  <span className={c.runIn} aria-hidden="true">
+                    {COMPARE.short.diy}
+                  </span>
+                  {r.diy}
+                </td>
+                <td className={c.ours} {...ROLE.cell}>
+                  <span className={c.runIn} aria-hidden="true">
+                    {COMPARE.short.probarion}
+                  </span>
+                  <KeepRich text={r.probarion} />
+                </td>
+                <td className={c.status} {...ROLE.cell}>
+                  {/* The column head names it, so the pill has no "Status: " of its own. */}
+                  <StatusPill row={r.status} prefix={false} />
+                  <span className="sr-only">{COMPARE.sourceJoin}</span>
+                  <span className={c.source}>{statusOf(r.status).row}</span>
+                </td>
+              </tr>
+            ))}
           </tbody>
-        </table>
-        <p className={s.compareMore}>
-          <ExternalLink className={s.link} href={COMPARE.more.href}>
-            {COMPARE.more.label} <span aria-hidden="true">→</span>
-          </ExternalLink>
+        ))}
+      </table>
+      <div className={c.more}>
+        <p className={c.moreLink}>
+          <Away href={COMPARE.more.href} label={COMPARE.more.label} />
         </p>
+        <p className={c.moreNote}>{COMPARE.more.note}</p>
       </div>
-    </section>
+    </LandingSection>
   );
 }

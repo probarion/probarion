@@ -1,50 +1,93 @@
 import Link from "next/link";
 import { RouteLink } from "@/components/RouteLink";
-import { ExternalLink } from "@/components/ui";
-import { type CopyPart, HERO, NUMBERS, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
-import { Rich } from "./Rich";
+import { HERO, NUMBERS, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
+import { KeepLast, KeepRich, LIST, Outcome, type OutcomeTone } from "./bits";
+import h from "./hero.module.css";
+import { Away, Parts } from "./parts";
+import p from "./parts.module.css";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
+/** A card's transaction: the page's evidence label, then the short hash in mono and its arrow. */
 function TxRow({ tx }: { tx: TxFact }) {
   return (
     <div>
-      <dt>Tx</dt>
+      <dt>{HERO.txLabel}</dt>
       <dd>
-        <ExternalLink className={`${s.link} ${s.cardHash}`} href={tx.url}>
-          {tx.label}
-        </ExternalLink>
+        <Away className={`${s.link} ${s.cardHash}`} href={tx.url} tx={tx.label} />
       </dd>
     </div>
   );
 }
 
-/** A line of copy with links in it: a link to a place on this page stays in the tab, any other opens a new one. */
-function Parts({ parts }: { parts: readonly CopyPart[] }) {
-  return parts.map((p) =>
-    typeof p === "string" ? (
-      <Rich key={p} text={p} />
-    ) : p.href.startsWith("#") ? (
-      <a key={p.href} className={s.link} href={p.href}>
-        {p.label}
-      </a>
-    ) : (
-      <ExternalLink key={p.href} className={s.link} href={p.href}>
-        {p.label}
-      </ExternalLink>
-    ),
+/** A card's label, its last part (a date, an invoice number) kept whole, so that it never breaks at its hyphen. */
+function CardLabel({ text }: { text: string }) {
+  return (
+    <span className={h.cardLabel}>
+      <KeepLast text={text} />
+    </span>
   );
 }
+
+/** A card's state, said as every outcome on the page is: its mark and its word, on the card's own ground. */
+function CardState({ tone, children }: { tone: OutcomeTone; children: string }) {
+  return (
+    <Outcome tone={tone} className={h.state}>
+      {children}
+    </Outcome>
+  );
+}
+
+/**
+ * The mainnet record: what runs where, then one ruled row per transaction (its outcome, what happened, then the
+ * transaction under it), then a line that points to the vault's later payouts. The list is named without "Testnet today".
+ */
+function MainnetRecord() {
+  const m = HERO.mainnet;
+  return (
+    <div className={h.evidence}>
+      <p className={h.evLead}>
+        <strong>{m.lead}</strong>
+        <KeepRich text={m.intro} />
+      </p>
+      <ul className={h.evRows} aria-label={m.listLabel} {...LIST}>
+        {m.rows.map((r) => (
+          <li key={r.tx.hash} className={h.evRow}>
+            <Outcome tone={r.tone} className={h.evOut}>
+              {r.state}
+            </Outcome>
+            <span className={h.evWhat}>
+              <KeepRich text={r.what} />
+            </span>
+            <span className={h.evTx}>
+              <span className={p.label}>{m.txLabel}</span>{" "}
+              <Away className={`${s.link} ${h.evHash}`} href={r.tx.url} tx={r.tx.label} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className={h.evAfter}>
+        <Parts parts={m.after} />
+      </p>
+    </div>
+  );
+}
+
+/*
+ * Each card has four parts, in this order: its label and state, the amount, the rows, the link. From 621px the two
+ * cards share those four rows of the pair's grid, so that their labels, amounts, rows and links line up.
+ */
 
 function PaidCard() {
   const c = HERO.paid;
   return (
-    <article className={`${s.card} ${s.metal}`} aria-label={c.aria}>
+    <article className={`${s.card} ${s.metal} ${h.paid}`} aria-label={c.aria}>
       <div className={s.cardTop}>
-        <span>{c.label}</span>
-        <span className={s.state}>{c.state}</span>
+        <CardLabel text={c.label} />
+        <CardState tone="paid">{c.state}</CardState>
       </div>
       <div className={s.cardBig}>{c.big}</div>
-      <dl className={s.rows}>
+      <dl className={`${s.rows} ${h.cardRows}`}>
         <div>
           <dt>Vault</dt>
           <dd>{c.vault}</dd>
@@ -61,6 +104,9 @@ function PaidCard() {
         </div>
         <TxRow tx={c.tx} />
       </dl>
+      <Link className={`${s.link} ${s.cardLink} ${h.cardEnd}`} href={c.proof.href}>
+        {c.proof.label} <span aria-hidden="true">→</span>
+      </Link>
     </article>
   );
 }
@@ -68,13 +114,13 @@ function PaidCard() {
 function RefusedCard() {
   const c = HERO.refused;
   return (
-    <article className={`${s.card} ${s.obsidian}`} aria-label={c.aria}>
+    <article className={`${s.card} ${s.obsidian} ${h.canary}`} aria-label={c.aria}>
       <div className={s.cardTop}>
-        <span>{c.label}</span>
-        <span className={s.state}>{c.state}</span>
+        <CardLabel text={c.label} />
+        <CardState tone="refused">{c.state}</CardState>
       </div>
       <div className={s.cardBig}>{c.big}</div>
-      <dl className={s.rows}>
+      <dl className={`${s.rows} ${h.cardRows}`}>
         <div>
           <dt>Vault</dt>
           <dd>{c.vault}</dd>
@@ -95,7 +141,7 @@ function RefusedCard() {
         </div>
         <TxRow tx={c.tx} />
       </dl>
-      <Link className={`${s.link} ${s.cardLink}`} href={c.tryIt.href}>
+      <Link className={`${s.link} ${s.cardLink} ${h.cardEnd}`} href={c.tryIt.href}>
         {c.tryIt.label} <span aria-hidden="true">→</span>
       </Link>
     </article>
@@ -104,13 +150,13 @@ function RefusedCard() {
 
 export function Hero() {
   return (
-    <section className={s.hero}>
+    <section className={h.hero}>
       <div className={s.wrap}>
         <p className={`${s.eyebrow} ${s.heroEyebrow}`}>{HERO.eyebrow}</p>
         <h1 className={s.h1}>
           <span>{HERO.line1}</span> <span className={s.gold}>{HERO.line2}</span>
         </h1>
-        <div className={s.heroGrid}>
+        <div className={h.heroGrid}>
           <div>
             <p className={s.lede}>{HERO.lede}</p>
             <div className={s.cta}>
@@ -124,16 +170,24 @@ export function Hero() {
                 {HERO.verify} <span aria-hidden="true">→</span>
               </Link>
             </div>
+            <MainnetRecord />
             <p className={s.fineprint}>
               <Parts parts={HERO.fineprint} />
             </p>
           </div>
-          <div className={s.duel}>
+          {/* The caption is first in the source, so that a phone reads it above both cards; from 621px it sits under the paid card. */}
+          <div className={h.duel}>
+            <p className={h.cap}>
+              <span className={h.capLead}>{HERO.both.lead}</span>
+              {HERO.both.rest}
+            </p>
             <PaidCard />
             <RefusedCard />
-            <p className={s.duelNote}>
-              <Rich text={HERO.note} />
-            </p>
+            <ol className={h.steps} aria-label={HERO.canarySteps.label} {...LIST}>
+              {HERO.canarySteps.items.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
           </div>
         </div>
       </div>
@@ -143,57 +197,53 @@ export function Hero() {
 
 export function Problem() {
   return (
-    <section className={s.section} id="problem">
-      <div className={s.wrap}>
-        <p className={s.eyebrow}>{PROBLEM.eyebrow}</p>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{PROBLEM.title}</h2>
-          <p>{PROBLEM.sub}</p>
+    <LandingSection
+      id="problem"
+      head={{ eyebrow: PROBLEM.eyebrow, title: PROBLEM.title, lede: PROBLEM.sub }}
+    >
+      <div className={s.vs}>
+        <div className={s.vsCol}>
+          <h3>{PROBLEM.withoutTitle}</h3>
+          <ul>
+            {PROBLEM.without.map((line) => (
+              <li key={line}>
+                <span className={s.vsNo} role="img" aria-label={PROBLEM.noLabel}>
+                  ✕
+                </span>
+                <span>
+                  <KeepRich text={line} />
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
-        <div className={s.vs}>
-          <div className={s.vsCol}>
-            <h3>{PROBLEM.withoutTitle}</h3>
-            <ul>
-              {PROBLEM.without.map((line) => (
-                <li key={line}>
-                  <span className={s.vsNo} role="img" aria-label={PROBLEM.noLabel}>
-                    ✕
-                  </span>
-                  <span>
-                    <Rich text={line} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className={`${s.vsCol} ${s.vsWith}`}>
-            <h3>{PROBLEM.withTitle}</h3>
-            <ul>
-              {PROBLEM.with.map((line) => (
-                <li key={line}>
-                  <span className={s.vsYes} role="img" aria-label={PROBLEM.yesLabel}>
-                    ✓
-                  </span>
-                  <span>
-                    <Rich text={line} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-        <div className={s.numbers}>
-          {NUMBERS.map(({ name, value, rest }) => (
-            <div key={name}>
-              <b>{value}</b>
-              <p>
-                <strong>{name}</strong>
-                <Rich text={rest} />
-              </p>
-            </div>
-          ))}
+        <div className={`${s.vsCol} ${s.vsWith}`}>
+          <h3>{PROBLEM.withTitle}</h3>
+          <ul>
+            {PROBLEM.with.map((line) => (
+              <li key={line}>
+                <span className={s.vsYes} role="img" aria-label={PROBLEM.yesLabel}>
+                  ✓
+                </span>
+                <span>
+                  <KeepRich text={line} />
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
-    </section>
+      <div className={s.numbers}>
+        {NUMBERS.map(({ name, value, rest }) => (
+          <div key={name}>
+            <b>{value}</b>
+            <p>
+              <strong>{name}</strong>
+              <KeepRich text={rest} />
+            </p>
+          </div>
+        ))}
+      </div>
+    </LandingSection>
   );
 }

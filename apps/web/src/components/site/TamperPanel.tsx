@@ -1,18 +1,20 @@
 import type { Snapshot } from "@probarion/core";
-import { ExternalLink } from "@/components/ui";
-import { CHECK_LIST, FIXTURE_PATH, LINKS, RECORDED_RESULT, TAMPER_COPY } from "@/lib/site/facts";
+import { CHECK_LIST, RECORDED_RESULT, TAMPER_COPY, TAMPER_EVIDENCE } from "@/lib/site/facts";
 import { NEXT_STEP } from "@/lib/site/next-step";
 import { ledgerRows, TAMPER_EDITS } from "@/lib/site/tamper";
 import fixture from "@/lib/site/valid-snapshot.json";
 import { NextStep } from "./NextStep";
-import { Rich } from "./Rich";
+import { Away } from "./parts";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 import { TamperTest } from "./TamperTest";
+import t from "./tamper.module.css";
 
 /**
  * Reads the fixture on the server and hands the client only small props, so that the page is complete with no
- * JavaScript and the fixture stays out of the first-load bundle. With `next`, a run the verifier failed ends with the
- * link to /proof; /proof itself leaves it out, as its form is the next step there.
+ * JavaScript and the fixture stays out of the first-load bundle. The sheet's foot names its two files by their role,
+ * each a link to GitHub. With `next`, a run the verifier failed is followed by the link to /proof; /proof itself
+ * leaves it out, as its form is the next step there.
  */
 export function TamperPanel({ next = false }: { next?: boolean }) {
   return (
@@ -23,13 +25,21 @@ export function TamperPanel({ next = false }: { next?: boolean }) {
       recorded={RECORDED_RESULT}
       copy={TAMPER_COPY}
       source={
-        <ExternalLink className={`${s.link} ${s.source}`} href={LINKS.fixture}>
-          <code>{FIXTURE_PATH}</code>
-        </ExternalLink>
+        <dl className={t.foot}>
+          {/* A keyed div per pair: keyed fragments passed to the client component drew a missing-key warning. */}
+          {TAMPER_EVIDENCE.map(({ label, path, href }) => (
+            <div key={path} className={t.footRow}>
+              <dt>{label}</dt>
+              <dd>
+                <Away href={href} code={path} />
+              </dd>
+            </div>
+          ))}
+        </dl>
       }
       next={
         next ? (
-          <NextStep step={NEXT_STEP.tamper} className={s.sheetNext} linkClassName={s.link} />
+          <NextStep step={NEXT_STEP.tamper} className={t.next} linkClassName={s.link} />
         ) : undefined
       }
     />
@@ -38,16 +48,11 @@ export function TamperPanel({ next = false }: { next?: boolean }) {
 
 export function LedgerTest() {
   return (
-    <section className={s.section} id="verify">
-      <div className={s.wrap}>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{TAMPER_COPY.title}</h2>
-          <p>
-            <Rich text={TAMPER_COPY.intro} />
-          </p>
-        </div>
-        <TamperPanel next />
-      </div>
-    </section>
+    <LandingSection
+      id="verify"
+      head={{ eyebrow: TAMPER_COPY.eyebrow, title: TAMPER_COPY.title, lede: TAMPER_COPY.intro }}
+    >
+      <TamperPanel next />
+    </LandingSection>
   );
 }

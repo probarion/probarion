@@ -8,13 +8,14 @@ import { SECTIONS } from "./types";
 
 /**
  * The ids the page around the MDX body renders: the layout's <main id="main">, the logo's
- * gradient in the site header, and the group titles of the sidebar and of the phone drawer (every
- * section, so a section's first page cannot slip past). A heading or a generated anchor with one of
- * these ids would make two elements with the same id.
+ * gradient in the site header and in the site footer, and the group titles of the sidebar and of
+ * the phone drawer (every section, so a section's first page cannot slip past). A heading or a
+ * generated anchor with one of these ids would make two elements with the same id.
  */
 export const SHELL_IDS: readonly string[] = [
   "main",
   "probarion-coin",
+  "probarion-coin-footer",
   ...SECTIONS.flatMap((s) => [groupTitleId("side", s), groupTitleId("drawer", s)]),
 ];
 

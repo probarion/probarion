@@ -1068,7 +1068,7 @@ describe("the status board's page structure and copy", () => {
     const rows = [
       ...COMPARE.rows.map((r) => r.status),
       ...INTEGRATE.cards.map((c) => c.status),
-      ...INTEGRATE.who.map((w) => w.status),
+      ...INTEGRATE.who.flatMap((w) => w.runs.map((r) => r.status)),
     ];
     for (const r of rows) expect(page).toContain(`href="#${statusOf(r).id}"`);
     // The comparison and the integrate cards draw no pill of their own any more.
@@ -1125,8 +1125,9 @@ describe("the status board's page structure and copy", () => {
     const css = text(WEB, "src", "components", "site", "status.module.css");
     const tsx = text(WEB, "src", "components", "site", "StatusBoard.tsx");
     expect(tsx).toContain('import b from "./status.module.css";');
-    // The section keeps the landing's own section classes, as every other section does.
-    expect(tsx).toMatch(/<section className=\{`\$\{s\.section\} \$\{s\.flush\}`\} id="status">/);
+    // The section opens with the landing's shared head, as every other section does; the board's columns are set on
+    // its wrap.
+    expect(tsx).toMatch(/<LandingSection\s+id="status"\s+wrapClassName=\{b\.board\}/);
     // The column labels repeat what every row says to a screen reader, so they are hidden from it.
     expect(tsx.match(/className=\{`?\$?\{?b\.colLabel[^>]*aria-hidden="true"/g)?.length).toBe(3);
     // Below 1280px no column header shows, so each Where line names itself; from 1280px its label is for a screen

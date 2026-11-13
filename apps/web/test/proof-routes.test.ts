@@ -960,17 +960,26 @@ describe("the landing page and the menu", () => {
     expect(renderToStaticMarkup(createElement(SiteHeader))).toContain(`href="/proof"`);
     expect(text(out)).not.toMatch(/are coming/);
     expect(text(out)).toContain(cli("verify --offline"));
-    expect(text(out)).toContain("packages/core/test/fixtures/valid-snapshot.json");
+    // A file path reads as one (bits.tsx CodeLabel draws its folders and its file name as two code runs).
+    const joined = out.replace(/<wbr\/>/g, "").replace(/<\/code><span class="[^"]*"><code>/g, "");
+    expect(text(joined)).toContain("packages/core/test/fixtures/valid-snapshot.json");
+    // Step 5's labelled note, read as a person reads it: no new-tab arrow, no screen-reader words.
+    const note = text(out.replace(/<span[^>]*aria-hidden="true"[^>]*>↗<\/span>/g, ""))
+      .replace(/ \(opens in a new tab\)/g, "")
+      .replace(/ ([.,])/g, "$1");
+    expect(note).toContain(
+      "On real data. The testnet demo vault&#x27;s proof page runs the same checks on its own ledger and chain data. Its record, below",
+    );
     if (CLI_ON_NPM) {
-      expect(text(out)).toContain(
-        "These commands run on a test fixture: this site serves an exact copy of the file in the repository. The testnet demo vault&#x27;s proof page runs the same checks on its own ledger and chain data.",
+      expect(note).toContain(
+        "What the commands run on A test fixture. This site serves an exact copy of the file in the repository.",
       );
       expect(text(out)).toContain("curl -O https://probarion.xyz/samples/valid-snapshot.json");
       expect(text(out)).toContain("npx probarion verify --offline valid-snapshot.json");
       expect(text(out)).not.toContain("run it at the root of a clone");
     } else {
-      expect(text(out)).toContain(
-        "This command runs on a test fixture. Build it from a clone first (README step 1). The testnet demo vault&#x27;s proof page runs the same checks on its own ledger and chain data.",
+      expect(note).toContain(
+        "What the command runs on A test fixture. The command reads the file in the repository. Build the CLI from a clone first (README step 1).",
       );
       expect(text(out)).not.toContain("npx probarion");
     }

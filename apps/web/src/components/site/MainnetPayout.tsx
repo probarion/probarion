@@ -22,6 +22,7 @@ import { CHECK_ORDER, liveCopy, type Tone } from "@/lib/site/mainnet-payout-view
 import { MainnetPayoutClient } from "./MainnetPayoutClient";
 import m from "./mainnet.module.css";
 import { Rich } from "./Rich";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
 const C = MAINNET_PAYOUT;
@@ -380,34 +381,34 @@ export function MainnetPayout() {
   const [newest, ...earlier] = newestFirst(RECORDED_RUNS);
   if (newest === undefined) return null;
   return (
-    <section className={m.section} id="mainnet" aria-labelledby="mainnet-title">
-      <div className={s.wrap}>
-        <p className={s.eyebrow}>{head.eyebrow}</p>
-        <div className={m.head}>
-          <h2 className={s.h2} id="mainnet-title">
+    <LandingSection
+      id="mainnet"
+      head={{
+        eyebrow: head.eyebrow,
+        title: (
+          <>
             <span className={m.headLine}>{head.line1}</span>{" "}
             <span className={`${m.headLine} ${s.gold}`}>{head.line2}</span>
-          </h2>
-          <p className={m.lede}>
-            <Rich text={head.lede} />
-          </p>
-        </div>
-        <div className={m.payouts}>
-          <PayoutBlock run={newest} many={earlier.length > 0} />
-          {earlier.length > 0 ? (
-            <>
-              <div className={m.folds}>
-                {earlier.map((run) => (
-                  <FoldedPayout key={run.payout.id} run={run} />
-                ))}
-              </div>
-              <div className={m.earlierAfter}>
-                <Earlier />
-              </div>
-            </>
-          ) : null}
-        </div>
+          </>
+        ),
+        lede: head.lede,
+      }}
+    >
+      <div className={m.payouts}>
+        <PayoutBlock run={newest} many={earlier.length > 0} />
+        {earlier.length > 0 ? (
+          <>
+            <div className={m.folds}>
+              {earlier.map((run) => (
+                <FoldedPayout key={run.payout.id} run={run} />
+              ))}
+            </div>
+            <div className={m.earlierAfter}>
+              <Earlier />
+            </div>
+          </>
+        ) : null}
       </div>
-    </section>
+    </LandingSection>
   );
 }
