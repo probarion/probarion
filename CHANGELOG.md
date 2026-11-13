@@ -74,12 +74,13 @@ The software is an unaudited beta.
   `apps/web/scripts/record-mainnet-payout.ts` recorded from public RPC
   (`apps/web/src/lib/site/mainnet-payout-recorded.json`, 7 of 7 checks). The decision trail shows the two refused
   proposals on a dashed spur off the main line and the 3 anchors as numbered gold seals, each with the entries it
-  covers and its transaction, and the verifier's result links its output, the `#verify` section and the docs page. The payouts are built from
-  `docs/mainnet-proof.json`, `contracts/deployments/mainnet.json` and the evidence folder, so every count on the
-  section comes from data and a second payout adds a card. On a phone each check's values fold behind a "What it read"
-  line, and with no JavaScript they all show. Motion starts after the button press, under
-  `prefers-reduced-motion: no-preference`, and does not loop. Tests run the seven checks on the recorded reads and
-  on tampered copies (another amount, another owner, no `ft_burn`, another token in `mt_burn`, an address in the
+  covers and its transaction, and the verifier's result links its output, the `#verify` section and the payout's own
+  section of the docs page. The payouts are built from `docs/mainnet-proof.json`,
+  `contracts/deployments/mainnet.json` and the evidence folder, so every count on the section comes from data and
+  another payout adds a fold under the newest. On a phone each check's values fold behind a "What it read" line, and
+  with no JavaScript they all show. Motion starts after the button press, under
+  `prefers-reduced-motion: no-preference`, and does not loop. Tests run the seven checks on the recorded reads and on
+  tampered copies (another amount, another owner, no `ft_burn`, another token in `mt_burn`, an address in the
   request, a wider key, another code hash, another `decision_hash`, ledger entries that do not hash to the root, a
   view from another block) and cover the retries, the fallback, a node that answers for another transaction and an
   aborted run. The data guard stops a payout to a wallet that `owner_wallets` in `contracts/deployments/mainnet.json`
@@ -88,21 +89,24 @@ The software is an unaudited beta.
   and spend 2 follows folded in a closed `<details>` whose summary gives its amounts, how it was decided and a hint
   to show its seven checks and its ledger. The fold opens with no JavaScript, and each payout's own **Read the chain
   now** reads its transactions again in the browser. The card's line on attested decisions counts the decisions in
-  the ledger that payout's verifier run read, and its pronouns agree with the count.
+  the ledger that payout's verifier run read, and its pronouns agree with the count. The trail's summary counts the
+  entries of the ledger file it links and the anchors on chain, as that verifier run read them. Each payout's own
+  links and its button end in words a screen reader reads, such as "for spend 3", so two links with one label still
+  have two names.
 - A docs page, [Mainnet payouts, step by step](https://probarion.xyz/docs/start/mainnet-payout), after "Testnet and
   mainnet", for spends 2 and 3: spend 3 has its own table, its seven checks' values, how it was decided (entry 4, an
   attested model and the code rules, no refusal), ledger entries 4 and 5 and anchor 4, and the verifier run with the
-  ledger of 6 entries. For spend 2: the payout of 2026-11-13 at a glance, what to open in a browser, the seven checks with the values each
-  one read, how the payment was decided (the two proposals that `mandate.payee_mismatch` refused and why, then the
-  code rules alone), the ledger's 4 entries and 3 anchors, the verifier command and its output, the bridge fee, the
-  1Click top-up and the gas, the NEAR technology the run used, and what the run does not show. "Testnet and mainnet"
-  links it, the README's Documentation table lists it, and the Docs Center has 35 pages.
+  ledger of 6 entries. For spend 2: its table at a glance, what to open in a browser, the seven checks with the
+  values each one read, how the payment was decided (the two proposals that `mandate.payee_mismatch` refused and why,
+  then the code rules alone), the ledger's 4 entries and 3 anchors, the verifier command and its output, the bridge
+  fee, the 1Click top-up and the gas, the NEAR technology the run used, and what the runs do not show. "Testnet and
+  mainnet" links it, the README's Documentation table lists it, and the Docs Center has 35 pages.
 - A README visual of the mainnet payout, `docs/assets/readme/mainnet-payout.svg`: 1.00 USDC burned on NEAR mainnet,
   0.9976 USDC arrived on Base, the gold bar with the coin at the Base end and ticks 01 to 07, "A test, not a customer
-  payment" and the date. It draws spend 2, and its heading, title and last line say so. It is one self-contained SVG with real text in system fonts, in the site's paper, ink and
-  gold, and its alt text says all of it. The README's S1 section shows it above a table of what to do and what you
-  see (the live button, nearblocks, Basescan, the verifier with the ledger file, the docs page) and a list of the
-  NEAR technology the run used and how.
+  payment" and the date. It draws spend 2, and its heading, title and last line say so. It is one self-contained SVG
+  with real text in system fonts, in the site's paper, ink and gold, and its alt text says all of it. The README's S1
+  section shows it above a table of what to do and what you see (the live button, nearblocks, Basescan, the verifier
+  with the ledger file, the docs page) and a list of the NEAR technology the run used and how.
 
 - `JUDGES.md`, a page for judges and screeners whose first part takes two minutes: the mechanism in one sentence
   (the model proposes, code rules decide, the contract checks again), three links to open (the demo vault's proof

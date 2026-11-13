@@ -371,7 +371,7 @@ export const START: readonly DocPage[] = [
     title: "Mainnet payouts, step by step",
     nav: "Mainnet payouts",
     description:
-      "Two test payouts from NEAR mainnet to the owner's own Base wallet, one by code rules alone, one by an attested model: the checks and how to verify them.",
+      "Two test payouts from NEAR mainnet to the owner's own Base wallet, one by code rules alone, one by an attested model and code rules: how to verify them.",
     lede: "On 2026-11-13 the vault v0.probarion.near paid the owner's own Base wallet twice, as tests of the cross-chain path, not customer payments. Spend 2 burned 1.00 USDC, decided by code rules alone, and 0.9976 USDC arrived. Spend 3 burned 0.25 USDC, proposed by an attested model and allowed by the code rules, and 0.2476 USDC arrived. Every step can be checked from public data.",
     type: "explanation",
     audiences: ["evaluator", "developer", "partner"],

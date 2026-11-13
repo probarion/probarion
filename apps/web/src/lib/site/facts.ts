@@ -198,8 +198,12 @@ export const BASE_TX = {
   basePayout: baseTxFact("0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71"),
 } as const;
 
-/** A piece of a line of copy: text (backticks are code), or a link. An href that starts with # stays on the page. */
-export type CopyPart = string | { label: string; href: string };
+/**
+ * A piece of a line of copy: text (backticks are code), or a link. An href that starts with # stays on the page. A
+ * link's `sr` is read by a screen reader after its label and not shown, where the label alone would not tell the link
+ * from another on the page.
+ */
+export type CopyPart = string | { label: string; href: string; sr?: string };
 
 export const HERO = {
   eyebrow: "A mandate layer for AI agents on NEAR",
@@ -213,7 +217,7 @@ export const HERO = {
   verify: "Verify it yourself",
   /**
    * One line under the buttons: who it is for, what runs where, the mainnet vault's two transactions of 2026-11-11, and
-   * its payout to Base, told in the #mainnet section below.
+   * its two payouts to Base, told in the #mainnet section below.
    */
   fineprint: [
     "For teams whose AI agent pays supplier invoices, and for ",
@@ -223,7 +227,7 @@ export const HERO = {
     ", ",
     { label: "a refusal on mainnet", href: MAINNET_TX.refusal.url },
     " and ",
-    { label: "a test payout to Base", href: "#mainnet" },
+    { label: "two test payouts to Base", href: "#mainnet" },
     ". You need no account to read the chain or run the verifier.",
   ] satisfies readonly CopyPart[],
   paid: {
@@ -979,7 +983,12 @@ export const MAINNET_PAYOUT = {
     foot: "Without the ledger file, checks c and d fail: the chain alone does not show the decision.",
     output: "The run's output",
     link: { label: "Run the verifier on a sample ledger", href: "#verify" },
-    docs: { label: "The payout, step by step", href: "/docs/start/mainnet-payout" },
+    /** Each payout links its own section of the docs page, the heading "Spend {spendId} at a glance". */
+    docs: {
+      label: "The payout, step by step",
+      href: "/docs/start/mainnet-payout",
+      section: "spend-{spendId}-at-a-glance",
+    },
   },
   /**
    * An earlier payout, folded under the newest one in a closed details. Its summary holds the stone's heading
@@ -1005,6 +1014,11 @@ export const MAINNET_PAYOUT = {
   numbers: ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"],
   and: " and ",
   comma: ", ",
+  /**
+   * Read by a screen reader after the label of a link or a button that is one payout's own (its transactions, its
+   * files, its docs section, its button) and not shown, so the same label on two payouts gives two names (WCAG 2.4.9).
+   */
+  own: " for spend {spendId}",
 } as const;
 
 // --- the console screenshots ----------------------------------------------------------------------

@@ -67,6 +67,11 @@ export interface MainnetPayoutClientProps {
   timing: string;
   foot: string;
   bridge: string;
+  /**
+   * Read by a screen reader after the button's label, and not shown: the payout it reads, so the buttons of two payouts
+   * have two names.
+   */
+  own: string;
 }
 
 export function MainnetPayoutClient({
@@ -80,6 +85,7 @@ export function MainnetPayoutClient({
   timing,
   foot,
   bridge,
+  own,
 }: MainnetPayoutClientProps) {
   const atRest = () => byId<Shown>(() => "recorded");
   const restValues = () =>
@@ -232,6 +238,7 @@ export function MainnetPayoutClient({
           onClick={() => void run()}
         >
           {busy ? copy.run.buttonBusy : ran ? copy.run.buttonAgain : copy.run.button}
+          <span className="sr-only">{own}</span>
         </button>
         {noScript}
       </div>

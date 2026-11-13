@@ -40,6 +40,12 @@ const link = (t: TxFact): CopyPart => ({ label: t.label, href: t.url });
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const sum = (xs: readonly string[]) => xs.reduce((a, x) => a + BigInt(x), 0n);
 
+/**
+ * What a screen reader reads after the label of a link or a button that is this payout's own, and the page does not
+ * show: two payouts give the same label two names.
+ */
+export const ownName = (p: Payout): string => fill(C.own, { spendId: p.spendId });
+
 // --- the section head -----------------------------------------------------------------------------
 
 export interface SectionHead {
@@ -186,16 +192,17 @@ function readTx(p: Payout, read: ReadName): TxFact | null {
 /** What a check rests on besides the chain: the request type at the vault's build, the ledger file, the bridge's status. */
 function sourcesMore(p: Payout, id: PayoutCheckId): CopyPart[] {
   const M = C.sourcesMore;
+  const sr = ownName(p);
   if (id === "noaddr") {
     const href = repoFileUrl("contracts/vault/src/types.rs", p.build.commit);
-    return [M.noaddr.lead, { label: M.noaddr.label, href }];
+    return [M.noaddr.lead, { label: M.noaddr.label, href, sr }];
   }
   if (id === "anchor")
-    return [M.anchor.lead, { label: M.anchor.label, href: repoFileUrl(p.files.ledger) }];
+    return [M.anchor.lead, { label: M.anchor.label, href: repoFileUrl(p.files.ledger), sr }];
   if (id === "base") {
     return [
       fill(M.base.lead, { spendId: p.spendId }),
-      { label: M.base.label, href: repoFileUrl(p.files.poa) },
+      { label: M.base.label, href: repoFileUrl(p.files.poa), sr },
     ];
   }
   return [];
@@ -216,7 +223,9 @@ export function checkSources(p: Payout, id: PayoutCheckId): CopyPart[] {
     if (i > 0) parts.push(i === ordered.length - 1 ? C.and : C.comma);
     const tx = readTx(p, read);
     parts.push(
-      tx === null ? `\`${C.reads.names[read]}\`` : { label: C.reads.names[read], href: tx.url },
+      tx === null
+        ? `\`${C.reads.names[read]}\``
+        : { label: C.reads.names[read], href: tx.url, sr: ownName(p) },
     );
   });
   return [...parts, ...sourcesMore(p, id)];
@@ -324,14 +333,17 @@ function sealText(seq: number, count: number): string {
   return fill(t, { seq, from: 0, to: count - 1 });
 }
 
-/** The decision trail of one payout: the setup, the ledger entries in order, the anchors as seals. */
+/**
+ * The decision trail of one payout: the setup, the ledger entries in order, the anchors as seals. The trail draws this
+ * payout's entries and anchors; the summary counts the entries of the ledger file it links and the anchors on chain,
+ * as the payout's verifier run read them, since a later payout's file holds the earlier payouts' entries too.
+ */
 export function trailView(p: Payout): TrailView {
   const refused = refusedProposals(p);
   const spur = new Set(refused.map((e) => e.seq));
   const lastCovered = Math.max(0, ...p.seals.map((s) => s.count)) - 1;
-  const lastSeq = p.trail.at(-1)?.seq ?? 0;
-  const S = lastCovered >= lastSeq ? C.trail.summary : C.trail.summaryPartial;
-  const sumVars = { entries: p.trail.length, anchors: p.seals.length, last: lastCovered };
+  const S = lastCovered >= p.verify.entries - 1 ? C.trail.summary : C.trail.summaryPartial;
+  const sumVars = { entries: p.verify.entries, anchors: p.verify.anchors, last: lastCovered };
   return {
     title: C.trail.title,
     setup: setupLine(p),
@@ -354,7 +366,7 @@ export function trailView(p: Payout): TrailView {
     })),
     summary: [
       fill(S.lead, sumVars),
-      { label: S.label, href: repoFileUrl(p.files.ledger) },
+      { label: S.label, href: repoFileUrl(p.files.ledger), sr: ownName(p) },
       fill(S.tail, sumVars),
     ],
   };
@@ -370,12 +382,12 @@ export interface VerifyView {
   counts: string;
   attested: string | null;
   foot: string;
-  /** The run's text output in the evidence folder. */
-  output: { label: string; href: string };
+  /** The run's text output in the evidence folder; `sr` names the payout for a screen reader. */
+  output: { label: string; href: string; sr: string };
   /** To the #verify section, which lists the checks. */
   link: { label: string; href: string };
-  /** The step-by-step docs page. */
-  docs: { label: string; href: string };
+  /** The payout's own section of the step-by-step docs page. */
+  docs: { label: string; href: string; sr: string };
 }
 
 /**
@@ -413,8 +425,12 @@ export function verifyView(p: Payout, payouts: readonly Payout[]): VerifyView {
     }),
     attested: attested === 0 ? null : fill(attested === 1 ? A.one : A.many, { attested }),
     foot: C.verify.foot,
-    output: { label: C.verify.output, href: repoFileUrl(p.files.verify) },
+    output: { label: C.verify.output, href: repoFileUrl(p.files.verify), sr: ownName(p) },
     link: C.verify.link,
-    docs: C.verify.docs,
+    docs: {
+      label: C.verify.docs.label,
+      href: `${C.verify.docs.href}#${fill(C.verify.docs.section, { spendId: p.spendId })}`,
+      sr: ownName(p),
+    },
   };
 }

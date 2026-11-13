@@ -99,6 +99,7 @@ import { TERMS_PAGE } from "@/lib/site/ops-copy";
 import { ledgerRows, verifyTamper } from "@/lib/site/tamper";
 import fixture from "@/lib/site/valid-snapshot.json";
 import { directives, importsOf, resolveLocal, toPosix, walk } from "./deploy-scan";
+import { linkProblem } from "./docs-helpers";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = join(WEB, "..", "..");
@@ -320,7 +321,7 @@ describe("what an offline run shows", () => {
 
   it("promises only what needs no account today", () => {
     expect(partsText(HERO.fineprint)).toContain(
-      "Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a test payout to Base. You need no account to read the chain or run the verifier.",
+      "Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and two test payouts to Base. You need no account to read the chain or run the verifier.",
     );
   });
 
@@ -699,7 +700,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     );
     expect(HERO.note).toContain("test tokens");
     expect(partsText(HERO.fineprint)).toContain(
-      "one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a test payout to Base",
+      "one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and two test payouts to Base",
     );
   });
 
@@ -2425,7 +2426,7 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
 
   it("says who it is for and what runs where in one line under the buttons", () => {
     expect(partsText(HERO.fineprint)).toBe(
-      "For teams whose AI agent pays supplier invoices, and for developers who want to give an agent money without the keys. Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a test payout to Base. You need no account to read the chain or run the verifier.",
+      "For teams whose AI agent pays supplier invoices, and for developers who want to give an agent money without the keys. Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and two test payouts to Base. You need no account to read the chain or run the verifier.",
     );
     const html = renderToStaticMarkup(createElement(Home));
     const lines = [...html.matchAll(/<p class="[^"]*fineprint[^"]*">([\s\S]*?)<\/p>/g)];
@@ -2645,7 +2646,13 @@ describe("the mainnet payout (#mainnet)", () => {
     expect(e).toContain("quote not verified offline");
     expect(view.foot).toBe(MAINNET_PAYOUT.verify.foot);
     expect(view.link.href).toBe("#verify");
-    expect(view.docs.href).toBe("/docs/start/mainnet-payout");
+    // Each payout links its own section of the docs page, and each heading it names is on that page.
+    expect(view.docs.href).toBe("/docs/start/mainnet-payout#spend-2-at-a-glance");
+    for (const q of PAYOUTS) {
+      const docs = verifyView(q, PAYOUTS).docs;
+      expect(docs.href, q.id).toBe(`/docs/start/mainnet-payout#spend-${q.spendId}-at-a-glance`);
+      expect(linkProblem(docs.href, ""), q.id).toBeNull();
+    }
     // The output it links is the file this test reads.
     expect(view.output.href.endsWith(`/blob/main/${S1_DIR.join("/")}/verify-2026-11-13.txt`)).toBe(
       true,
@@ -2768,6 +2775,28 @@ describe("the mainnet payout (#mainnet)", () => {
     expect(t.sealsLabel).toBe("Anchors on chain");
     expect(partsText(t.setup)).toBe(
       "Set up the same day: a 1Click top-up of 1.50 USDC (DWUMvM58…u6mw), the ledger key (CFhtVrCA…68jb) and mandate 2 (77cC8nMq…483g).",
+    );
+  });
+
+  it("counts in each trail's summary the entries of the ledger file it links and the anchors, as its verifier run read them", () => {
+    for (const p of PAYOUTS) {
+      const out = text(ROOT, ...p.files.verify.split("/"));
+      const [, entries, anchors] = /^entries (\d+), anchors (\d+),/m.exec(out) ?? [];
+      const lines = text(ROOT, ...p.files.ledger.split("/"))
+        .split(/\r?\n/)
+        .filter((l) => l.trim() !== "");
+      expect(String(lines.length), p.id).toBe(entries);
+      expect([p.verify.entries, p.verify.anchors].map(String), p.id).toEqual([entries, anchors]);
+      expect(partsText(trailView(p).summary), p.id).toBe(
+        `${entries} entries, hash-linked and signed in the ledger file, all covered by ${anchors} anchors on chain.`,
+      );
+    }
+    // Spend 3's trail draws entries 4 and 5 and anchor 4; its summary counts the whole file it links.
+    const s3 = PAYOUTS.find((p) => p.spendId === 3) as Payout;
+    expect(trailView(s3).items.map((i) => i.seq)).toEqual([4, 5]);
+    expect(trailView(s3).seals.map((s) => s.seq)).toEqual([4]);
+    expect(partsText(trailView(s3).summary)).toBe(
+      "6 entries, hash-linked and signed in the ledger file, all covered by 4 anchors on chain.",
     );
   });
 
@@ -2963,8 +2992,11 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
       expect(at.match(/<button type="button" class="[^"]*_run_[^"]*" hidden="">/g), id).toEqual([
         expect.stringContaining("_run_"),
       ]);
+      // Its name says which payout it reads, for a screen reader: the words after the label are not shown.
       expect(at, id).toMatch(
-        /<button type="button" class="[^"]*_run_[^"]*" hidden="">Read the chain now<\/button>/,
+        new RegExp(
+          `<button type="button" class="[^"]*_run_[^"]*" hidden="">Read the chain now<span class="sr-only"> for spend ${run.payout.spendId}</span></button>`,
+        ),
       );
       expect(at, id).toContain("<noscript><p class=");
       expect(at, id).toMatch(/aria-live="polite" aria-atomic="true" data-tone="ok"/);
@@ -3041,7 +3073,9 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
       // Inside the fold, after the summary: its own stone, checks and button, its trail and its verdict.
       const body = at.slice(at.indexOf("</summary>"));
       expect(body, p.id).toMatch(/<div class="[^"]*_stone_/);
-      expect(body, p.id).toMatch(/>Read the chain now<\/button>/);
+      expect(body, p.id).toMatch(
+        />Read the chain now<span class="sr-only">[^<]*<\/span><\/button>/,
+      );
       expect(body, p.id).toContain(trailView(p).title);
     }
     // Spend 2's summary, word for word.
@@ -3146,6 +3180,40 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
       expect(newest).toContain(`href="${row.tx.url}"`);
       expect(section.split(`href="${row.tx.url}"`).length - 1).toBe(1);
     }
+  });
+
+  it("gives each link one target per name, and each payout's button its own name, with words a screen reader reads (WCAG 2.4.9)", () => {
+    // A name as a screen reader reads it: the arrows are hidden, and the words kept for it are read.
+    const nameOf = (inner: string) =>
+      textContent(inner.replace(/<span aria-hidden="true">[^<]*<\/span>/g, ""))
+        .replace(/\s+/g, " ")
+        .trim();
+    const targets = new Map<string, Set<string>>();
+    for (const a of section.matchAll(/<a\b[^>]*\bhref="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)) {
+      const name = nameOf(a[2] ?? "");
+      targets.set(name, (targets.get(name) ?? new Set<string>()).add(a[1] ?? ""));
+    }
+    expect(targets.size).toBeGreaterThan(20);
+    expect([...targets].filter(([, hrefs]) => hrefs.size > 1).map(([name]) => name)).toEqual([]);
+    const own = (p: Payout) => fill(C.own, { spendId: p.spendId });
+    for (const p of PAYOUTS) {
+      const v = verifyView(p, PAYOUTS);
+      const ledger = [
+        ...(targets.get(`${C.trail.summary.label}${own(p)} (opens in a new tab)`) ?? []),
+      ];
+      expect(ledger, p.id).toHaveLength(1);
+      expect(ledger[0]?.endsWith(`/blob/main/${p.files.ledger}`), p.id).toBe(true);
+      expect(targets.get(`${v.output.label}${own(p)} (opens in a new tab)`), p.id).toEqual(
+        new Set([v.output.href]),
+      );
+      expect(targets.get(`${v.docs.label}${own(p)}`), p.id).toEqual(new Set([v.docs.href]));
+    }
+    // The words are not shown: the visible label stays as the copy has it.
+    expect(section).toContain(`${C.trail.summary.label}<span class="sr-only">${own(P)}</span>`);
+    const buttons = [...section.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((b) =>
+      nameOf(b[1] ?? ""),
+    );
+    expect(buttons).toEqual(ORDER.map((p) => `${C.run.button}${own(p)}`));
   });
 
   it("keeps the client component to react and the payout readers", () => {

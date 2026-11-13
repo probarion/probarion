@@ -7,6 +7,7 @@ import {
   checkSources,
   foldView,
   newestFirst,
+  ownName,
   type StoneEnd,
   type StoneView,
   sectionHead,
@@ -36,6 +37,11 @@ const TONE: Readonly<Record<Tone, string | undefined>> = {
   bad: m.toneBad,
 };
 
+/** The words a screen reader reads after a link's label, and the page does not show. */
+function Sr({ text }: { text?: string }) {
+  return text === undefined ? null : <span className="sr-only">{text}</span>;
+}
+
 /**
  * A line of copy with links in it: a place on this page or of the site stays in the tab, a transaction or a file opens
  * in a new one. A short hash keeps the site's mono face and stays whole while it fits; a link in words wraps between
@@ -53,6 +59,7 @@ function Parts({ parts }: { parts: readonly CopyPart[] }) {
       return (
         <a key={key} className={s.link} href={p.href}>
           {p.label}
+          <Sr text={p.sr} />
           {NBSP}
           <span aria-hidden="true">→</span>
         </a>
@@ -65,6 +72,7 @@ function Parts({ parts }: { parts: readonly CopyPart[] }) {
         href={p.href}
       >
         {p.label}
+        <Sr text={p.sr} />
         {NBSP}
         <span aria-hidden="true">↗</span>
       </ExternalLink>
@@ -102,10 +110,11 @@ function StoneIntro({ view }: { view: StoneView }) {
 }
 
 /** An internal link with its arrow. */
-function Go({ link }: { link: { label: string; href: string } }) {
+function Go({ link }: { link: { label: string; href: string; sr?: string } }) {
   return (
     <a className={s.link} href={link.href}>
       {link.label}
+      <Sr text={link.sr} />
       {NBSP}
       <span aria-hidden="true">→</span>
     </a>
@@ -224,6 +233,7 @@ function Verify({ view }: { view: VerifyView }) {
         <li>
           <ExternalLink className={s.link} href={view.output.href}>
             {view.output.label}
+            <Sr text={view.output.sr} />
             {NBSP}
             <span aria-hidden="true">↗</span>
           </ExternalLink>
@@ -293,6 +303,7 @@ function PayoutBody({ run, aside }: { run: RecordedRun; aside: boolean }) {
           timing={stone.timing}
           foot={C.run.foot}
           bridge={C.stone.bridge}
+          own={ownName(p)}
         />
       </div>
       <div className={m.lower}>
