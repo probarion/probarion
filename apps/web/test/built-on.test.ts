@@ -1,7 +1,7 @@
 // The landing's "Built on" section (components/site/BuiltOn.tsx): what Probarion is built on, each with its evidence,
-// where it ships, and the trademark notices. Every fact is held to the file it comes from, every link is checked
-// offline (npmjs.com answers a script with a bot check, so nothing here fetches), and each third-party logo is held to
-// its owner's file.
+// the rest of its stack, where to get it, and the trademark footer. Every fact is held to the file it comes from, every
+// link is checked offline (npmjs.com answers a script with a bot check, so nothing here fetches), and each third-party
+// logo is held to its owner's file.
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -48,10 +48,12 @@ const jsonl = (...p: string[]) =>
     );
 
 const section = () => renderToStaticMarkup(createElement(BuiltOn));
+const SITE_CSS = text(WEB, "src", "components", "site", "site.module.css");
+const SHIPS_CSS = text(WEB, "src", "components", "site", "ships.module.css");
 /** The text a visitor reads: inline tags join their words, block tags part them. */
 const visibleText = (html: string) =>
   html
-    .replace(/<\/?(?:a|code|span)\b[^>]*>/g, "")
+    .replace(/<\/?(?:a|code|span|wbr)\b[^>]*>/g, "")
     .replace(/<[^>]+>/g, " ")
     .replace(/&#x27;/g, "'")
     .replace(/&quot;/g, '"')
@@ -59,6 +61,16 @@ const visibleText = (html: string) =>
     .replace(/\s+/g, " ")
     .trim();
 const hrefs = (html: string) => [...html.matchAll(/\shref="([^"]*)"/g)].map((m) => m[1] ?? "");
+/**
+ * The inside of each card: a CSS module names the class `ship` as `_ship_<hash>`. A card holds a list of its own (the
+ * exact names), so each card is read up to the end of its link row, its last part.
+ */
+const shipCards = (html: string) =>
+  [
+    ...html.matchAll(
+      /<li class="(?:[^"]*[\s_])?ship(?:[\s_][^"]*)?">(.*?<div class="[^"]*shipGo[^"]*">.*?<\/div>)<\/li>/g,
+    ),
+  ].map((m) => m[1] ?? "");
 const anchors = (html: string) => [...html.matchAll(/<a\s[^>]*>.*?<\/a>/g)].map((m) => m[0]);
 /** Every `@media <query> {` block of a stylesheet with exactly that query, joined. */
 const mediaBlocks = (css: string, query: string) => {
@@ -85,6 +97,13 @@ function strings(value: unknown): string[] {
   if (value !== null && typeof value === "object") return Object.values(value).flatMap(strings);
   return [];
 }
+
+/** A card's exact names as a visitor reads them: no backticks, one space apart. */
+const idsText = (ids: readonly string[]) => ids.map((id) => id.replace(/`/g, "")).join(" ");
+
+/** The section's trademark text as one string, as it stood before the footer set it as a lead and notices. */
+const TRADEMARK =
+  "NEAR, NEAR Intents, NEAR AI Cloud, USDC, Base and Solana are trademarks of their respective owners. They are named to say what Probarion is built on or is designed to pay through, not to imply an endorsement. npm is a registered trademark of npm, Inc. Model Context Protocol and MCP are trademarks of LF Projects, LLC. GitHub and the Invertocat logo are trademarks of GitHub, Inc. Chrome and Chrome Web Store are trademarks of Google LLC. Intel is a trademark of Intel Corporation or its subsidiaries. NVIDIA is a trademark of NVIDIA Corporation.";
 
 /** The words that would claim a relationship Probarion does not have. */
 const CLAIM_WORDS =
@@ -148,51 +167,84 @@ describe("the built-on section", () => {
         LINKS.demoVerifyOnlineA8,
       ],
     ]);
-    expect(BUILT_ON.shipsTitle).toBe("Ships through");
+    expect(BUILT_ON.also.title).toBe("Also in the stack");
+    expect(BUILT_ON.also.items.map((i) => i.name)).toEqual([
+      "NEAR Intents",
+      "Intel TDX and NVIDIA NRAS",
+    ]);
+    // The heading says what the cards are for, and reads on its own in a screen reader's list of headings. Its id
+    // names the cards' region.
+    expect(BUILT_ON.shipsTitle).toBe("Where to get Probarion");
+    expect(BUILT_ON.shipsId).toBe("get-probarion");
     expect(
-      BUILT_ON.ships.map(({ id, name, tag, icon, link }) => ({
+      BUILT_ON.ships.map(({ id, name, kind, icon, ids, idsLabel, meta, link }) => ({
         id,
         name,
-        tag,
+        kind,
         icon,
+        ids,
+        idsLabel,
+        meta,
         label: link.label,
         href: link.href,
       })),
     ).toEqual([
+      // Each link's name says what it opens and whose, on its own, as a screen reader's list of links reads it.
       {
         id: "npm",
         name: "npm public registry",
-        tag: "Packages",
+        kind: "Packages",
         icon: "npm",
+        ids: ["`probarion`", "`@probarion/sdk`", "`@probarion/mcp`", "`@probarion/core`"],
+        idsLabel: "Package names",
+        meta: "Version 0.1.1",
         label: "@probarion/sdk on npm",
         href: "https://www.npmjs.com/package/@probarion/sdk",
       },
-      // Each link's name says where it goes on its own, as a screen reader's list of links reads it.
+      // The address is the registry's search for the server's name: Probarion in the registry, not an entry page.
       {
         id: "mcp-registry",
         name: "Official MCP Registry",
-        tag: "MCP server",
+        kind: "MCP server",
         icon: "mcp",
-        label: "The MCP Registry entry",
+        ids: ["`io.github.probarion/probarion`"],
+        idsLabel: "Server name",
+        meta: "Version 0.1.1, from `@probarion/mcp`",
+        label: "Probarion in the MCP Registry",
         href: "https://registry.modelcontextprotocol.io/?q=io.github.probarion/probarion",
       },
       {
         id: "github",
         name: "GitHub",
-        tag: "Source and CI",
+        kind: "Source and CI",
         icon: "github",
-        label: "probarion/probarion on GitHub",
+        ids: ["`probarion/probarion`"],
+        idsLabel: "Repository",
+        meta: "MIT License",
+        label: "Probarion on GitHub",
         href: "https://github.com/probarion/probarion",
       },
+      // The store is the place and a Chrome extension is what ships there (Chrome, not any browser: see the store's
+      // facts below); the listing's name is a name, not code.
       {
         id: "chrome-web-store",
-        name: "Probarion extension",
-        tag: "Chrome extension",
+        name: "Chrome Web Store",
+        kind: "Chrome extension",
         icon: "probarion",
-        label: "The Chrome Web Store listing",
+        ids: ["Probarion"],
+        idsLabel: "Listing name",
+        meta: "Version 0.1.0",
+        label: "Probarion's store listing",
         href: LINKS.chromeWebStore,
       },
     ]);
+    // Every card names what it holds in the same shape: the names, then one line under them. Each name is one whole
+    // identifier in backticks or one plain name: the card sets each in one piece (ShipId in BuiltOn.tsx).
+    for (const ship of BUILT_ON.ships) {
+      expect(ship.ids.length, ship.id).toBeGreaterThan(0);
+      for (const id of ship.ids) expect(id, ship.id).toMatch(/^(`[^`]+`|[^`]+)$/);
+      expect(ship.meta, ship.id).toMatch(/^(Version \d+\.\d+\.\d+|MIT License)\b/);
+    }
     // The LINKS test loop covers every address the section links outside this site.
     expect(LINKS).toMatchObject({
       npmSdk: BUILT_ON.ships[0].link.href,
@@ -216,23 +268,52 @@ describe("the built-on section", () => {
     expect(out).not.toContain("NEAR Protocol");
     expect(section()).toContain('aria-label="NEAR Protocol"');
     expect(out).toContain("The model that advises NEAR AI Cloud cloud.near.ai");
+    // Each card in its order: what ships there, the place, what you get, the exact names, the version, the link.
     for (const ship of BUILT_ON.ships) {
-      expect(out).toContain(`${ship.name} ${ship.tag}`);
-      expect(out).toContain(ship.body.replace(/`/g, ""));
-      expect(out).toContain(ship.link.label);
+      const meta = ship.meta.replace(/`/g, "");
+      expect(out).toContain(
+        `${ship.kind} ${ship.name} ${ship.body} ${idsText(ship.ids)} ${meta} ${ship.link.label}`,
+      );
     }
-    expect(out).toContain(BUILT_ON.also.replace(/`/g, ""));
-    expect(out.endsWith(BUILT_ON.trademark)).toBe(true);
-    expect(out.indexOf(BUILT_ON.also.replace(/`/g, ""))).toBeLessThan(
-      out.indexOf(BUILT_ON.trademark),
-    );
+    // The stack note, the card's last row, each entry's name before its sentence.
+    const entries = BUILT_ON.also.items.map((i) => `${i.name} ${i.body.replace(/`/g, "")}`);
+    const stack = `${BUILT_ON.also.title} ${entries.join(" ")}`;
+    expect(out).toContain(stack);
+    // The footer last: its label, the lead and every notice, in order.
+    const { label, lead, notices } = BUILT_ON.trademark;
+    const legal = `${label} ${lead} ${notices.join(" ")}`;
+    expect(out.endsWith(legal)).toBe(true);
+    // Built on, then the rest of the stack, then where to get it, then the legal text.
+    const last = BUILT_ON.rows.at(-1)?.links.at(-1)?.label ?? "";
+    expect(out.indexOf(last)).toBeLessThan(out.indexOf(stack));
+    expect(out.indexOf(stack)).toBeLessThan(out.indexOf(BUILT_ON.shipsTitle));
+    expect(out.indexOf(BUILT_ON.shipsTitle)).toBeLessThan(out.indexOf(BUILT_ON.ships[0].kind));
+    expect(out.indexOf(BUILT_ON.ships[3].link.label)).toBeLessThan(out.indexOf(legal));
+  });
+
+  it("keeps the code spans and the dates of the stack note whole, and lets the MCP server's name break at its slash", () => {
+    const html = section();
+    // Without these, a date breaks at a hyphen, and `verify --online` at its space or its hyphens.
+    expect(html).toMatch(/<code class="[^"]*nowrap[^"]*">verify --online<\/code>/);
+    expect(html).toMatch(/<span class="[^"]*nowrap[^"]*">2026-11-13<\/span>/);
+    expect(SHIPS_CSS).toMatch(/\n\.nowrap {\s*white-space: nowrap;\s*}/);
+    // On the narrowest card the 29-character name breaks at its slash, not mid-word. The copy itself holds no markup.
+    expect(html).toContain("<code>io.github.probarion/<wbr/>probarion</code>");
+    for (const s of strings(BUILT_ON)) expect(s, s).not.toMatch(/[<&]/);
+    // Each name is an item of its own list, which moves to the next line whole and breaks inside itself when it is
+    // wider than the card.
+    expect(
+      html.match(/<ul class="[^"]*shipIds[^"]*" aria-label="[^"]+" role="list">/g),
+    ).toHaveLength(BUILT_ON.ships.length);
+    expect(rule(SHIPS_CSS, ".shipIds")).toMatch(/display: flex;\s*flex-wrap: wrap;/);
+    expect(rule(SHIPS_CSS, ".shipIds li")).toContain("max-width: 100%;");
   });
 });
 
 describe("the built-on facts", () => {
   const prose = README.replace(/\s+/g, " ");
 
-  it("NEAR: the vault and the factory on testnet, one small vault on mainnet with a NEAR payment, a Base payout and a refusal", () => {
+  it("NEAR: the vault and the factory on testnet, one small vault on mainnet with a NEAR payment, two Base payouts and a refusal", () => {
     const [near] = BUILT_ON.rows;
     expect(near.body).toBe(
       "Each vault is a NEAR contract that holds its USDC and checks every payment against the owner's mandate.",
@@ -243,7 +324,7 @@ describe("the built-on facts", () => {
     expect(near.checks).toEqual([
       "The vault and the factory run on NEAR testnet",
       "One small vault on mainnet since 2026-11-11, `v0.probarion.near`",
-      "On mainnet: a NEAR payment, a Base payout and a refusal, all on chain",
+      "On mainnet: a NEAR payment, two Base payouts and a refusal, all on chain",
     ]);
     expect(readmeRow("Vault contract")).toContain("**Shipped on NEAR testnet**");
     expect(readmeRow("Factory contract")).toContain("**Shipped on NEAR testnet**");
@@ -256,12 +337,15 @@ describe("the built-on facts", () => {
     expect(mainnet).toContain("the POA bridge released 0.9976 USDC on Base");
     expect(mainnet).toContain("1.00 USDC once, to the owner's own Base address");
     expect(mainnet).toContain("a labeled test of the cross-chain path");
+    expect(mainnet).toContain("0.25 USDC once, to the same address");
+    expect(mainnet).toContain("the POA bridge released 0.2476 USDC on Base");
+    expect(mainnet).toContain("The ledger now holds 6 entries, anchored 4 times");
     expect(near.note).toBe(
-      "The 2026-11-13 Base payout, 1.00 USDC, was a rules-only test to the owner's own address.",
+      "Tests to the owner's Base address: one rules-only, one on an attested model's proposal.",
     );
     // The same words as the status list's row, which is held to the README in site-facts.test.ts.
     expect(statusOf("Mainnet vault").pill).toBe(
-      "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
+      "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
     );
     const record = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
       vault_v0: { account_id: string };
@@ -272,14 +356,14 @@ describe("the built-on facts", () => {
     ).toContain("## The mainnet vault");
   });
 
-  it("NEAR AI Cloud: 7 published attested decisions that pass A1 to A7 and O1 and O2, two paid invoices, and the image not pinned", () => {
+  it("NEAR AI Cloud: 7 published attested decisions that pass A1 to A7 and have passed O1 and O2, two paid invoices, and the image not pinned", () => {
     const [, ai] = BUILT_ON.rows;
     expect(ai.body).toBe(
       "An optional private model, run in a TEE, reads the invoice and proposes. Code decides, and the contract has the last word.",
     );
     expect(ai.checks).toEqual([
       "7 published attested decisions on testnet: 2 on the Canary, 5 by Payables",
-      "All 7 pass A1 to A7 offline, and all 7 passed O1 and O2 online",
+      "All 7 pass A1 to A7 offline and have passed O1 and O2 online",
       "On 2026-11-12 Payables paid two invoices on its own with it: 2 test USDC each",
     ]);
     const row = readmeRow("NEAR AI Cloud adapter");
@@ -293,6 +377,8 @@ describe("the built-on facts", () => {
     expect(row).toContain(
       "the four attested decisions the demo vault held then, entries 10 to 13, passed O1 and O2",
     );
+    // "have passed O1 and O2": the Canary's 2 on 2026-11-11 and the demo vault's 5 in the 16:13 UTC run of 2026-11-12.
+    expect(row).toContain("passed O1 and O2 on all five, entry 15 included");
     expect(row).toContain("the vault paid 2.00 test USDC as spend 4");
     expect(row).toContain(
       "later that day the same happened for INV-2010, which the vault paid as spend 5",
@@ -344,19 +430,32 @@ describe("the built-on facts", () => {
     );
   });
 
-  it("npm, the MCP Registry, GitHub and the store: the versions the packages, server.json and the README give", () => {
+  it("npm, the MCP Registry, GitHub and the store: the names and versions the packages, server.json and the README give", () => {
     const [npm, mcp, github, store] = BUILT_ON.ships;
+    // The body names the packages in the order of the names under it: the CLI, the SDK, the MCP server, the core.
     expect(npm.body).toBe(
-      "`probarion`, `@probarion/core`, `@probarion/sdk` and `@probarion/mcp` 0.1.1, with npm provenance.",
+      "Install the CLI, the SDK, the MCP server and the core they share, each with npm provenance.",
     );
-    for (const dir of ["cli", "core", "sdk", "mcp"]) {
-      const pkg = JSON.parse(text(ROOT, "packages", dir, "package.json")) as {
-        name: string;
-        version: string;
-      };
-      expect(npm.body, pkg.name).toContain(`\`${pkg.name}\``);
-      expect(pkg.version, pkg.name).toBe("0.1.1");
-    }
+    const pkgs = ["cli", "sdk", "mcp", "core"].map(
+      (dir) =>
+        JSON.parse(text(ROOT, "packages", dir, "package.json")) as {
+          name: string;
+          version: string;
+          dependencies?: Record<string, string>;
+        },
+    );
+    expect(pkgs.map((p) => p.name)).toEqual([
+      "probarion",
+      "@probarion/sdk",
+      "@probarion/mcp",
+      "@probarion/core",
+    ]);
+    expect(npm.ids).toEqual(pkgs.map((p) => `\`${p.name}\``));
+    for (const pkg of pkgs) expect(pkg.version, pkg.name).toBe("0.1.1");
+    expect(npm.meta).toBe("Version 0.1.1");
+    // "The core they share": the CLI, the SDK and the MCP server each depend on @probarion/core.
+    for (const pkg of pkgs.slice(0, 3))
+      expect(Object.keys(pkg.dependencies ?? {}), pkg.name).toContain("@probarion/core");
     const release = readmeRow("npm release 0.1.1");
     expect(release).toContain(
       "`@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` 0.1.1, published from the tag `sdk-v0.1.1`",
@@ -375,9 +474,13 @@ describe("the built-on facts", () => {
       identifier: "@probarion/mcp",
       version: "0.1.1",
     });
+    // The registry by its name, not "the" directory of MCP servers; the npm package is the one its entry names.
     expect(mcp.body).toBe(
-      "Lists `io.github.probarion/probarion` 0.1.1, the server in `@probarion/mcp`.",
+      "Find the MCP server in the MCP Registry by the name below. Its entry names the npm package.",
     );
+    expect(server.packages).toHaveLength(1);
+    expect(mcp.ids).toEqual([`\`${server.name}\``]);
+    expect(mcp.meta).toBe(`Version ${server.version}, from \`${server.packages[0]?.identifier}\``);
     expect(new URL(LINKS.mcpRegistry).searchParams.get("q")).toBe(server.name);
     expect(release).toContain(
       "The official MCP registry lists the server as `io.github.probarion/probarion`",
@@ -385,9 +488,11 @@ describe("the built-on facts", () => {
 
     // The license file, and the CI workflow with its sandbox and reproducible-build jobs.
     expect(github.body).toBe(
-      "The MIT source, and the CI that runs the sandbox tests and the reproducible build.",
+      "Read the MIT source and the CI that runs the sandbox tests and the reproducible build.",
     );
-    expect(text(ROOT, "LICENSE").startsWith("MIT License\n")).toBe(true);
+    expect(github.ids).toEqual([`\`${new URL(LINKS.github).pathname.slice(1)}\``]);
+    expect(github.meta).toBe("MIT License");
+    expect(text(ROOT, "LICENSE").startsWith(`${github.meta}\n`)).toBe(true);
     const ci = text(ROOT, ".github", "workflows", "ci.yml");
     expect(ci).toContain("\n  pull_request:\n    branches: [main, dev]\n");
     expect(ci).toContain("\n  sandbox:\n    name: Sandbox integration tests\n");
@@ -396,20 +501,38 @@ describe("the built-on facts", () => {
     const ext = JSON.parse(text(ROOT, "apps", "extension", "package.json")) as { version: string };
     expect(ext.version).toBe("0.1.0");
     expect(store.body).toBe(
-      "Version 0.1.0 queues invoices from your browser. It cannot pay or approve.",
+      "Install the extension that queues invoices from your browser. It cannot pay or approve.",
     );
-    expect(readmeRow("Browser extension for Chrome")).toContain(
-      "**Shipped** on the Chrome Web Store as version 0.1.0",
-    );
-    expect(text(ROOT, "apps", "extension", "store", "listing.md")).toContain(
-      "It can't pay or approve.",
-    );
+    expect(store.meta).toBe(`Version ${ext.version}`);
+    const extension = readmeRow("Browser extension for Chrome");
+    expect(extension).toContain("**Shipped** on the Chrome Web Store as version 0.1.0");
+    // A Chrome extension, not one for any browser: Chrome 127 or newer is what the READMEs say it needs.
+    expect(store.kind).toBe("Chrome extension");
+    expect(extension).toContain("Chrome 127 or newer");
+    expect(text(ROOT, "apps", "extension", "README.md")).toContain("It needs Chrome 127 or newer.");
+    const listing = text(ROOT, "apps", "extension", "store", "listing.md");
+    expect(listing).toContain("It can't pay or approve.");
+    // The name the store lists it under.
+    expect(store.ids).toEqual(["Probarion"]);
+    expect(listing).toContain(`**Name:** ${store.ids[0]}\n`);
   });
 
-  it("the also line: attestation checks that exist, and one mainnet payout through NEAR Intents", () => {
-    expect(BUILT_ON.also).toBe(
-      "Also used: Intel TDX and NVIDIA NRAS attestation, which `verify --online` checks (O1 and O2). NEAR Intents payouts are built and tested against a testnet stand-in, and one has run on mainnet: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+  it("the stack note: two mainnet payouts through NEAR Intents, tested against a stand-in otherwise, and attestation checks that exist", () => {
+    const [intents, attestation] = BUILT_ON.also.items;
+    expect(intents).toEqual({
+      name: "NEAR Intents",
+      body: "Payouts tested against a testnet stand-in. Two ran on mainnet on 2026-11-13, tests to the owner's Base address: one by code rules alone, one by an attested model and code rules.",
+    });
+    // Read with the entry's name, one sentence keeps what was tested against a stand-in apart from what ran on mainnet,
+    // and says how each mainnet payout was decided.
+    const body = intents?.body ?? "";
+    expect(`${intents?.name} ${body.charAt(0).toLowerCase()}${body.slice(1)}`).toBe(
+      "NEAR Intents payouts tested against a testnet stand-in. Two ran on mainnet on 2026-11-13, tests to the owner's Base address: one by code rules alone, one by an attested model and code rules.",
     );
+    expect(attestation).toEqual({
+      name: "Intel TDX and NVIDIA NRAS",
+      body: "The attestation that `verify --online` checks: the TDX quote (O1) and the GPU evidence (O2).",
+    });
     expect(prose).toContain(
       "`verify --online` loads the optional `@nearai/inference-sdk` to check the TDX quote (O1) and the GPU evidence (O2)",
     );
@@ -417,7 +540,10 @@ describe("the built-on facts", () => {
       "On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`",
     );
     expect(prose).toContain(
-      "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to the owner's own Base address this way, a test decided by code rules alone",
+      "On mainnet two payouts have run this way, both tests to the owner's own Base address on 2026-11-13. In S1 `v0.probarion.near` paid 1.00 USDC, a test decided by code rules alone",
+    );
+    expect(prose).toContain(
+      "In S2 it paid 0.25 USDC, decided by an attested model and the code rules, and the bridge released 0.2476 USDC",
     );
   });
 });
@@ -434,7 +560,7 @@ describe("the built-on copy", () => {
     expect(visibleText(section())).not.toMatch(DASHES);
   });
 
-  it("keeps each caption to about 90 characters, and each sentence under the names to 125", () => {
+  it("keeps each caption to about 90 characters, each sentence under the names to 125, each card's body to 100 and each stack entry to 180", () => {
     const captions = [
       ...BUILT_ON.rows.flatMap((r) => [
         r.label,
@@ -444,45 +570,93 @@ describe("the built-on copy", () => {
         ...r.checks,
         ...r.links.map((l) => l.label),
       ]),
-      ...BUILT_ON.ships.flatMap((c) => [c.name, c.tag, c.body, c.link.label]),
+      ...BUILT_ON.ships.flatMap((c) => [
+        c.name,
+        c.kind,
+        ...c.ids,
+        c.idsLabel,
+        c.meta,
+        c.link.label,
+      ]),
+      ...BUILT_ON.also.items.map((i) => i.name),
       BUILT_ON.title,
+      BUILT_ON.also.title,
       BUILT_ON.shipsTitle,
+      BUILT_ON.trademark.label,
     ];
     // As a visitor reads them: a backtick is markup for code, not a character on the page.
     for (const c of captions) expect(c.replace(/`/g, "").length, c).toBeLessThanOrEqual(90);
     for (const s of [BUILT_ON.sub, ...BUILT_ON.rows.map((r) => r.body)]) {
       expect(s.length, s).toBeLessThanOrEqual(125);
     }
+    // The cards of a row share their body row (a subgrid row), so the longest body sets it for all of them: the bodies
+    // stay short and close in length, or a long one opens a gap under the others. Today each is 3 lines from 1200px
+    // to 1440px, where a card is 226px to 260px inside.
+    const bodies = BUILT_ON.ships.map((c) => c.body.length);
+    for (const c of BUILT_ON.ships) expect(c.body.length, c.id).toBeLessThanOrEqual(100);
+    expect(Math.max(...bodies) - Math.min(...bodies)).toBeLessThanOrEqual(15);
+    // The NEAR Intents entry keeps the tested and the run facts in one sentence, which is why it may run longer.
+    for (const i of BUILT_ON.also.items)
+      expect(i.body.replace(/`/g, "").length, i.name).toBeLessThanOrEqual(180);
+    // Each card's link fits its 46px row on one line from 1200px, where a card is 226px inside with a classic
+    // scrollbar: the longest label, 29 characters, is 216px with its arrow in 15px Hanken Grotesk at 500.
+    for (const c of BUILT_ON.ships) expect(c.link.label.length, c.id).toBeLessThanOrEqual(29);
   });
 
   it("claims no partnership, backing or endorsement, and says twice that none is implied", () => {
     expect(BUILT_ON.sub).toContain("No partnership or endorsement is implied.");
-    expect(BUILT_ON.trademark).toContain("not to imply an endorsement");
+    expect(BUILT_ON.trademark.lead).toContain("not to imply an endorsement");
     for (const s of all) expect(withoutDisclaimers(s), s).not.toMatch(CLAIM_WORDS);
     const out = visibleText(section());
     expect(withoutDisclaimers(out)).not.toMatch(CLAIM_WORDS);
     expect(withoutDisclaimers(out)).not.toMatch(/endorse/i);
   });
 
-  it("gives every trademark notice, for every mark the section names", () => {
+  it("gives every trademark notice, for every mark the section names, and drops no sentence of the text it had", () => {
+    const { lead, notices } = BUILT_ON.trademark;
+    // The lead and the notices, read in order, are the section's one trademark text, sentence for sentence.
+    expect([lead, ...notices].join(" ")).toBe(TRADEMARK);
     for (const notice of [
       "NEAR, NEAR Intents, NEAR AI Cloud, USDC, Base and Solana are trademarks of their respective owners.",
       "npm is a registered trademark of npm, Inc.",
       "Model Context Protocol and MCP are trademarks of LF Projects, LLC.",
       "GitHub and the Invertocat logo are trademarks of GitHub, Inc.",
-      // The extension card links its Chrome Web Store listing by name, so the store's name has its notice too.
+      // A card is named Chrome Web Store and links its listing, so the store's name has its notice too.
       "Chrome and Chrome Web Store are trademarks of Google LLC.",
       "Intel is a trademark of Intel Corporation or its subsidiaries.",
       "NVIDIA is a trademark of NVIDIA Corporation.",
     ]) {
-      expect(BUILT_ON.trademark).toContain(notice);
+      expect(`${lead} ${notices.join(" ")}`).toContain(notice);
     }
-    // It says Probarion is designed to pay through Base and Solana: one Base payout and no Solana payout has run on mainnet.
-    expect(BUILT_ON.trademark).toContain("built on or is designed to pay through");
+    // It says Probarion is designed to pay through Base and Solana: two Base payouts and no Solana payout have run on mainnet.
+    expect(lead).toContain("built on or is designed to pay through");
+  });
+
+  it("sets the notices in the section's own footer, last, in two blocks that part at a sentence", () => {
+    const html = section();
+    expect(html.match(/<footer\b/g)).toHaveLength(1);
+    // The footer is the last thing in the section.
+    expect(html.endsWith("</footer></div></section>")).toBe(true);
+    const footer = html.slice(html.indexOf("<footer"));
+    // A label, not a heading: fine print, not a part of the outline.
+    expect(footer).not.toMatch(/<h[1-6]\b/);
+    const paragraphs = [...footer.matchAll(/<p[^>]*>([^<]*)<\/p>/g)].map((m) =>
+      (m[1] ?? "").replace(/&#x27;/g, "'"),
+    );
+    const { label, lead, notices } = BUILT_ON.trademark;
+    // Two blocks, the first the longer by a notice when the count is odd (as Legal in BuiltOn.tsx splits them).
+    const half = Math.ceil(notices.length / 2);
+    expect(paragraphs).toEqual([
+      label,
+      lead,
+      notices.slice(0, half).join(" "),
+      notices.slice(half).join(" "),
+    ]);
   });
 
   it("matches the README's License line, which says the same in its first two sentences", () => {
-    const [first, second] = BUILT_ON.trademark.split(/(?<=\.)\s+/);
+    const [first, second, ...rest] = BUILT_ON.trademark.lead.split(/(?<=\.)\s+/);
+    expect(rest).toEqual([]);
     expect(first).toBe(
       "NEAR, NEAR Intents, NEAR AI Cloud, USDC, Base and Solana are trademarks of their respective owners.",
     );
@@ -506,7 +680,7 @@ describe("the built-on marks", () => {
     );
     // No recolour, opacity, stretch or transform: the logo is the file's black at its own aspect ratio.
     expect(svg).not.toMatch(/\s(fill|stroke|opacity|transform|style|preserveAspectRatio)=/);
-    const css = text(WEB, "src", "components", "site", "site.module.css");
+    const css = SITE_CSS;
     const rule = css.slice(
       css.indexOf(".nearLogo {"),
       css.indexOf("}", css.indexOf(".nearLogo {")),
@@ -565,7 +739,7 @@ describe("the built-on marks", () => {
       );
     }
     // Each keeps its aspect ratio; only GitHub's, which sets no fill, takes the ink around it.
-    const css = text(WEB, "src", "components", "site", "site.module.css");
+    const css = SHIPS_CSS;
     expect(rule(css, ".shipLogo svg")).toContain("width: auto;");
     expect(rule(css, ".shipLogo .npmLogo")).toContain("aspect-ratio: 780 / 250;");
     expect(rule(css, ".shipLogo .mcpLogo")).toContain("aspect-ratio: 1338 / 195;");
@@ -612,13 +786,12 @@ describe("the built-on marks", () => {
   });
 
   it("keeps the logos and the check marks visible in a Windows contrast theme", () => {
-    const css = text(WEB, "src", "components", "site", "site.module.css");
-    const forced = css.slice(css.indexOf("@media (forced-colors: active)"));
-    expect(forced).toMatch(/\.nearLogo {\s*fill: currentColor;\s*}/);
-    expect(forced).toMatch(/\.boCheck {\s*stroke: currentColor;\s*}/);
+    const forcedIn = (css: string) => css.slice(css.indexOf("@media (forced-colors: active)"));
+    expect(forcedIn(SITE_CSS)).toMatch(/\.nearLogo {\s*fill: currentColor;\s*}/);
+    expect(forcedIn(SITE_CSS)).toMatch(/\.boCheck {\s*stroke: currentColor;\s*}/);
     // npm and MCP keep their black on a white plate (the surface token is #ffffff); GitHub's mark already takes the
     // text colour.
-    expect(forced).toMatch(
+    expect(forcedIn(SHIPS_CSS)).toMatch(
       /\.shipLogo \.npmLogo,\s*\.shipLogo \.mcpLogo {\s*forced-color-adjust: none;[^}]*background: var\(--color-surface\);\s*}/,
     );
     expect(text(WEB, "src", "app", "globals.css")).toContain("--color-surface: #ffffff;");
@@ -669,20 +842,88 @@ describe("the built-on links and landmarks", () => {
       names.push(name);
     }
     expect(new Set(names).size).toBe(names.length);
+    // Each card has one link, the last thing in it, in a row of its own.
+    const cards = shipCards(html);
+    expect(cards).toHaveLength(BUILT_ON.ships.length);
+    for (const [at, card] of cards.entries()) {
+      const [link, ...more] = anchors(card);
+      expect(more, card).toEqual([]);
+      expect(link, card).toContain(`href="${BUILT_ON.ships[at]?.link.href}"`);
+      expect(
+        card.endsWith(`<div class="${/class="([^"]*shipGo[^"]*)"/.exec(card)?.[1]}">${link}</div>`),
+      ).toBe(true);
+    }
     // Every arrow is hidden from screen readers.
     expect(visibleText(html.replace(/<span aria-hidden="true">[^<]*<\/span>/g, ""))).not.toMatch(
       /[→↗]/,
     );
   });
 
-  it("keeps list semantics where the stylesheet removes the bullets, and a heading for each row and card", () => {
+  it("makes each card's whole link row the target, 46px tall, with its ring drawn inside the card's rounded foot", () => {
+    const a = rule(SHIPS_CSS, ".shipGo a");
+    expect(a).toContain("display: block;");
+    const [top = 0, side = 0, bottom = 0] = (
+      /padding: ([\d.]+)px ([\d.]+)px ([\d.]+)px;/.exec(a) ?? []
+    )
+      .slice(1)
+      .map(Number);
+    const size = Number(/font-size: (\d+)px;/.exec(a)?.[1]);
+    const lineHeight = Number(/line-height: ([\d.]+);/.exec(a)?.[1]);
+    expect(top + size * lineHeight + bottom).toBe(46);
+    // The row runs edge to edge: the card's side padding, taken back by the row's margin.
+    expect(rule(SHIPS_CSS, ".ship")).toContain(`padding: 22px ${side}px 0;`);
+    expect(rule(SHIPS_CSS, ".shipGo")).toContain(`margin: 18px -${side}px 0;`);
+    // On hover the whole row shows it is the target: the soft fill (ink reads on it at 7:1 or more) and a heavier
+    // underline; a contrast theme, which drops the fill, gets an outline inside the row instead.
+    const hover = rule(SHIPS_CSS, ".shipGo a:hover");
+    expect(hover).toContain("background: var(--color-soft);");
+    expect(hover).toContain("text-decoration-thickness: 2px;");
+    expect(SHIPS_CSS.slice(SHIPS_CSS.indexOf("@media (forced-colors: active)"))).toMatch(
+      /\.shipGo a:hover {\s*outline: 1px solid LinkText;\s*outline-offset: -4px;\s*}/,
+    );
+    expect(rule(SHIPS_CSS, ".shipGo a:focus-visible")).toContain("outline-offset: -4px;");
+    // On a phone the padding and the margin shrink together.
+    const phone = mediaBlocks(SHIPS_CSS, "(max-width: 620px)");
+    expect(phone).toMatch(/\.ship {\s*padding: 18px 18px 0;/);
+    expect(phone).toMatch(/\.shipGo {\s*margin: 16px -18px 0;/);
+    expect(phone).toMatch(/\.shipGo a {\s*padding-inline: 18px;/);
+  });
+
+  it("keeps list semantics where the stylesheet removes the bullets, and the headings in order: Built on, then where to get it", () => {
     const html = section();
     const lists = [...html.matchAll(/<ul[^>]*>/g)].map((m) => m[0]);
-    expect(lists).toHaveLength(6);
+    // The card, each row's checks and links, the cards, and each card's exact names.
+    expect(lists).toHaveLength(6 + BUILT_ON.ships.length);
     for (const ul of lists) expect(ul, ul).toContain('role="list"');
-    expect([...html.matchAll(/<h3[^>]*>/g)]).toHaveLength(3);
-    expect([...html.matchAll(/<h4[^>]*>/g)]).toHaveLength(4);
+    // The stack note's entries are names, each with its sentence.
+    expect(html.match(/<dl\b/g)).toHaveLength(1);
+    expect(html.match(/<dt\b/g)).toHaveLength(BUILT_ON.also.items.length);
+    const headings = [...html.matchAll(/<(h[1-6])[^>]*>(.*?)<\/\1>/g)].map((m) => [
+      m[1],
+      visibleText(m[2] ?? "") || "(logo)",
+    ]);
+    // Where to get Probarion is a peer of the section's title, in its style, not a part of what it is built on; the
+    // stack note is a row of the card, with a label like the rows', not a heading.
+    expect(headings).toEqual([
+      ["h2", BUILT_ON.title],
+      ["h3", "(logo)"],
+      ["h3", "NEAR AI Cloud"],
+      ["h2", BUILT_ON.shipsTitle],
+      ...BUILT_ON.ships.map((c) => ["h3", c.name]),
+    ]);
     expect(html).toMatch(/<h3[^>]*><svg[^>]*aria-label="NEAR Protocol"/);
+    const [title, ships] = [...html.matchAll(/<h2 class="([^"]*)"/g)].map((m) => m[1]);
+    expect(ships).toBe(title);
+    expect(ships).toMatch(/boTitle/);
+    // The cards are a region of their own, named by that heading.
+    expect(html).toContain(
+      `<section class="${/<section class="([^"]*_get_[^"]*)"/.exec(html)?.[1]}" aria-labelledby="${BUILT_ON.shipsId}"><h2 class="${ships}" id="${BUILT_ON.shipsId}">`,
+    );
+    // Each card's kind sits over its name, as the rows set a label over a name, outside the heading.
+    for (const c of BUILT_ON.ships)
+      expect(html).toMatch(
+        new RegExp(`<p class="[^"]*shipKind[^"]*">${c.kind}</p><h3[^>]*>${c.name}</h3>`),
+      );
   });
 
   it("leaves no two elements of the landing page with the same id", () => {
@@ -703,8 +944,8 @@ describe("the built-on links and landmarks", () => {
     expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
   });
 
-  it("stacks on a phone: the three columns, the evidence under the checks, and the notices to the left", () => {
-    const css = text(WEB, "src", "components", "site", "site.module.css");
+  it("stacks on a phone: the three columns, the evidence under the checks, the cards and the footer", () => {
+    const css = SITE_CSS;
     // Below 1101px the evidence column would be too narrow for its links: they move under the checks.
     const narrow = mediaBlocks(css, "(max-width: 1100px)");
     expect(narrow).toMatch(/\.boRow {\s*grid-template-columns: minmax\(0, 2fr\) minmax\(0, 3fr\);/);
@@ -716,24 +957,104 @@ describe("the built-on links and landmarks", () => {
     const longest = Math.max(...BUILT_ON.rows.flatMap((r) => r.links.map((l) => l.label.length)));
     // 13px mono is about 7.8px a character: the label, a space and the arrow fit in 232px up to 27 characters.
     expect(longest).toBeLessThanOrEqual(27);
-    // The four cards: one row on a desktop, two by two below 1101px, one column on a phone.
-    expect(rule(css, ".ships")).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
-    expect(narrow).toMatch(/\.ships {\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
-    expect(mediaBlocks(css, "(max-width: 960px)")).not.toMatch(/\.ships\b/);
     const phone = mediaBlocks(css, "(max-width: 620px)");
-    expect(phone).toMatch(/\.ships {\s*grid-template-columns: minmax\(0, 1fr\);/);
-    expect(phone).toMatch(/\.boRow {\s*grid-template-columns: minmax\(0, 1fr\);/);
+    expect(phone).toMatch(
+      /\.boRow {\s*grid-template-columns: minmax\(0, 1fr\);\s*padding: 20px 18px;/,
+    );
     expect(phone).toMatch(/\.boLinks {\s*grid-column: auto;/);
-    expect(phone).toMatch(/\.boFine {\s*margin-left: 0;\s*text-align: left;/);
     // The phone rules come after the narrow ones, so that they win at 620px and below.
     expect(css.indexOf("@media (max-width: 620px)")).toBeGreaterThan(
       css.lastIndexOf("@media (max-width: 1100px)"),
+    );
+    // The styles under the rows live in ships.module.css, not here.
+    expect(css).not.toMatch(/\.(ships?|ship[A-Z]\w*|boFine|npmLogo|mcpLogo|githubMark)\b/);
+    // Every class the section reads from a module is defined in it: the test runner names any class, defined or not,
+    // but the site's build gives an undefined one no name at all.
+    const tsx = text(WEB, "src", "components", "site", "BuiltOn.tsx");
+    for (const [mod, sheet] of [
+      ["sh", SHIPS_CSS],
+      ["s", SITE_CSS],
+    ] as const) {
+      const used = new Set(
+        [...tsx.matchAll(new RegExp(`\\b${mod}\\.(\\w+)`, "g"))].map((m) => m[1]),
+      );
+      expect(used.size, mod).toBeGreaterThan(10);
+      for (const name of used)
+        expect(sheet, `${mod}.${name}`).toMatch(new RegExp(`\\.${name}(?![\\w-])`));
+    }
+
+    // The four cards and the footer: four across from 1200px, two by two below, one column on a phone.
+    expect(rule(SHIPS_CSS, ".ships")).toContain(
+      "grid-template-columns: repeat(4, minmax(0, 1fr));",
+    );
+    expect(rule(SHIPS_CSS, ".legal")).toContain(
+      "grid-template-columns: repeat(4, minmax(0, 1fr));",
+    );
+    const tablet = mediaBlocks(SHIPS_CSS, "(max-width: 1199px)");
+    expect(tablet).toMatch(
+      /\.ships,\s*\.legal {\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/,
+    );
+    // On two columns the footer's label and lead run across both, and the two blocks of notices sit side by side.
+    expect(tablet).toMatch(/\.legalLabel,\s*\.legalLead {\s*grid-column: 1 \/ -1;\s*}/);
+    expect(tablet).not.toMatch(/grid-row/);
+    expect(mediaBlocks(SHIPS_CSS, "(max-width: 620px)")).toMatch(
+      /\.ships,\s*\.legal {\s*grid-template-columns: minmax\(0, 1fr\);/,
+    );
+    expect(SHIPS_CSS.indexOf("@media (max-width: 620px)")).toBeGreaterThan(
+      SHIPS_CSS.indexOf("@media (max-width: 1199px)"),
+    );
+    // Each card shares five rows with the cards beside it, so that its name, its exact names and its link line up with
+    // theirs; its five parts are those rows. The exact names sit at the top of theirs, right under the description,
+    // so that a card with fewer names keeps its spare height at its foot, not in its middle.
+    expect(rule(SHIPS_CSS, ".ship")).toMatch(/grid-row: span 5;\s*grid-template-rows: subgrid;/);
+    const rows = ["shipLogo", "shipHead", "shipBody", "shipArt", "shipGo"];
+    const parts = shipCards(section()).map((card) =>
+      [...card.matchAll(/<(?:span|div|p) class="[^"]*?(ship[A-Z][A-Za-z]*)[^"]*"/g)]
+        .map((c) => c[1] ?? "")
+        .filter((c) => rows.includes(c)),
+    );
+    expect(parts).toHaveLength(BUILT_ON.ships.length);
+    for (const p of parts) expect(p).toEqual(rows);
+    expect(rule(SHIPS_CSS, ".shipArt")).toContain("align-self: start;");
+    expect(rule(SHIPS_CSS, ".shipBody")).toContain("align-self: start;");
+  });
+
+  it("sets the stack note as the card's last row, on the rows' own tracks, padding and hairline, at every width", () => {
+    const html = section();
+    // A row of the card: the rows' class (so their tracks, padding and the hairline between rows), its label in the
+    // rows' label style where theirs sit, then the two entries. It is the card's last item.
+    const label = BUILT_ON.also.title;
+    expect(html).toMatch(
+      new RegExp(
+        `<li class="[^"\\s]*boRow[^"\\s]*"><p class="[^"]*boLabel[^"]* [^"]*stackLabel[^"]*">${label}</p><dl class="[^"]*stackList[^"]*">`,
+      ),
+    );
+    expect(html).toMatch(/<\/dl><\/li><\/ul><section /);
+    expect(rule(SITE_CSS, ".boRow")).toContain(
+      "grid-template-columns: minmax(0, 4fr) minmax(0, 6fr) minmax(232px, 3fr);",
+    );
+    expect(SITE_CSS).toMatch(/\n\.boRow \+ \.boRow {\s*border-top: 1px solid var\(--color-line\);/);
+    // Wide: the two entries in the rows' second and third tracks, on their gap (a subgrid), on the label's line.
+    expect(rule(SHIPS_CSS, ".stackList")).toMatch(
+      /grid-column: 2 \/ -1;\s*display: grid;\s*grid-template-columns: subgrid;/,
+    );
+    expect(rule(SHIPS_CSS, ".stackList")).toContain("align-self: baseline;");
+    expect(rule(SHIPS_CSS, ".stackLabel")).toContain("align-self: baseline;");
+    // This file sets no track, gap or padding of the row itself: those stay the rows'.
+    expect(SHIPS_CSS).not.toMatch(/\n\s*\.stack {/);
+    // Below 1101px, as the rows put their links under the checks: both entries stacked in the second track.
+    expect(mediaBlocks(SHIPS_CSS, "(max-width: 1100px)")).toMatch(
+      /\.stackList {\s*grid-column: 2;\s*grid-template-columns: minmax\(0, 1fr\);/,
+    );
+    // A phone: the row is one column, and the entries follow the label.
+    expect(mediaBlocks(SHIPS_CSS, "(max-width: 620px)")).toMatch(
+      /\.stackList {\s*grid-column: auto;/,
     );
   });
 
   it("sets the sentence beside the heading on its last line, at the right, from 961px, and under it below", () => {
     expect(section()).toMatch(/<div class="[^"]*sectionHead[^"]* [^"]*boHead[^"]*"><h2/);
-    const css = text(WEB, "src", "components", "site", "site.module.css");
+    const css = SITE_CSS;
     // Every section head wraps; this one's heading and sentence are too wide for one line on a desktop.
     expect(css).toMatch(/\.sectionHead {[^}]*flex-wrap: wrap;[^}]*align-items: flex-end;/);
     const desktop = mediaBlocks(css, "(min-width: 961px)");
@@ -745,16 +1066,33 @@ describe("the built-on links and landmarks", () => {
     expect(css.slice(0, css.indexOf("@media"))).not.toMatch(/\.boHead\b/);
   });
 
-  it("sets each card's tag under its name, lets its link wrap, and sets the small label in the gold for small text", () => {
-    const css = text(WEB, "src", "components", "site", "site.module.css");
-    // On a narrow card of the four, a tag beside the name would fall onto a line of its own.
-    expect(rule(css, ".shipHead")).toMatch(/flex-direction: column;\s*align-items: flex-start;/);
-    expect(rule(css, ".shipTag")).toContain("font-size: 12px;");
-    // "probarion/probarion on GitHub" is wider than a narrow card: the link wraps, and its arrow stays on its last line.
-    expect(rule(css, ".shipGo")).not.toContain("nowrap");
-    // gold-ink reads at 7:1 or more on the white card (globals.css); gold-small is kept for marks like the checks.
-    expect(rule(css, ".boLabel")).toContain("color: var(--color-gold-ink);");
-    expect(rule(css, ".boCheck")).toContain("stroke: var(--color-gold-small);");
+  it("sets the small labels in the rows' gold small capitals, lets a link wrap, and keeps the footer small and muted", () => {
+    // gold-ink reads at 7:1 or more on the white card and on paper (globals.css); gold-small is kept for marks like
+    // the checks.
+    expect(rule(SITE_CSS, ".boLabel")).toContain("color: var(--color-gold-ink);");
+    expect(rule(SITE_CSS, ".boCheck")).toContain("stroke: var(--color-gold-small);");
+    // The stack note's label is a row label itself (.boLabel); the cards' labels repeat its style.
+    const boLabel = rule(SITE_CSS, ".boLabel");
+    const shipKind = rule(SHIPS_CSS, ".shipKind");
+    for (const decl of [
+      "font-family: var(--font-mono);",
+      "font-size: 12px;",
+      "font-weight: 500;",
+      "letter-spacing: 0.08em;",
+      "text-transform: uppercase;",
+      "color: var(--color-gold-ink);",
+    ]) {
+      expect(boLabel, decl).toContain(decl);
+      expect(shipKind, decl).toContain(decl);
+    }
+    // A link wider than a narrow card wraps, and its arrow stays on its last line.
+    expect(rule(SHIPS_CSS, ".shipGo")).not.toContain("nowrap");
+    expect(rule(SHIPS_CSS, ".shipGo a")).not.toContain("nowrap");
+    // The legal text: under a hairline, at 13px in mute, which reads at 7:1 or more on paper.
+    const legal = rule(SHIPS_CSS, ".legal");
+    expect(legal).toContain("border-top: 1px solid var(--color-line);");
+    expect(legal).toContain("font-size: 13px;");
+    expect(legal).toContain("color: var(--color-mute);");
   });
 });
 

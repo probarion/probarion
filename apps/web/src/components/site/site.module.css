@@ -1604,9 +1604,9 @@ a.netPill:hover {
 
 /*
  * Built on: one card with a row for NEAR and one for NEAR AI Cloud (what it is to Probarion, what it does, the
- * evidence), then the four places Probarion ships through, then the notices. Every third-party logo is its owner's
- * file in its own colour, never stretched: NEAR's stands in for its name, with clear space above and below it, and
- * the npm, MCP and GitHub logos sit on a row of their own above the names of their cards.
+ * evidence). NEAR's logo is NEAR's own file in its own colour, never stretched, and stands in for its name, with clear
+ * space above and below it. The stack note, the four places to get Probarion and the trademark footer under the card
+ * are in ships.module.css.
  */
 .boCard {
   border: 1px solid var(--color-line);
@@ -1707,95 +1707,6 @@ a.netPill:hover {
 }
 .boLinks a {
   overflow-wrap: anywhere;
-}
-.shipsTitle {
-  margin: 40px 0 14px;
-  font-size: 17px;
-  font-weight: 500;
-}
-.ships {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-.ship {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border: 1px solid var(--color-line);
-  border-radius: 16px;
-  padding: 20px;
-  background: var(--color-surface);
-  min-width: 0;
-}
-/* The tag sits under the name, so that a narrow card of the four never pushes it onto a line of its own. */
-.shipHead {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-.shipName {
-  min-width: 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-/*
- * The logo row is as tall on every card, so that the names below line up. Each logo keeps its file's aspect ratio
- * and colour. npm's wordmark is a solid block, so it is set a little smaller to look the same size; the MCP logo
- * carries its name in small letters, so it is set a little larger.
- */
-.shipLogo {
-  display: flex;
-  align-items: center;
-  height: 30px;
-  color: var(--color-ink);
-}
-.shipLogo svg {
-  display: block;
-  max-width: 100%;
-  height: 26px;
-  width: auto;
-}
-.shipLogo .npmLogo {
-  height: 22px;
-  aspect-ratio: 780 / 250;
-}
-.shipLogo .mcpLogo {
-  height: 28px;
-  aspect-ratio: 1338 / 195;
-}
-.shipLogo .githubMark {
-  aspect-ratio: 1;
-  fill: currentColor;
-}
-.shipTag {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-mute);
-}
-.shipBody {
-  flex: 1;
-  font-size: 14.5px;
-  color: var(--color-mute);
-}
-.shipGo {
-  color: var(--color-ink);
-}
-/* The notices, small and to the right, where a footnote sits. */
-.boFine {
-  /* Reading text: about 71 characters a line, as the measure holds the rest of the page (WCAG 1.4.8). */
-  max-width: var(--container-measure);
-  margin: 28px 0 0 auto;
-  text-align: right;
-  font-size: 13px;
-  color: var(--color-mute);
-}
-.boFine p + p {
-  /* 13px over 13px text: 2.55em with the 1.55 line (WCAG 1.4.8). */
-  margin-top: 13px;
 }
 
 /* Closing */
@@ -2009,10 +1920,7 @@ a.netPill:hover {
     display: block;
   }
 }
-/*
- * Built on: below 1101px the evidence column is too narrow for its links, so they move under the checks, and the
- * four cards go two by two.
- */
+/* Built on: below 1101px the evidence column is too narrow for its links, so they move under the checks. */
 @media (max-width: 1100px) {
   .boRow {
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
@@ -2021,9 +1929,6 @@ a.netPill:hover {
     grid-column: 2;
     justify-items: start;
     text-align: left;
-  }
-  .ships {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 960px) {
@@ -2133,14 +2038,6 @@ a.netPill:hover {
   }
   .boLinks {
     grid-column: auto;
-  }
-  .boFine {
-    margin-left: 0;
-    text-align: left;
-  }
-  /* Built on: the four cards stack. */
-  .ships {
-    grid-template-columns: minmax(0, 1fr);
   }
   .scenarios {
     grid-template-columns: 1fr;
@@ -2279,15 +2176,6 @@ a.netPill:hover {
   }
   .boCheck {
     stroke: currentColor;
-  }
-  /* The npm and MCP logos keep their own black, so on a dark Canvas each sits on a white plate. */
-  .shipLogo .npmLogo,
-  .shipLogo .mcpLogo {
-    forced-color-adjust: none;
-    box-sizing: content-box;
-    padding: 2px 4px;
-    border-radius: 4px;
-    background: var(--color-surface);
   }
   /* Forced colours drop the box-shadow that marks a pressed button. */
   .act[aria-pressed="true"] {

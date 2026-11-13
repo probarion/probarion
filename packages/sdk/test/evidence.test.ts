@@ -109,12 +109,17 @@ describe("loadBurnTxHints (R7 source 1: docs/mainnet-proof.json)", () => {
     ).rejects.toThrow();
   });
 
-  it("reads the repo's own evidence file: the mainnet v0 spends 1 and 2, not its refusal", async () => {
+  it("reads the repo's own evidence file: the mainnet v0 spends 1 to 3, not its refusal", async () => {
     const file = fileURLToPath(new URL("../../../docs/mainnet-proof.json", import.meta.url));
     const hints = await loadBurnTxHints(file, { vault: "v0.probarion.near", network: "mainnet" });
-    // Spend 1 (2026-11-11, paid to a NEAR account) and spend 2 (2026-11-13, burned for the Base payout).
+    // Spend 1 (2026-11-11, paid to a NEAR account), spend 2 (S1, 2026-11-13, burned for a Base payout) and
+    // spend 3 (S2, 2026-11-13, burned for a Base payout decided by an attested model and the code rules).
     expect(new Map(hints)).toEqual(
       new Map([
+        [
+          3,
+          [{ hash: "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH", signer: "v0.probarion.near" }],
+        ],
         [
           2,
           [{ hash: "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9", signer: "v0.probarion.near" }],

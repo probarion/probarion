@@ -8,15 +8,32 @@
   },
   "facts": {},
   "links": {
+    "attested_base_payout_base": "https://basescan.org/tx/0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7",
     "first_base_payout_base": "https://basescan.org/tx/0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71"
   },
   "metrics": {},
   "sources": {
     "accounts.v0_vault": "docs/runbooks/mainnet-v0.md step 3",
     "code_hashes.vault_v0": "scripts/build-reproducible.sh vault; RPC view_account code_hash of v0.probarion.near",
+    "links.attested_base_payout_base": "owner-steps/mainnet-s2 out/poa-status.json data.transfer_tx_hash; eth_getTransactionReceipt on mainnet.base.org",
     "links.first_base_payout_base": "owner-steps/mainnet-s1 out/poa-status.json data.transfer_tx_hash; eth_getTransactionReceipt on mainnet.base.org"
   },
   "txs": {
+    "attested_base_payout": {
+      "amount_usdc": "0.25",
+      "base_tx": "0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7",
+      "error_code": null,
+      "expect": "success",
+      "hash": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH",
+      "kind": "base_payout",
+      "network": "mainnet",
+      "receiver_id": "v0.probarion.near",
+      "recorded_at": "2026-11-13T13:10:23.026Z",
+      "signed_by": "agent_key",
+      "signer_id": "v0.probarion.near",
+      "spend_id": 3,
+      "what": "S2: spend 3, ft_withdraw with the WITHDRAW_TO memo built from mandate 3, decided by an attested model (z-ai/glm-5.3-flash, ledger entry 4) and the code rules; the POA bridge released 0.2476 USDC on Base"
+    },
     "demo_anchor_11": {
       "amount_usdc": null,
       "base_tx": null,
@@ -542,6 +559,21 @@
       "spend_id": null,
       "what": "S1: the ledger key anchored v0's ledger after spend 2 (anchor 3, 4 entries)"
     },
+    "v0_anchor_4": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG",
+      "kind": "anchor",
+      "network": "mainnet",
+      "receiver_id": "v0.probarion.near",
+      "recorded_at": "2026-11-13T13:10:23.026Z",
+      "signed_by": "ledger_key",
+      "signer_id": "v0.probarion.near",
+      "spend_id": null,
+      "what": "S2: the ledger key anchored v0's ledger after spend 3 (anchor 4, 6 entries)"
+    },
     "v0_deploy": {
       "amount_usdc": null,
       "base_tx": null,
@@ -617,6 +649,21 @@
       "spend_id": null,
       "what": "Mandate 2: the owner's own Base address via NEAR Intents, at most 1.00 USDC per payment and in total, 1 payment, until 2026-11-20"
     },
+    "v0_mandate_base_s2": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T",
+      "kind": "mandate_created",
+      "network": "mainnet",
+      "receiver_id": "v0.probarion.near",
+      "recorded_at": "2026-11-13T13:10:23.026Z",
+      "signed_by": "owner",
+      "signer_id": "probarion.near",
+      "spend_id": null,
+      "what": "Mandate 3 (S2): the owner's own Base address via NEAR Intents, the same address as mandate 2, at most 0.25 USDC per payment and in total, 1 payment, until 2026-11-20"
+    },
     "v0_mandate_near": {
       "amount_usdc": null,
       "base_tx": null,
@@ -663,7 +710,7 @@
       "what": "The owner's Meteor wallet, the vault's approver, sent 3 native USDC to the vault (ft_transfer)"
     }
   },
-  "updated_at": "2026-11-13T07:37:14.888Z",
+  "updated_at": "2026-11-13T13:10:23.026Z",
   "v": 1,
   "verify": {},
   "versions": {}

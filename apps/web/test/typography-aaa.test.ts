@@ -8,9 +8,9 @@ import { isTestFile, toPosix, walk } from "./deploy-scan";
 /*
  * The site's typography against WCAG 2.2: contrast at AAA (1.4.6: 7:1, or 4.5:1 for large text), the visual
  * presentation of reading text (1.4.8), readable sizes and weights, and the guards that keep text spacing (1.4.12) and
- * reflow (1.4.10) working. Every check reads the real files: the tokens in app/globals.css and the four CSS modules.
- * Large text is 24px and up (18.66px bold and up; no module sets a weight above 600). What is left out is listed below,
- * each with its reason.
+ * reflow (1.4.10) working. Every check reads the real files: the tokens in app/globals.css and every CSS module in
+ * MODULES. Large text is 24px and up (18.66px bold and up; no module sets a weight above 600). What is left out is
+ * listed below, each with its reason.
  */
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
@@ -19,6 +19,7 @@ const read = (...parts: string[]) => readFileSync(join(WEB, ...parts), "utf8");
 const GLOBALS = read("src", "app", "globals.css");
 const MODULES: Readonly<Record<string, string>> = {
   site: "src/components/site/site.module.css",
+  ships: "src/components/site/ships.module.css",
   docs: "src/components/docs/docs.module.css",
   canary: "src/components/site/canary.module.css",
   usage: "src/components/site/usage.module.css",
@@ -269,6 +270,7 @@ const NESTED: readonly [string, string, string][] = [
   ["ink", "wait-bg", "docs: .warning callout text"],
   ["bad", "bad-bg", "site: .hit .num and .rowNote on a struck row's red tint"],
   ["ink", "soft", "docs: inline code in prose, on its soft fill"],
+  ["ink", "soft", "ships: .shipGo a, a card's link row on its hover fill"],
   ["gold-ink", "soft", "docs: .searchOption mark in the selected option's soft fill"],
   [
     "ink",
@@ -502,7 +504,10 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["site", ".whoControl", "margin-top", 14, "site", ".site"],
       ["site", ".whoProof", "margin-top", 14, "site", ".site"],
       ["site", ".codeNote", "margin-top", 14, "site", ".site"],
-      ["site", ".boFine p + p", "margin-top", 13, "site", ".site"],
+      // The Built on footer's blocks, where they stack (a tablet's lead over its notices, a phone).
+      ["ships", ".legal", "row-gap", 13, "ships", ".legal"],
+      // The two entries of the stack note, where they stack (below 1101px).
+      ["ships", ".stackList", "row-gap", 15, "site", ".site"],
       ["site", ".shot .shotMeta", "margin-top", 15, "site", ".site"],
       ["canary", ".column p + p", "margin-top", 17, "site", ".site"],
       ["canary", ".line", "margin-top", 17, "site", ".site"],
@@ -558,7 +563,10 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["site", ".duelNote"],
       ["site", ".proofIntro"],
       ["site", ".compareMore"],
-      ["site", ".boFine"],
+      ["ships", ".stackBody"],
+      ["ships", ".shipBody"],
+      ["ships", ".legalLead"],
+      ["ships", ".legalNotices"],
       ["docs", ".prose > :is(p, ul, ol, blockquote)"],
       ["docs", ".prose li > :is(p, ul, ol)"],
       ["docs", ".check > p"],

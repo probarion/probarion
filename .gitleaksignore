@@ -12,6 +12,9 @@ c471b5c02822d82d429a22759a074ff730480966:apps/web/src/lib/sentry-scrub.test.ts:g
 # Public data, not a secret: the text "ledger key ed25519:..." in docs/mainnet-proof.json is the public key of
 # v0.probarion.near's ledger key on NEAR mainnet (an access key, readable by anyone with view_access_key_list), recorded in 53a726e.
 53a726e92bcac156205839125eece85570d1e494:docs/mainnet-proof.json:generic-api-key:588
+# Public data, not a secret: the field "token" in the kit's Base receipt holds the USDC contract address on Base,
+# recorded in 2190cfa.
+2190cfa01af4959aaca2dc1bebc5a78c9f063ad3:docs/evidence/mainnet-v0/s2-2026-11-13/base-receipt.json:generic-api-key:1
 # Public data, not a secret: "baseToken" in the landing's recorded mainnet payout is the USDC token contract on Base
 # (0x833589fcd6edb6e08f4c7c32d4f71b54bda02913), and the test's block_hash is a NEAR block hash in a tamper case; both in 6c1b82f.
 6c1b82f0d90e74650b80431dd84837bf5b39bea8:apps/web/src/lib/site/mainnet-payout-recorded.json:generic-api-key:12

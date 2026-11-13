@@ -1,0 +1,99 @@
+{
+  "what": "Gas burned by spend 3 of v0.probarion.near on NEAR mainnet, 2026-11-13, the Base payout of INV-M003 (round 2, decided by an attested model and the code rules), summed over the transaction outcome and every receipt outcome",
+  "read_on": "2026-11-13",
+  "rpc": "https://archival-rpc.mainnet.fastnear.com",
+  "method": "EXPERIMENTAL_tx_status with sender_account_id v0.probarion.near and wait_until NONE, read-only",
+  "units": "gas_burnt in gas units (1 Tgas = 10^12), tokens_burnt in yoctoNEAR (1 NEAR = 10^24)",
+  "txs": [
+    {
+      "tx_hash": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH",
+      "what": "spend 3 on mandate 3, burned 0.25 Base USDC inside intents.near with the memo WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27 (spend_burned)",
+      "signer_id": "v0.probarion.near",
+      "receiver_id": "v0.probarion.near",
+      "status": "SuccessValue",
+      "outcomes": [
+        {
+          "kind": "transaction",
+          "id": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "308580472622",
+          "tokens_burnt": "30858047262200000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "VCsoJ1nWMU4ubEsFN8kY4C6j228SnxsVWbhrCYByBoK",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "3154989067211",
+          "tokens_burnt": "315498906721100000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "2HMqxtTBKuKsmvmFeePXm3eELefEtaVGaDWJVMyGaUHq",
+          "executor_id": "intents.near",
+          "gas_burnt": "4434880735987",
+          "tokens_burnt": "443488073598700000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "FNAzBqBEWNeA1eJtnPP2h4VxzNuf3Dn68USwnbTHALSQ",
+          "executor_id": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+          "gas_burnt": "1671108635746",
+          "tokens_burnt": "167110863574600000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "6D2EAMEx5WB7HSjMYyXfqKzsvPMoZSYs1LFrSKhZZZrM",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "223182562500",
+          "tokens_burnt": "0"
+        },
+        {
+          "kind": "receipt",
+          "id": "2XiTHCCg1shWKoLYedGjwMTnVtBYMkRMz59ak5SRKu4H",
+          "executor_id": "intents.near",
+          "gas_burnt": "2604999598605",
+          "tokens_burnt": "260499959860500000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "5wwxJsyNQbss2TFk1HQTZn4n1imHDvcdQAqVRhDKNKEf",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "223182562500",
+          "tokens_burnt": "0"
+        },
+        {
+          "kind": "receipt",
+          "id": "3zqNSJJ3feqedveGpwyygPQxvrCLCArMX54JZVCmFkaK",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "223182562500",
+          "tokens_burnt": "0"
+        },
+        {
+          "kind": "receipt",
+          "id": "H52yYdd3dxdhhhqQeqauq1YndpFMS3SZ8hWe71v8e1zC",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "2065810496269",
+          "tokens_burnt": "206581049626900000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "BRh2uqKL14KLqqjP6y2YqaCv4LtYnxxiYQygQPunNgFP",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "223182562500",
+          "tokens_burnt": "0"
+        },
+        {
+          "kind": "receipt",
+          "id": "65PgKDTMrBBb4g7cp5BpQf5fsW9ESwVanJSjccGkTE45",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "223182562500",
+          "tokens_burnt": "0"
+        }
+      ],
+      "sum_gas_burnt": "15356281818940",
+      "sum_tokens_burnt": "1424036900644000000000",
+      "sum_tgas": "15.3563",
+      "sum_near": "0.001424"
+    }
+  ]
+}
