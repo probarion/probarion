@@ -14,7 +14,8 @@ yoctoNEAR, the printed command carries it.
 
 Three commands only read: `check` dry-runs a spend against the vault's own rules, `verify` checks a
 vault's ledger against the chain (or a saved snapshot, with no network at all), and `ledger export`
-copies the ledger. They do not sign or send anything either.
+copies the ledger. They do not sign or send anything either. Nor does `payee check`, which is in the
+CLI built from this repository and not in release 0.1.1 on npm.
 
 ## Install
 
@@ -245,3 +246,45 @@ The flags:
 
 `ledger export --out <file>` writes the ledger as JSONL, one entry per line. It reads the same
 `--ledger` file as verify. It refuses an `--out` file that already exists, and the ledger itself.
+
+## Check a payee
+
+`payee check` is in the CLI built from this repository; release 0.1.1 on npm does not have it. It
+reads the chain and prints `ALLOW`, `WARN` or `BLOCK` for one payee, with one reason per check. Run
+it before you write a payee into a mandate: the agent's `spend` call has no address field, so a
+mandate is where a payee enters.
+
+```text
+node packages/cli/dist/bin.js payee check near:vendor.testnet --vault <vault>
+node packages/cli/dist/bin.js payee check base:0x... --network mainnet --vault <vault> --json
+```
+
+| Check | Finding | Level |
+|---|---|---|
+| exists | no NEAR account by that name | block |
+| exists | an implicit account (64 hex, or `0x` and 40 hex) that was never funded | warn |
+| blocklist | on the seed list, `packages/core/src/payee-blocklist.json` | block |
+| lookalike | looks like a payee of `--vault`: the same first 4 and last 4 hex characters (Base, implicit), one or two edits apart (names of 6 characters or more), or the same after reading rn as m, l as 1 and o as 0 | block |
+| contract | the NEAR code hash is not `1111…1`, or Base `eth_getCode` is not `0x` (a Safe is a contract too) | warn |
+| new | NEAR: no account at a block about 7 days back, on FastNEAR's archival node. Base: nonce 0 | warn |
+| code changed | NEAR: the code differs from the block about 7 days back | warn |
+| past payments | the vault never paid it: set `--approval-above 0` on its mandate | warn |
+
+- A check that passes adds an info line, so the output says what was read. A read that fails or
+  times out (3 seconds a request, 15 seconds in all) is unknown, and an unknown is a warning: the
+  check does not answer `ALLOW` on a read it could not make.
+- Without `--vault` (or `PROBARION_VAULT_ID`), past payments and lookalikes are not checked. Solana
+  payees are not read, and Base is read on mainnet only (a testnet vault pays Base through a stub),
+  so those checks are unknown there.
+- The blocklist is a seed. Today it holds two testnet names from Probarion's own demo texts, and
+  neither has a report of wrongdoing. To add a payee, open a pull request to that file with public
+  evidence (the "Report a payee" issue form says what to include).
+- The verdict is advice for the owner and changes nothing on chain. `--archival-rpc` and
+  `--base-rpc` choose the nodes it reads.
+
+| Exit code | `payee check` |
+|---|---|
+| 0 | allow: every check passed |
+| 2 | warn: confirm something with the payee first, or a signal could not be read |
+| 1 | block, or the check could not run (`error:` on stderr) |
+| 64 | usage error: a malformed payee or flag |

@@ -4,6 +4,7 @@ import { registerCheck } from "./commands/check.js";
 import { registerLedger } from "./commands/ledger.js";
 import { registerMandate } from "./commands/mandate.js";
 import { registerOwnerCalls } from "./commands/owner-calls.js";
+import { registerPayee } from "./commands/payee.js";
 import { registerVault } from "./commands/vault.js";
 import { registerVerify } from "./commands/verify.js";
 import { CliError } from "./errors.js";
@@ -29,6 +30,7 @@ export function buildProgram(io: CliIo): Command {
   registerLedger(program, io);
   registerOwnerCalls(program, io);
   registerCheck(program, io);
+  registerPayee(program, io);
   registerVerify(program, io);
   return program;
 }

@@ -15,6 +15,18 @@ The software is an unaudited beta.
 
 ### Added
 
+- `probarion payee check <payee> [--vault <id>] [--json]` checks a payee before a mandate names it and prints allow,
+  warn or block with one reason per check: the NEAR account exists (block for a missing name, warn for an unfunded
+  implicit account), the seed blocklist, a lookalike of a payee of the vault (the same first and last 4 hex
+  characters, 2 edits or fewer, or the same after rn/m, l/1 and o/0), contract code (a NEAR code hash that is not
+  `1111…1`, Base `eth_getCode`), new or code changed in about 7 days (NEAR archival `view_account`; Base nonce 0),
+  and first payment or paid before. A read that fails or times out is unknown and warns, so the check does not
+  allow on a read it could not make. It is read-only; `mandate create` and the offline judge path are unchanged.
+  Core has the pure `assessPayee` and the SDK `readPayeeSignals` (also as `@probarion/sdk/payee`). The blocklist,
+  `packages/core/src/payee-blocklist.json`, is a seed of two testnet names from Probarion's own demo texts with no
+  report of wrongdoing; `.github/ISSUE_TEMPLATE/report-payee.yml` proposes more. It is in this repository, not in
+  npm 0.1.1. Check it with `pnpm --filter @probarion/core exec vitest run test/payee-check.test.ts` (one test per
+  rule) or live with `node packages/cli/dist/bin.js payee check near:<account> --network mainnet`.
 - A second mainnet payout to Base, decided by an attested model and the code rules, kept as evidence. On
   2026-11-13, from 11:39 to 11:41 UTC, the owner ran S2 on `v0.probarion.near` from their own terminal, with a kit
   copied from S1's and changed for round 2, which runs the SDK at commit `c85f41b`: the owner signed mandate 3
