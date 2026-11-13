@@ -27,6 +27,7 @@ import {
   replayRows,
   rulesCopy,
   runsOn,
+  tallyLine,
   teamSub,
   tokenNoun,
   visitorsSub,
@@ -67,6 +68,42 @@ const rawCases: Parameters<typeof describeRaw>[0][] = [
   { sent: true, status: "failed", code: null, txHash: "T" },
 ];
 
+/** The tally line for 0, 1 and many visitors, with and without the team's own attempts, and what each one says. */
+const TALLIES: [Parameters<typeof tallyLine>[0], string][] = [
+  [
+    { visitors: 0, attempts_external: 0, attempts_team: 6 },
+    "6 attempts so far, all by the team. Be the first visitor.",
+  ],
+  [
+    { visitors: 0, attempts_external: 0, attempts_team: 1 },
+    "1 attempt so far, by the team. Be the first visitor.",
+  ],
+  [
+    { visitors: 0, attempts_external: 0, attempts_team: 0 },
+    "No attempts yet. Be the first visitor.",
+  ],
+  [
+    { visitors: 1, attempts_external: 1, attempts_team: 6 },
+    "At least 1 visitor has made 1 attempt so far, plus 6 by the team.",
+  ],
+  [
+    { visitors: 1, attempts_external: 4, attempts_team: 0 },
+    "At least 1 visitor has made 4 attempts so far.",
+  ],
+  [
+    { visitors: 3, attempts_external: 12, attempts_team: 6 },
+    "At least 3 visitors have made 12 attempts so far, plus 6 by the team.",
+  ],
+  [
+    { visitors: 1234, attempts_external: 56789, attempts_team: 1001 },
+    "At least 1,234 visitors have made 56,789 attempts so far, plus 1,001 by the team.",
+  ],
+  [
+    { visitors: 0, attempts_external: 2, attempts_team: 6 },
+    "2 attempts by visitors so far, plus 6 by the team.",
+  ],
+];
+
 /** All the copy a visitor can be shown, for both networks. */
 function allCopy(): string[] {
   const out = [
@@ -79,6 +116,7 @@ function allCopy(): string[] {
     visitorsSub(1, 1),
     visitorsSub(12, 34),
     teamSub(5),
+    ...TALLIES.map(([t]) => tallyLine(t)),
     refusedSub(7),
     characterCount(123),
     moreMandates(2),
@@ -333,6 +371,31 @@ describe("raw-mode texts against the code they explain", () => {
       tone: "neutral",
       text: "Contract result: unconfirmed.",
     });
+  });
+});
+
+describe("the tally line over the form", () => {
+  it("says how many attempts there are for 0, 1 and many visitors, with the team's own counted apart", () => {
+    for (const [t, line] of TALLIES) expect(tallyLine(t), JSON.stringify(t)).toBe(line);
+  });
+
+  it("asks the reader to be the first visitor only while no outside visitor has tried", () => {
+    for (const [t, line] of TALLIES) {
+      expect(line.includes("Be the first"), JSON.stringify(t)).toBe(t.attempts_external === 0);
+    }
+  });
+
+  it("puts the visitors first once there are any, and never shows a zero count of them", () => {
+    for (const [t, line] of TALLIES) {
+      if (t.visitors > 0) expect(line).toMatch(/^At least [0-9,]+ visitors? /);
+      expect(line).not.toMatch(/\b0 (visitor|attempt)/);
+    }
+  });
+
+  it("never adds the team's attempts to the visitors' figure", () => {
+    const line = tallyLine({ visitors: 2, attempts_external: 3, attempts_team: 6 });
+    expect(line).toContain("made 3 attempts");
+    expect(line).not.toContain("9");
   });
 });
 
