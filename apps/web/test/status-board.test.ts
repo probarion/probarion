@@ -436,7 +436,7 @@ describe("the status board's rows", () => {
     const row = ITEMS.find((i) => i.id === "mainnet-vault");
     const what = row?.what ?? "";
     expect(what).toContain("It made three test payments to the owner's own addresses");
-    expect(what).toContain("Code rules alone decided the 1.00 USDC payout.");
+    expect(what).toContain("Code rules alone decided the 1.00 USDC Base payout.");
     expect(what).toContain(
       "The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed.",
     );
@@ -664,6 +664,13 @@ describe("the status board's evidence", () => {
     ) as { data: { tx_hash: string; transfer_tx_hash: string; withdraw_amount: string } };
     expect(poa.data.tx_hash).toBe(BOARD_TX.attestedPayout.hash);
     expect(poa.data.transfer_tx_hash).toBe(ATTESTED_BASE_TX.hash);
+    // The kit's own read of that transfer on Base agrees with the bridge: same tx, same amount, a match.
+    const receipt = JSON.parse(
+      text(ROOT, "docs", "evidence", "mainnet-v0", "s2-2026-11-13", "base-receipt.json"),
+    ) as { tx: string; transfers: { value: string }[]; match: boolean };
+    expect(receipt.tx).toBe(ATTESTED_BASE_TX.hash);
+    expect(receipt.transfers[0]?.value).toBe(poa.data.withdraw_amount);
+    expect(receipt.match).toBe(true);
     record.set(ATTESTED_BASE_TX.hash, { amount: Number(poa.data.withdraw_amount) / 1e6 });
 
     const facts: TxFact[] = [

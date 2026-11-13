@@ -1264,7 +1264,7 @@ export const STATUS_BOARD = {
           name: "Mainnet vault",
           proof: "verified",
           use: "running",
-          what: "One small standalone vault with real USDC, locked, on the recorded build. It made three test payments to the owner's own addresses: 1 USDC to a NEAR wallet on 2026-11-11, then two Base payouts through NEAR Intents on 2026-11-13. Code rules alone decided the 1.00 USDC payout. The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed. It refused mandate 999 on chain.",
+          what: "One small standalone vault with real USDC, locked, on the recorded build. It made three test payments to the owner's own addresses: 1 USDC to a NEAR wallet on 2026-11-11, then two Base payouts through NEAR Intents on 2026-11-13. Code rules alone decided the 1.00 USDC Base payout. The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed. It refused mandate 999 on chain.",
           limit:
             "No customer payment yet: each one is a test to the owner's own address. `verify --online` (O1 and O2) has not run on the vault's 3 attested decisions, and spend 1 was sent without the SDK, with no signed ledger.",
           where: { place: "Mainnet, real USDC" },
@@ -1278,7 +1278,7 @@ export const STATUS_BOARD = {
               "mainnet",
               "Base payout",
               BOARD_TX.attestedPayout,
-              "0.25 USDC burned, attested model",
+              "0.25 USDC burned, model and rules",
             ),
             chainTx("base", "arrived", ATTESTED_BASE_TX, "0.2476 USDC on Base"),
             { kind: "record", label: "the S1 run, 2026-11-13", href: BOARD_LINKS.mainnetRunS1 },
@@ -1372,13 +1372,13 @@ export const STATUS_BOARD = {
               kind: "record",
               label: "S1 run with the SDK",
               href: BOARD_LINKS.mainnetRunS1,
-              note: "1.00 USDC to Base, rules alone",
+              note: "1.00 USDC burned, rules alone",
             },
             {
               kind: "record",
               label: "S2 run with the SDK",
               href: BOARD_LINKS.mainnetRunS2,
-              note: "0.25 USDC to Base, attested model",
+              note: "0.25 USDC burned, model and rules",
             },
             {
               kind: "docs",
