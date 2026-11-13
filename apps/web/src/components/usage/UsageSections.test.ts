@@ -7,6 +7,7 @@ import { definitions, EMPTY } from "@/lib/usage/copy";
 import { parseUsage, type UsageMetrics } from "@/lib/usage/parse";
 import {
   Definitions,
+  PILOT_FORM_URL,
   PilotsCard,
   Unavailable,
   UnitCostsCard,
@@ -113,6 +114,31 @@ describe("the tiles", () => {
     expect(t).toContain("External owners 0");
     expect(t).toContain("Canary participants: at least 12,345");
     expect(t).toContain("Team vaults 0");
+  });
+
+  it("draws a zero smaller than a count, so that what has happened leads", () => {
+    const h = html(
+      createElement(UsageTiles, {
+        usage: usage({ external_owners: 0, canary_participants: 12345, team_vaults: 0 }),
+      }),
+    );
+    const values = [...h.matchAll(/<p class="([^"]*)">([^<]*)<\/p>/g)]
+      .filter((m) => /^[\d,]+$/.test(m[2] ?? ""))
+      .map((m) => [
+        m[2],
+        /tileValue/.test(m[1] ?? "") ? "large" : /counts/.test(m[1] ?? "") ? "small" : "?",
+      ]);
+    expect(values).toEqual([
+      ["0", "small"],
+      ["12,345", "large"],
+      ["0", "small"],
+    ]);
+    // The smaller size is still large text, so its light weight stays legible (usage.module.css .counts).
+    const css = readFileSync(
+      fileURLToPath(new URL("../site/usage.module.css", import.meta.url)),
+      "utf8",
+    );
+    expect(css).toMatch(/\.counts \{[^}]*font-size: clamp\(24px, 2\.6vw, 26px\);/);
   });
 });
 
@@ -238,7 +264,9 @@ describe("the unit costs", () => {
     expect(t).toContain("USD per decision price not set yet");
     expect(t).not.toContain("$");
     expect(t).not.toContain("Price:");
-    expect(t).toContain("Gas per spend not measured yet");
+    expect(t).toContain("Gas per spend measured on mainnet, see What it costs");
+    expect(h).toMatch(/<a[^>]*href="#costs"[^>]*>measured on mainnet, see What it costs<\/a>/);
+    expect(t).not.toContain("not measured yet");
     expect(t).toContain("Hosting and RPC not published yet");
     expect(t).toContain(
       "A price is shown only once it is set from NEAR AI's own price list, with the date read. Nothing is estimated.",
@@ -307,6 +335,28 @@ describe("the pilots", () => {
     const t = render([]);
     expect(t).toContain("External 2 · Team 1 · Canary 0");
     expect(t).not.toContain("Named with written consent");
+  });
+
+  it("offers the pilot form in a new tab, and says the issue it opens is public", () => {
+    const h = html(
+      createElement(PilotsCard, { pilots: { team: 0, external: 0, canary: 0 }, names: [] }),
+    );
+    expect(PILOT_FORM_URL).toBe(
+      "https://github.com/probarion/probarion/issues/new?template=pilot.yml",
+    );
+    expect(h).toMatch(
+      /<a[^>]*href="https:\/\/github\.com\/probarion\/probarion\/issues\/new\?template=pilot\.yml"[^>]*target="_blank"[^>]*>Run a pilot<span class="sr-only"> \(opens in a new tab\)<\/span><\/a>/,
+    );
+    expect(visible(h)).toContain(
+      "Run a pilot (opens in a new tab) . The form opens a GitHub issue, which is public.",
+    );
+    // The form it names is in the repository, and says so too.
+    const form = readFileSync(
+      fileURLToPath(new URL("../../../../../.github/ISSUE_TEMPLATE/pilot.yml", import.meta.url)),
+      "utf8",
+    );
+    expect(form).toMatch(/^name: Run a pilot$/m);
+    expect(form).toContain("This issue is public.");
   });
 
   it("writes a name as text: markup in it is not markup", () => {
