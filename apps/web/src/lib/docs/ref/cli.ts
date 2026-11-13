@@ -6,9 +6,9 @@ import type { RefColumn, RefTable } from "./types";
  * the program and pins these rows to it: the command paths, each option's flags as commander spells
  * them, which options are required (marked by commander, or refused at run time), each default, who
  * signs, the gas and deposit of each printed call, the `help` command that commander adds, the exit
- * codes that `check --help` and `verify --help` list, and the number ranges and caps that the "What
- * it does" cells of `vault create`, `mandate create`, `agent add` and `check` state, read from the
- * CLI's source and the vault's constants.
+ * codes that `check --help`, `payee check --help` and `verify --help` list, and the number ranges and
+ * caps that the "What it does" cells of `vault create`, `mandate create`, `agent add` and `check`
+ * state, read from the CLI's source and the vault's constants.
  *
  * An options cell lists every option of its command as "`<flags>`", followed by "(required)" when
  * the command cannot run without it and "(default `<value>`)" when commander gives it a default.
@@ -51,7 +51,7 @@ export const TABLES: readonly RefTable[] = [
         cells: {
           option: "`--rpc <urls>`",
           fallback: "`NEAR_RPC_URLS`, else the network's default RPCs",
-          does: "Comma-separated NEAR RPC URLs. Only the commands that read the chain use them: `vault create`, `check` and `verify`. An empty list is an error, and `verify --offline` refuses it.",
+          does: "Comma-separated NEAR RPC URLs. Only the commands that read the chain use them: `vault create`, `check`, `payee check` and `verify`. An empty list is an error, and `verify --offline` refuses it.",
         },
       },
       {
@@ -67,7 +67,7 @@ export const TABLES: readonly RefTable[] = [
         cells: {
           option: "`-h`, `--help`",
           fallback: "None",
-          does: "Prints the help of the program, or of the command it follows, and exits 0. The help of `check` and `verify` also lists their exit codes.",
+          does: "Prints the help of the program, or of the command it follows, and exits 0. The help of `check`, `payee check` and `verify` also lists their exit codes.",
         },
       },
     ],
@@ -289,6 +289,22 @@ export const TABLES: readonly RefTable[] = [
     ],
   },
   {
+    id: "cli-commands-payee",
+    label: "Payee commands",
+    columns: COMMAND_COLUMNS,
+    rows: [
+      {
+        id: "cli-payee-check",
+        cells: {
+          command: "`payee check <payee>`",
+          options: [VAULT, "`--archival-rpc <urls>`", "`--base-rpc <url>`", "`--json`"].join(", "),
+          does: "Checks a payee before a mandate names it, and prints `ALLOW`, `WARN` or `BLOCK` with one reason per check: whether the NEAR account exists, the seed blocklist, a lookalike of the vault's payees, contract code, new or code changed in about 7 days, and past payments. The payee is `near:<account>`, `base:<0x address>` or `solana:<address>`. On Base, new means nonce 0, a weaker sign. Solana is not read, and Base on testnet only with `--base-rpc`. A read it could not make warns, and so does a run with no vault: `--vault` falls back to `PROBARION_VAULT_ID`. `--archival-rpc` falls back to `NEAR_ARCHIVAL_RPC_URLS`, else FastNEAR's archival node, and `--base-rpc` to `https://mainnet.base.org` on mainnet and to none on testnet. `--json` prints the assessment and the signals it was made from. In this repository, not in npm 0.1.1.",
+          signs: "Nothing: read-only. It signs and sends nothing, and changes nothing on chain.",
+        },
+      },
+    ],
+  },
+  {
     id: "cli-commands-verify",
     label: "The verify command",
     columns: COMMAND_COLUMNS,
@@ -328,7 +344,7 @@ export const TABLES: readonly RefTable[] = [
         cells: {
           command: "`help [command]`",
           options: "None",
-          does: "Prints the help of the command it names, or of the program when it names none, as `--help` does: `help verify` prints what `verify --help` prints. Each group has its own for the commands in it: `vault help`, `mandate help`, `agent help`, `ledger help` and `spend help`, so `vault help create` prints the help of `vault create`.",
+          does: "Prints the help of the command it names, or of the program when it names none, as `--help` does: `help verify` prints what `verify --help` prints. Each group has its own for the commands in it: `vault help`, `mandate help`, `agent help`, `ledger help`, `spend help` and `payee help`, so `vault help create` prints the help of `vault create`.",
           signs: "Nothing: no transaction.",
         },
       },
@@ -340,6 +356,7 @@ export const TABLES: readonly RefTable[] = [
     columns: [
       { key: "code", label: "Code" },
       { key: "check", label: "check" },
+      { key: "payee", label: "payee check" },
       { key: "verify", label: "verify" },
       { key: "other", label: "Every other command" },
     ],
@@ -349,6 +366,7 @@ export const TABLES: readonly RefTable[] = [
         cells: {
           code: "`0`",
           check: "The vault would accept the spend. It may hold it for an approver.",
+          payee: "Allow: every check ran and passed.",
           verify:
             "No check fails or is UNPROVEN. A skipped check still exits 0: check i skips a vault that names no factory.",
           other:
@@ -361,6 +379,7 @@ export const TABLES: readonly RefTable[] = [
           code: "`1`",
           check:
             "The vault would refuse the spend, or the check could not run: `error:` on stderr.",
+          payee: "Block: a reason not to pay, or the check could not run: `error:` on stderr.",
           verify:
             "A check fails, which always wins over unproven, or verify could not run: `error:` on stderr and no `RESULT` line.",
           other:
@@ -372,6 +391,8 @@ export const TABLES: readonly RefTable[] = [
         cells: {
           code: "`2`",
           check: "None",
+          payee:
+            "Warn: something to confirm with the payee first, a read it could not make, or no vault given.",
           verify:
             "No check fails, but at least one is UNPROVEN: its row names the spends and what to supply.",
           other: "None",
@@ -383,6 +404,8 @@ export const TABLES: readonly RefTable[] = [
           code: "`64`",
           check:
             "A usage error: a missing, malformed or conflicting flag, an `--invoice` file that is not UTF-8 text, or a `PROBARION_AGENT_KEY` that is not an ed25519 secret key.",
+          payee:
+            "A usage error: a missing or malformed payee, a `--vault` or `PROBARION_VAULT_ID` that is not a NEAR account id, an empty URL list, or an unknown or malformed flag.",
           verify:
             "A usage error: a missing, malformed or conflicting flag, a `--snapshot` file that exists or is the ledger, an `--offline` snapshot whose `vault`, `network` or `taken_at` is malformed, an `--invoices` folder that cannot be read or holds no `.txt` file, or an invoice or `--system-prompt` file that cannot be read or is not UTF-8 text.",
           other: "None",
