@@ -237,7 +237,11 @@ function issueFormProblems(text) {
   return problems;
 }
 
-const FORMS = [".github/ISSUE_TEMPLATE/bug.yml", ".github/ISSUE_TEMPLATE/feature.yml"];
+const FORMS = [
+  ".github/ISSUE_TEMPLATE/bug.yml",
+  ".github/ISSUE_TEMPLATE/feature.yml",
+  ".github/ISSUE_TEMPLATE/pilot.yml",
+];
 
 test("the YAML reader returns what YAML means for the subset it reads", () => {
   const sample = [

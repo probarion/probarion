@@ -27,6 +27,23 @@ The software is an unaudited beta.
   (`docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt`). `.github/workflows/no-clone-verify.yml` is set to
   run the same block on Node 24, which 0.1.1 declares, and on Node 22 to learn whether 0.1.1 also works there, with
   no checkout and no secret. It had not run on GitHub when this entry was written.
+- `/usage` leads with what has happened, from the committed evidence. A "Mainnet (v0.probarion.near)" card, built
+  at build time from `docs/mainnet-proof.json` and the S1 and S2 run records, counts 3 payments (2 of them to
+  Base), 1 refusal on chain (NoMandate) and 3 attested decisions (1 paid, 2 false refusals, with why and their
+  anchor transactions), each row with its NEAR and Base transactions and the caveats: every payment is a test to
+  the owner's own accounts, the contract is unaudited and the TEE measurement is not pinned. A "What it costs"
+  card shows the gas each mainnet spend burned (0.000769 NEAR for spend 1 on NEAR, 0.001423 and 0.001424 NEAR for
+  the two Base payouts, 0.000165 NEAR for the refused spend), the POA bridge's 0.0024 USDC fee on each Base payout,
+  "Probarion fee: none" (the contract has no fee path) and the testnet vault deposit, 3.23352 test NEAR from the
+  testnet factory record and `createDepositPlan`, each linking its file. Both tables have two columns, so a phone
+  shows every link. The unit costs' gas row points there instead of "not measured yet", a zero tile is drawn
+  smaller, the header says the team paying itself adds no volume to the counts, and the pilots card links a new
+  "Run a pilot" issue form, `.github/ISSUE_TEMPLATE/pilot.yml`, which says the issue is public and which
+  `scripts/repo-files.test.mjs` now checks. `/login` adds, on testnet, "No testnet account? Create one in Meteor
+  Wallet (switch it to testnet) · get test NEAR" (NEAR's faucet page), and on both networks "See it without a
+  wallet →" to `/proof`, or the demo video. Check: `pnpm exec vitest run src/components/usage src/app/usage
+  src/lib/usage src/app/login` in `apps/web`; `src/components/usage/evidence.test.ts` holds each figure to the
+  file it comes from.
 - The online check of the mainnet vault's attested decisions, kept as evidence. On 2026-11-13, from 17:51:48 to
   17:52:19 UTC, after the computer's clock was synced, a read-only `verify --online` of `v0.probarion.near` on
   mainnet ran with S2's ledger of 6 entries, the two committed invoice texts, `--evidence docs/evidence`,

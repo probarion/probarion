@@ -1,0 +1,73 @@
+name: Run a pilot
+description: Try Probarion with your own agent and your own payees, on NEAR testnet first.
+title: "Pilot: "
+labels: ["pilot"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This issue is public.** Anyone can read it, and it stays in the repository's history. Write only what you are happy to publish: no private key, seed phrase, API key or value from `.env`, no customer's name and no real invoice. For anything private, send [@probarionhq](https://x.com/probarionhq) a direct message on X and say that you opened a pilot issue.
+
+        **Where a pilot starts today.** Probarion is an unaudited beta. A pilot starts on NEAR testnet, with test tokens: you sign in to the console with your own wallet, create a vault and add test USDC, as the [owner quickstart](https://probarion.xyz/docs/start/owner-quickstart) shows. A mainnet vault cannot be created yet, because the mainnet factory is not deployed. What runs on mainnet so far is on [/usage](https://probarion.xyz/usage).
+  - type: input
+    id: team
+    attributes:
+      label: Team or project
+      description: A name or a link. Leave it empty if you would rather not say.
+      placeholder: "Acme payables team"
+  - type: textarea
+    id: payments
+    attributes:
+      label: What your agent would pay for
+      description: "The kind of payment and a rough size, such as: supplier invoices, 50 to 500 USDC, a few a week."
+    validations:
+      required: true
+  - type: dropdown
+    id: payees
+    attributes:
+      label: Where the payees are
+      options:
+        - NEAR accounts (USDC on NEAR)
+        - Base addresses (through NEAR Intents)
+        - Solana addresses (through NEAR Intents)
+        - A mix
+        - Not sure yet
+    validations:
+      required: true
+  - type: dropdown
+    id: connect
+    attributes:
+      label: How your agent would connect
+      options:
+        - The MCP server
+        - The SDK
+        - The CLI
+        - Payables, the console's reference agent
+        - Not sure yet
+    validations:
+      required: true
+  - type: textarea
+    id: approvers
+    attributes:
+      label: Who approves a held payment
+      description: "Roles, not names: for example, our finance lead. A mandate holds a payment above its approval limit until an approver decides."
+  - type: textarea
+    id: success
+    attributes:
+      label: What would make the pilot worth it
+      description: What you would need to see, on testnet first, before you would trust it with real funds.
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: How to reach you
+      description: Public, like the rest of this issue. An X or GitHub handle is enough.
+      placeholder: "@yourhandle"
+  - type: checkboxes
+    id: public
+    attributes:
+      label: Before you send it
+      options:
+        - label: I understand that this issue is public, and it holds no key, seed phrase or private data.
+          required: true
