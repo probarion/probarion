@@ -1,0 +1,60 @@
+name: no-clone verify
+
+# The README's no-clone check of the mainnet vault, run the way a reader runs it: no checkout, no install, no key
+# and no secret. In an empty folder it downloads the vault's signed ledger, the recorded transactions and spend 1's
+# pre-ledger decision as this commit holds them in apps/web/public/samples/mainnet (the files the site serves at
+# https://probarion.xyz/samples/mainnet), then runs probarion 0.1.1 from npm, which reads mainnet with RPC view
+# calls only. It passes when checks a to h pass and check i skips (no factory made the vault), and it runs on
+# Node 22 and Node 24: probarion 0.1.1 declares Node 24 or newer. apps/web/test/samples-mainnet.test.ts keeps the
+# served files byte for byte equal to their sources in docs/. The action is pinned by the full SHA ci.yml uses.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: no-clone-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: npx probarion@0.1.1 verify, mainnet (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+      # The README's Bash block as it is, with B at this commit's copy of the files instead of probarion.xyz.
+      - name: Run the README block in an empty folder
+        env:
+          SAMPLES: https://raw.githubusercontent.com/probarion/probarion/${{ github.sha }}/apps/web/public/samples/mainnet
+        run: |
+          set -o pipefail
+          cd "$RUNNER_TEMP"
+          node --version
+          mkdir -p probarion-mainnet && cd probarion-mainnet
+          B="$SAMPLES"
+          curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \
+            -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
+          npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
+            --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json | tee "$RUNNER_TEMP/verify.txt"
+      - name: Require checks a to h to pass and check i to skip
+        run: |
+          out="$RUNNER_TEMP/verify.txt"
+          for c in a b c d e f g h; do
+            grep -Eq "^$c +[a-z-]+ +PASS " "$out" || { echo "check $c did not pass"; exit 1; }
+          done
+          grep -Eq '^i +factory-version +SKIP ' "$out"
+          grep -qx '8 passed, 0 failed, 0 unproven, 1 skipped' "$out"
+          grep -qx 'RESULT: PASS' "$out"
+          echo "Node $(node --version): checks a to h pass, i skips. RESULT: PASS" >> "$GITHUB_STEP_SUMMARY"

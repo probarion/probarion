@@ -15,6 +15,15 @@ The software is an unaudited beta.
 
 ### Added
 
+- A no-clone check of the mainnet vault. The site serves `v0.probarion.near`'s signed ledger after S2, the recorded
+  transactions, spend 1's pre-ledger decision and the two invoice texts under `/samples/mainnet/`, each a byte copy
+  of its source in `docs/` (`apps/web/test/samples-mainnet.test.ts` compares them). In an empty folder, one `curl`
+  that fetches three of them and `npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near
+  --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json` print checks a to h PASS, i SKIP and
+  `RESULT: PASS`, reading the chain with RPC view calls only (0.1.1 has no `--invoice`, so A8 does not run). On
+  2026-11-13 UTC this ran on Node 24.12.0 in Git Bash and Windows PowerShell 5.1, against local copies and
+  raw.githubusercontent.com (`docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt`).
+  `.github/workflows/no-clone-verify.yml` runs the same block on Node 22 and 24, with no checkout and no secret.
 - A second mainnet payout to Base, decided by an attested model and the code rules, kept as evidence. On
   2026-11-13, from 11:39 to 11:41 UTC, the owner ran S2 on `v0.probarion.near` from their own terminal, with a kit
   copied from S1's and changed for round 2, which runs the SDK at commit `c85f41b`: the owner signed mandate 3

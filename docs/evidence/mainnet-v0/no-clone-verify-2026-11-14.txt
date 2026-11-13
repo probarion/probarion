@@ -1,0 +1,174 @@
+No-clone verify of the mainnet vault v0.probarion.near with probarion 0.1.1 from npm (2026-11-14, UTC+7)
+
+What this records
+-----------------
+The site serves the mainnet vault's signed ledger, and the files verify reads beside it, under
+https://probarion.xyz/samples/mainnet/ (apps/web/public/samples/mainnet in the repository):
+
+  ledger.jsonl                     docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl (6 entries, after S2)
+  mainnet-proof.json               docs/mainnet-proof.json (the recorded transactions; --proof reads its burn tx hints)
+  evidence/v0-decision-m001.json   docs/evidence/v0-decision-m001.json (spend 1's pre-ledger decision, for check d)
+  invoices/invoice-INV-M002.txt    docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt (A8, entries 0 and 1)
+  invoices/invoice-INV-M003.txt    docs/evidence/mainnet-v0/s2-2026-11-13/invoice-INV-M003.txt (A8, entry 4)
+
+Each one is a byte-for-byte copy of the file on its right; apps/web/test/samples-mainnet.test.ts compares them.
+The blocks below download the first three into an empty folder and run `npx -y probarion@0.1.1 verify` on mainnet,
+with no clone and no key. Verify reads the chain with RPC view calls only. It signs and sends nothing.
+
+probarion.xyz did not serve these files yet when these runs were made, so the runs fetched
+the same bytes from two other places:
+  runs 1 and 2: a local HTTP server on 127.0.0.1:4802 serving apps/web/public of the branch feat/mainnet-samples,
+                at the exact paths the site serves;
+  runs 3 and 4: raw.githubusercontent.com at f35f9e0 (origin/dev), from the source files in docs/ (run 3 prints their
+                sha256, the same as the served copies').
+Run 5 is the repository's CLI on the served copies, with the two invoice texts.
+
+Machine: Windows 10 Pro 10.0.19045, Node v24.12.0, npm 11.6.2. Git Bash 5.2.12 with curl 7.87.0, and Windows
+PowerShell 5.1.19041.6456 with curl.exe 8.13.0. This machine has no Node 22: .github/workflows/no-clone-verify.yml
+runs the Bash block on Node 22 and Node 24 for every pull request and every push to dev and main.
+Each run's first line gives its time in UTC (2026-11-13, 19:02 to 19:11 UTC). Program output is verbatim.
+
+Result
+------
+Runs 1 to 4: checks a to h PASS and check i SKIP (no factory made the vault), "8 passed, 0 failed, 0 unproven,
+1 skipped", "RESULT: PASS", exit code 0. That is what scripts/judge.mjs expects of this vault (LIVE_VAULTS.mainnetV0),
+with one difference in check e's reason: probarion 0.1.1 has no --invoice flag, so A8 does not run ("A8 not run");
+A1 to A7 pass on the 3 attested decisions. Run 5, the repository's CLI given the two served invoice texts, matches
+LIVE_VAULTS.mainnetV0 exactly: A8 passes for 3 of 3 attested decisions (seq 0, 1, 4).
+
+Caveats: without --online, check e does not verify the TEE quotes (O1, O2), and the TEE measurement is not pinned.
+The mainnet payments so far are tests to the owner's own addresses. The code is unaudited.
+
+The PowerShell block calls npx.cmd: Windows PowerShell 5.1 resolves plain npx to npx.ps1, which a Restricted
+execution policy refuses to run.
+
+Run 1: Git Bash, local server
+-----------------------------
+# 2026-11-13T19:02:25Z Git Bash 5.2.12(1)-release (x86_64-pc-msys), node v24.12.0, npm 11.6.2, curl 7.87.0
+$ mkdir -p probarion-mainnet && cd probarion-mainnet
+$ B=http://127.0.0.1:4802/samples/mainnet
+$ curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \
+$   -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
+$ npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
+$   --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
+Probarion verify: v0.probarion.near (mainnet)
+entries 6, anchors 4, generated 2026-11-13T19:02:34.930Z
+
+a  ledger-signatures      PASS      6 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+b  hash-links             PASS      6 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                PASS      4 anchors match the ledger; 0 entries after the last anchored count (6) are not chain-attested
+d  spends-have-decisions  PASS      2 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount); 1 spend has a decision_hash listed as pre-ledger by the snapshot (exempt: at most one spend per listed hash, created before the first anchor); pre-ledger (documented): the 1 listed hash is the sha256 of the v0-decision-*.json files in E:\APP2028\probarion-wt\f02-run\bash\probarion-mainnet\evidence
+e  attestations           PASS      3 attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 not run (the request is not checked against the invoice); rules-only or unattested (reported, not failed): seq 2
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      2 burned spends have a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount
+i  factory-version        SKIP      not a factory vault
+
+8 passed, 0 failed, 0 unproven, 1 skipped
+RESULT: PASS
+exit code: 0
+
+Run 2: Windows PowerShell 5.1, local server
+-------------------------------------------
+# 2026-11-13T19:02:57Z Windows PowerShell 5.1.19041.6456, node v24.12.0, npm 11.6.2, curl 8.13.0
+PS> mkdir -Force probarion-mainnet | Out-Null
+PS> cd probarion-mainnet
+PS> $B = "http://127.0.0.1:4802/samples/mainnet"
+PS> curl.exe -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
+PS> npx.cmd -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
+Probarion verify: v0.probarion.near (mainnet)
+entries 6, anchors 4, generated 2026-11-13T19:03:06.830Z
+
+a  ledger-signatures      PASS      6 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+b  hash-links             PASS      6 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                PASS      4 anchors match the ledger; 0 entries after the last anchored count (6) are not chain-attested
+d  spends-have-decisions  PASS      2 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount); 1 spend has a decision_hash listed as pre-ledger by the snapshot (exempt: at most one spend per listed hash, created before the first anchor); pre-ledger (documented): the 1 listed hash is the sha256 of the v0-decision-*.json files in E:\APP2028\probarion-wt\f02-run\ps\probarion-mainnet\evidence
+e  attestations           PASS      3 attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 not run (the request is not checked against the invoice); rules-only or unattested (reported, not failed): seq 2
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      2 burned spends have a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount
+i  factory-version        SKIP      not a factory vault
+
+8 passed, 0 failed, 0 unproven, 1 skipped
+RESULT: PASS
+exit code: 0
+
+Run 3: Git Bash, raw.githubusercontent.com at f35f9e0
+-----------------------------------------------------
+# 2026-11-13T19:03:18Z Git Bash 5.2.12(1)-release (x86_64-pc-msys), node v24.12.0, npm 11.6.2, curl 7.87.0
+$ mkdir -p probarion-mainnet && cd probarion-mainnet
+$ R=https://raw.githubusercontent.com/probarion/probarion/f35f9e0754010a789a583988ffb9f99ca6b58749
+$ curl -fsS --create-dirs -o ledger.jsonl "$R/docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl" \
+$   -o mainnet-proof.json "$R/docs/mainnet-proof.json" -o evidence/v0-decision-m001.json "$R/docs/evidence/v0-decision-m001.json"
+$ sha256sum ledger.jsonl mainnet-proof.json evidence/v0-decision-m001.json
+$ npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
+$   --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
+18ff5149240fe099cc6c163ee625b573340da35f82d6b28890f2db1dd7669b31 *ledger.jsonl
+a67cd55ce7539f49cf5d368f02c436cbb3d8df630a66f99e9707864ca72dbda3 *mainnet-proof.json
+d00e8ccc7a99a23a7f56d22d68aa69c7050330ac61e5c88c74bf013d188fb4f1 *evidence/v0-decision-m001.json
+Probarion verify: v0.probarion.near (mainnet)
+entries 6, anchors 4, generated 2026-11-13T19:03:27.456Z
+
+a  ledger-signatures      PASS      6 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+b  hash-links             PASS      6 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                PASS      4 anchors match the ledger; 0 entries after the last anchored count (6) are not chain-attested
+d  spends-have-decisions  PASS      2 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount); 1 spend has a decision_hash listed as pre-ledger by the snapshot (exempt: at most one spend per listed hash, created before the first anchor); pre-ledger (documented): the 1 listed hash is the sha256 of the v0-decision-*.json files in E:\APP2028\probarion-wt\f02-run\bash-raw\probarion-mainnet\evidence
+e  attestations           PASS      3 attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 not run (the request is not checked against the invoice); rules-only or unattested (reported, not failed): seq 2
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      2 burned spends have a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount
+i  factory-version        SKIP      not a factory vault
+
+8 passed, 0 failed, 0 unproven, 1 skipped
+RESULT: PASS
+exit code: 0
+
+Run 4: Windows PowerShell 5.1, raw.githubusercontent.com at f35f9e0
+-------------------------------------------------------------------
+# 2026-11-13T19:03:52Z Windows PowerShell 5.1.19041.6456, node v24.12.0, npm 11.6.2, curl 8.13.0
+PS> mkdir -Force probarion-mainnet | Out-Null
+PS> cd probarion-mainnet
+PS> $R = "https://raw.githubusercontent.com/probarion/probarion/f35f9e0754010a789a583988ffb9f99ca6b58749"
+PS> curl.exe -fsS --create-dirs -o ledger.jsonl "$R/docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl" -o mainnet-proof.json "$R/docs/mainnet-proof.json" -o evidence/v0-decision-m001.json "$R/docs/evidence/v0-decision-m001.json"
+PS> npx.cmd -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
+Probarion verify: v0.probarion.near (mainnet)
+entries 6, anchors 4, generated 2026-11-13T19:04:03.141Z
+
+a  ledger-signatures      PASS      6 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+b  hash-links             PASS      6 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                PASS      4 anchors match the ledger; 0 entries after the last anchored count (6) are not chain-attested
+d  spends-have-decisions  PASS      2 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount); 1 spend has a decision_hash listed as pre-ledger by the snapshot (exempt: at most one spend per listed hash, created before the first anchor); pre-ledger (documented): the 1 listed hash is the sha256 of the v0-decision-*.json files in E:\APP2028\probarion-wt\f02-run\ps-raw\probarion-mainnet\evidence
+e  attestations           PASS      3 attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 not run (the request is not checked against the invoice); rules-only or unattested (reported, not failed): seq 2
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      2 burned spends have a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount
+i  factory-version        SKIP      not a factory vault
+
+8 passed, 0 failed, 0 unproven, 1 skipped
+RESULT: PASS
+exit code: 0
+
+Run 5: the repository's CLI with the invoice texts (needs a clone and a build)
+------------------------------------------------------------------------------
+# 2026-11-13T19:10:42Z Git Bash 5.2.12(1)-release (x86_64-pc-msys), node v24.12.0, the repository CLI, packages/cli built at f35f9e0 (it takes --invoice; its package.json still says 0.1.1)
+$ D=apps/web/public/samples/mainnet
+$ node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near --ledger $D/ledger.jsonl \
+$   --invoice $D/invoices/invoice-INV-M002.txt --invoice $D/invoices/invoice-INV-M003.txt \
+$   --evidence $D/evidence --proof $D/mainnet-proof.json
+Probarion verify: v0.probarion.near (mainnet)
+entries 6, anchors 4, generated 2026-11-13T19:10:44.936Z
+
+a  ledger-signatures      PASS      6 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+b  hash-links             PASS      6 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                PASS      4 anchors match the ledger; 0 entries after the last anchored count (6) are not chain-attested
+d  spends-have-decisions  PASS      2 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount); 1 spend has a decision_hash listed as pre-ledger by the snapshot (exempt: at most one spend per listed hash, created before the first anchor); pre-ledger (documented): the 1 listed hash is the sha256 of the v0-decision-*.json files in E:\APP2028\probarion-wt\mainnet-samples\apps\web\public\samples\mainnet\evidence
+e  attestations           PASS      3 attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 (request binding and mandate match) passes for 3 of 3 attested decisions (seq 0, 1, 4); notes (not failures): mandate 2 (seq 0): the model was shown remaining 1000000 and status active; the chain now holds 0 and exhausted (the values at decision time need archival state); mandate 2 (seq 1): the model was shown remaining 1000000 and status active; the chain now holds 0 and exhausted (the values at decision time need archival state); mandate 3 (seq 4): the model was shown remaining 250000 and status active; the chain now holds 0 and exhausted (the values at decision time need archival state); rules-only or unattested (reported, not failed): seq 2
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      2 burned spends have a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount
+i  factory-version        SKIP      not a factory vault
+
+invoices: 2 files read; A8 checks 2 of them against the attested decisions with their sha256 (check e gives the result): apps/web/public/samples/mainnet/invoices/invoice-INV-M002.txt (seq 0, 1), apps/web/public/samples/mainnet/invoices/invoice-INV-M003.txt (seq 4)
+8 passed, 0 failed, 0 unproven, 1 skipped
+RESULT: PASS
+exit code: 0
