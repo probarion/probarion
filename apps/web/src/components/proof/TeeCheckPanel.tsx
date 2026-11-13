@@ -12,9 +12,10 @@ import {
   type TeeStatus,
 } from "@/lib/tee/recheck";
 
-// /proof's live TEE check: one card after the decisions, the same on every vault's page. The browser draws the nonce,
-// sends it with no cookie and no Referer, and re-checks the two bindings itself (lib/tee/recheck.ts). It checks the TEE
-// that serves the model now; it reads nothing of the vault, and nothing on the decision cards reads it.
+// /proof's live TEE check: one card right under the result, above the checks and the decisions, the same on every
+// vault's page. The browser draws the nonce, sends it with no cookie and no Referer, and re-checks the two bindings
+// itself (lib/tee/recheck.ts). It checks the TEE that serves the model now; it reads nothing of the vault, and nothing
+// on the decision cards reads it.
 
 const MEASUREMENT_PIN = `${REPO_URL}/blob/main/docs/measurement-pin-2026-11.md`;
 
@@ -165,7 +166,8 @@ export function TeeCheckPanel({ model }: { model: string | null }) {
         ) : (
           <code className="text-ink">{model}</code>
         )}{" "}
-        right now, with a random nonce your browser draws. It does not re-check the decisions above.
+        right now, with a random nonce your browser draws. It does not re-check this vault&apos;s
+        decisions.
       </p>
       <p className={`mt-1 text-sm ${muted}`}>
         Your browser sends the nonce, with no cookie, and nothing you typed or uploaded.

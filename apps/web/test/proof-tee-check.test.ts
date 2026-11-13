@@ -91,7 +91,7 @@ describe("/proof's live TEE check card", () => {
     expect(t).toContain("Check the TEE now");
     expect(t).toContain("This checks the TEE that serves Qwen/Qwen3.8-27B right now");
     expect(t).toContain("with a random nonce your browser draws");
-    expect(t).toContain("It does not re-check the decisions above.");
+    expect(t).toContain("It does not re-check this vault's decisions.");
     expect(t).toContain(
       "Your browser sends the nonce, with no cookie, and nothing you typed or uploaded.",
     );
