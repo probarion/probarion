@@ -1,0 +1,636 @@
+/*
+ * What happens to one invoice (Journey.tsx, JourneyRecord.tsx), in two parts. Part 1, how it works: five rows of one
+ * shape, number, text and panel. Part 2, the record on NEAR testnet: the four invoices and the attested decisions as
+ * two tables, with each claim next to its evidence, then the proof page. Every colour is a token from app/globals.css.
+ * A wide panel line scrolls inside its panel, so the page never scrolls sideways. Nothing moves on scroll.
+ */
+
+/* --- Part 1: the five steps ------------------------------------------------------------------------------------ */
+
+.steps {
+  list-style: none;
+  border-bottom: 1px solid var(--color-line);
+}
+.step {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 5fr) minmax(0, 6fr);
+  column-gap: clamp(20px, 4vw, 56px);
+  row-gap: 18px;
+  align-items: start;
+  padding-block: clamp(20px, 2.2vw, 28px);
+  border-top: 1px solid var(--color-line);
+}
+.stepN {
+  font-weight: 300;
+  font-size: 42px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--color-gold-small);
+  font-variant-numeric: tabular-nums;
+}
+.stepText {
+  min-width: 0;
+}
+.stepTitle {
+  font-weight: 400;
+  font-size: clamp(23px, 2.2vw, 30px);
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.stepBody {
+  margin-top: 10px;
+  max-width: var(--container-measure);
+  font-size: 16px;
+  color: var(--color-mute);
+}
+.stepLink {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 15px;
+}
+
+/* A panel: the same caption strip on every panel, then its lines, the values left-aligned in one column. */
+.panel {
+  min-width: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+}
+.panelCap {
+  padding: 9px 18px 8px;
+  border-bottom: 1px solid var(--color-line);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+/* Two classes, so that it beats .site code's 0.86em: code in the 13px strip stays 13px. */
+.panel .panelCap code {
+  font-size: 1em;
+  color: var(--color-ink);
+}
+/* Positioned, so that screen-reader text inside cannot widen the page when the panel scrolls (WCAG 1.4.10). */
+.panelBody {
+  position: relative;
+  overflow-x: auto;
+  min-width: 0;
+  padding: 11px 18px 13px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.75;
+}
+/* The ring is drawn inside the panel's own border. */
+.panelBody:focus-visible {
+  outline-offset: -3px;
+}
+.kv {
+  display: grid;
+  grid-template-columns: 16ch minmax(0, 1fr);
+  column-gap: 16px;
+  white-space: nowrap;
+}
+.panelNote {
+  padding-bottom: 6px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+
+/* A step's note on what is true on testnet: a gold rule, a label, then short lines. Never one long paragraph. */
+.note {
+  margin-top: 16px;
+  max-width: var(--container-measure);
+  padding: 1px 0 1px 14px;
+  border-left: 3px solid var(--color-gold-deep);
+  font-size: 15px;
+  line-height: 1.55;
+}
+/* Close to the line under it, which it labels. */
+.noteLabel {
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-gold-ink);
+}
+/* 15px between two lines: with the 1.55 line, 2.5em or more from line top to line top (WCAG 1.4.8). */
+.noteLine + .noteLine {
+  margin-top: 15px;
+}
+.lead {
+  font-weight: 600;
+}
+
+/* --- Part 2: the record on NEAR testnet ------------------------------------------------------------------------ */
+
+.record {
+  margin-top: clamp(48px, 5vw, 72px);
+}
+/* On the steps' grid, so that the intro on the right starts where the panels do. */
+.recHead {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 5fr) minmax(0, 6fr);
+  column-gap: clamp(20px, 4vw, 56px);
+  row-gap: 22px;
+  align-items: end;
+  margin-bottom: clamp(22px, 2.6vw, 32px);
+}
+.recIntro {
+  grid-column: 1 / 3;
+  min-width: 0;
+}
+/* The site's eyebrow, in mute rather than gold: a part of the section, not a section of its own. */
+.recIntro .partLabel {
+  color: var(--color-mute);
+}
+/* Both headings of part 2 take this one size, well under the section's h2. */
+.partTitle {
+  font-weight: 300;
+  font-size: clamp(26px, 2.6vw, 34px);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.recIntro .partTitle {
+  margin-top: 10px;
+}
+.caption {
+  margin-top: 10px;
+  font-size: 15px;
+  color: var(--color-mute);
+}
+.recLede {
+  max-width: var(--container-measure);
+  font-size: 16px;
+}
+
+/* An outcome: a quiet label with a small mark, unlike the filled pills the page keeps for what is shipped. */
+.out {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.mark {
+  flex: none;
+  width: 11px;
+  height: 11px;
+}
+.outPaid {
+  --mark: var(--color-ok);
+}
+.outRefused {
+  --mark: var(--color-bad);
+}
+.outHeld {
+  --mark: var(--color-gold-deep);
+}
+.fill {
+  fill: var(--mark);
+}
+.ring {
+  fill: none;
+  stroke: var(--mark);
+  stroke-width: 1.6;
+}
+
+/* The four invoices: one table, the same columns and the same three evidence slots on every row. */
+.inv {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.colId {
+  width: 17%;
+}
+.colAsk {
+  width: 25%;
+}
+.colWhat {
+  width: 33%;
+}
+.colEv {
+  width: 25%;
+}
+.invHead th {
+  padding: 0 24px 10px 0;
+  border-bottom: 1px solid var(--color-ink);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: left;
+  color: var(--color-mute);
+}
+.invRow {
+  border-bottom: 1px solid var(--color-line);
+}
+.invRow > th,
+.invRow > td {
+  padding: 16px 24px 16px 0;
+  vertical-align: top;
+  text-align: left;
+  font-weight: 400;
+}
+.invRow > .invTh {
+  padding-right: 16px;
+}
+.invHead th:last-child,
+.invRow > td:last-child {
+  padding-right: 0;
+}
+.idWrap {
+  display: block;
+}
+.invId {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+}
+.again {
+  display: block;
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.invTh .out {
+  margin-top: 6px;
+}
+.asked {
+  font-size: 16px;
+}
+.what {
+  font-size: 15px;
+  color: var(--color-mute);
+}
+
+/* Evidence: a slot's name, then its link or the words that say why it has none. */
+.evl {
+  display: grid;
+  gap: 4px;
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+.evl > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  column-gap: 12px;
+}
+.evl dt {
+  grid-column: 1;
+  padding-top: 1px;
+  font-size: 13px;
+  color: var(--color-mute);
+}
+.evl dd {
+  grid-column: 2;
+  min-width: 0;
+}
+.none {
+  color: var(--color-mute);
+}
+.evLink {
+  display: inline-block;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+/* A hash: mono, and free to break, so that it never widens a narrow column (WCAG 1.4.10). */
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+/* After a link that opens a new tab. Inline-block, so that the link's underline does not run under it. */
+.ext {
+  display: inline-block;
+  margin-left: 3px;
+  font-size: 0.9em;
+  color: var(--color-mute);
+  text-decoration: none;
+}
+.glue {
+  white-space: nowrap;
+}
+
+/* The attested decisions: one row per check, one column per ledger, on the invoice table's columns. */
+.att {
+  margin-top: clamp(40px, 4.5vw, 60px);
+}
+.attCap {
+  margin-top: 8px;
+  max-width: var(--container-measure);
+  font-size: 15px;
+  color: var(--color-mute);
+}
+.matrix {
+  width: 100%;
+  margin-top: 18px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.colCheck {
+  width: 17%;
+}
+.colCanary {
+  width: 25%;
+}
+.colDemo {
+  width: 58%;
+}
+.matrix th,
+.matrix td {
+  padding: 10px 24px 10px 0;
+  border-top: 1px solid var(--color-line);
+  text-align: left;
+  vertical-align: top;
+}
+.matrix th:last-child,
+.matrix td:last-child {
+  padding-right: 0;
+}
+.matrix thead th {
+  padding-top: 0;
+  border-top: 0;
+  border-bottom: 1px solid var(--color-ink);
+  font-weight: 500;
+}
+.matrix .checkHead {
+  vertical-align: bottom;
+  font-size: 13px;
+  color: var(--color-mute);
+}
+.sub {
+  display: block;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--color-mute);
+}
+.matrix tbody tr:first-child > * {
+  border-top: 0;
+}
+.matrix tbody th {
+  font-weight: 400;
+  color: var(--color-mute);
+}
+/* Pass, Not run and Not shown wear one style: no limit is faded out. */
+.result {
+  font-weight: 500;
+  color: var(--color-ink);
+}
+/* Shown on a phone only, where the column heads have scrolled away. */
+.cellLabel {
+  display: none;
+}
+.attFoot {
+  display: grid;
+  gap: 15px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-line);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.attFoot p {
+  max-width: var(--container-measure);
+}
+.txs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 20px;
+  margin-top: 4px;
+}
+
+/* The close of the record: the proof page, as the site's button, and the demo vault's files. */
+.proofRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 28px;
+  margin-top: clamp(28px, 3vw, 40px);
+  padding-top: 22px;
+  border-top: 1px solid var(--color-ink);
+}
+.proofText {
+  max-width: 30em;
+  font-size: 16px;
+  color: var(--color-mute);
+}
+.quiet {
+  font-size: 15px;
+}
+
+/* Tablet: a panel moves under its text, and each invoice becomes a two-column row. */
+@media (max-width: 900px) {
+  .step {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+  .stepN {
+    font-size: 34px;
+  }
+  .step > .panel {
+    grid-column: 2;
+    max-width: 600px;
+  }
+  .recHead {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .recIntro {
+    grid-column: 1;
+  }
+  .inv,
+  .inv tbody {
+    display: block;
+  }
+  .inv colgroup {
+    display: none;
+  }
+  /* The column heads stay for a screen reader; each row says what it holds. */
+  .invHead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .invRow {
+    display: grid;
+    grid-template-columns: 170px minmax(0, 1fr);
+    column-gap: 24px;
+    row-gap: 15px;
+    padding-block: 16px;
+  }
+  .invRow:first-child {
+    border-top: 1px solid var(--color-ink);
+  }
+  .invRow > th,
+  .invRow > td,
+  .invRow > .invTh {
+    padding: 0;
+  }
+  .invRow > .invTh {
+    grid-row: 1 / span 3;
+  }
+  /* The three slots side by side, each name over its link, in line from row to row. */
+  .evl {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr) minmax(0, 0.9fr);
+    column-gap: 16px;
+  }
+  .evl > div {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+  }
+  .evl dt,
+  .evl dd {
+    grid-column: 1;
+  }
+  .colCheck {
+    width: 24%;
+  }
+  .colCanary {
+    width: 30%;
+  }
+  .colDemo {
+    width: 46%;
+  }
+}
+
+/* Phone: the number sits beside its title, and the two tables read as labelled blocks. */
+@media (max-width: 620px) {
+  .step {
+    grid-template-columns: 30px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 16px;
+  }
+  .stepN {
+    font-size: 26px;
+    line-height: 1.1;
+    padding-top: 1px;
+  }
+  .step > .panel {
+    grid-column: 1 / -1;
+    max-width: none;
+  }
+  .panelCap,
+  .panelBody {
+    padding-inline: 14px;
+  }
+  /* A value too long for a phone wraps under itself, right-aligned; the key stays on one line. */
+  .kv {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    white-space: normal;
+  }
+  .kv > :first-child {
+    flex: none;
+  }
+  .kv > :last-child {
+    text-align: right;
+  }
+  .note {
+    padding-left: 12px;
+  }
+  .invRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .invRow > .invTh {
+    grid-row: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2px 12px;
+  }
+  .idWrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 8px;
+  }
+  .invTh .out {
+    margin-top: 0;
+  }
+  .evl {
+    column-gap: 12px;
+    font-size: 14px;
+  }
+  .matrix,
+  .matrix thead,
+  .matrix tbody {
+    display: block;
+  }
+  .matrix colgroup {
+    display: none;
+  }
+  .matrix tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 16px;
+    row-gap: 4px;
+  }
+  .matrix thead tr {
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--color-ink);
+  }
+  .matrix thead th {
+    padding: 0;
+    border: 0;
+  }
+  /* Out of the grid but kept for a screen reader, so the columns still pair with their heads. */
+  .matrix .checkHead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .matrix tbody tr {
+    padding-block: 10px;
+    border-top: 1px solid var(--color-line);
+  }
+  .matrix tbody tr:first-child {
+    border-top: 0;
+  }
+  .matrix tbody th {
+    grid-column: 1 / -1;
+    padding: 0;
+    border: 0;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+  .matrix td {
+    padding: 0;
+    border: 0;
+  }
+  .matrix .spanAll {
+    grid-column: 1 / -1;
+  }
+  .cellLabel {
+    display: block;
+    font-size: 13px;
+    color: var(--color-mute);
+  }
+  .proofRow {
+    gap: 12px 24px;
+  }
+}
+
+/* Windows contrast themes drop a mark's colour and the note's gold: both take the forced text colour. */
+@media (forced-colors: active) {
+  .fill {
+    fill: CanvasText;
+  }
+  .ring {
+    stroke: CanvasText;
+  }
+  .note {
+    border-left-color: CanvasText;
+  }
+}

@@ -8,7 +8,7 @@ import { isTestFile, toPosix, walk } from "./deploy-scan";
 /*
  * The site's typography against WCAG 2.2: contrast at AAA (1.4.6: 7:1, or 4.5:1 for large text), the visual
  * presentation of reading text (1.4.8), readable sizes and weights, and the guards that keep text spacing (1.4.12) and
- * reflow (1.4.10) working. Every check reads the real files: the tokens in app/globals.css and the five CSS modules.
+ * reflow (1.4.10) working. Every check reads the real files: the tokens in app/globals.css and the six CSS modules.
  * Large text is 24px and up (18.66px bold and up; no module sets a weight above 600). What is left out is listed below,
  * each with its reason.
  */
@@ -23,6 +23,7 @@ const MODULES: Readonly<Record<string, string>> = {
   canary: "src/components/site/canary.module.css",
   usage: "src/components/site/usage.module.css",
   head: "src/components/site/head.module.css",
+  journey: "src/components/site/journey.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -316,7 +317,7 @@ describe("text contrast at WCAG AAA (1.4.6), from the tokens and the CSS modules
 
   it("keeps gold-small off small text: only the 42px step numbers, a large text, use it as a text colour", () => {
     const uses = MODULE_RULES.filter((r) => r.decls.color === "var(--color-gold-small)");
-    expect(uses.map(where)).toEqual(["site: .stepN"]);
+    expect(uses.map(where)).toEqual(["journey: .stepN"]);
     for (const r of uses) expect(minPx(r.decls["font-size"]), where(r)).toBeGreaterThanOrEqual(24);
     const tsx = walk(SRC).filter((f) => f.endsWith(".tsx") && !isTestFile(f));
     const found = tsx.filter((f) =>
@@ -506,17 +507,19 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["canary", ".rules", "gap", 16, "site", ".site"],
       ["canary", ".reading :where(p + p)", "margin-top", 17, "site", ".site"],
       ["usage", ".defs", "gap", 16, "site", ".site"],
+      // The journey: a step's note under its text, the note's lines, the record's caption over its intro, an invoice's
+      // asked, happened and evidence stacked on a tablet or a phone, and the two lines under the attested decisions.
+      ["journey", ".note", "margin-top", 15, "journey", ".note"],
+      ["journey", ".noteLine + .noteLine", "margin-top", 15, "journey", ".note"],
+      ["journey", ".recHead", "row-gap", 16, "site", ".site"],
+      ["journey", ".invRow", "row-gap", 15, "site", ".site"],
+      ["journey", ".attFoot", "gap", 15, "journey", ".attFoot"],
     ];
     for (const [file, selector, prop, px, lhFile, lhSelector] of cases) {
       const lh = Number(decl(lhFile, lhSelector, "line-height"));
       const total = lh + em(decl(file, selector, prop), px);
       expect(total + 1e-9, `${file} ${selector}`).toBeGreaterThanOrEqual(2.5);
     }
-    // A story card's two paragraphs: the card's flex gap and the second one's margin, which do not collapse.
-    const story =
-      em(decl("site", ".storyCard", "gap"), 15) +
-      em(decl("site", ".storyAsks + p", "margin-top"), 15);
-    expect(Number(decl("site", ".site", "line-height")) + story + 1e-9).toBeGreaterThanOrEqual(2.5);
     // The footer is outside .site: its line height is the page's 1.5.
     expect(1.5 + em(decl("site", ".footNote", "margin-top"), 14)).toBeGreaterThanOrEqual(2.5);
   });
@@ -540,7 +543,11 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
     );
     const capped: [string, string][] = [
       ["site", ".lede"],
-      ["site", ".storyIntro"],
+      ["journey", ".stepBody"],
+      ["journey", ".note"],
+      ["journey", ".recLede"],
+      ["journey", ".attCap"],
+      ["journey", ".attFoot p"],
       ["site", ".statusNote"],
       ["site", ".gaps"],
       ["site", ".closeNote"],

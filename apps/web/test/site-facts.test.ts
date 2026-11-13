@@ -12,6 +12,7 @@ import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { BetaStrip, BetaStripView } from "@/components/site/BetaStrip";
 import { InkBand } from "@/components/site/InkBand";
+import j from "@/components/site/journey.module.css";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { CANARY_CHIPS } from "@/lib/canary/chips";
@@ -19,9 +20,10 @@ import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { parseVia } from "@/lib/canary/via";
 import { explorerTxUrl } from "@/lib/config";
 import { docsHref, findPage, PAGES } from "@/lib/docs/registry";
-import { cli } from "@/lib/proof/cli";
+import { CLI_ON_NPM, cli } from "@/lib/proof/cli";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import {
+  ATTESTED,
   BAND,
   betaStrip,
   CHAIN,
@@ -39,6 +41,7 @@ import {
   HERO,
   INTEGRATE,
   JOURNEY,
+  type JourneyStep,
   LINKS,
   LIVE_CHECK,
   MAINNET_TX,
@@ -462,7 +465,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(README).toContain("2 USDC: { ok: true");
     expect(entry("6 USDC")).toMatchObject({ value: `ok: false, ${CONTRACT_REFUSAL_CODE}` });
     expect(README).toContain(`6 USDC: { ok: false, code: '${CONTRACT_REFUSAL_CODE}'`);
-    const limit = /at most (\d+) USDC/.exec(JSON.stringify(step4))?.[1];
+    const limit = /at most (\d+) USDC/.exec(JOURNEY.steps[3].caption)?.[1];
     expect(README).toContain(
       `mandate 1 "smoke near": active, pays probarion-payee.testnet, at most ${Number(limit) * 1_000_000} per payment`,
     );
@@ -486,10 +489,15 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
   });
 
   it("that the model run is recorded on testnet, checked offline and online, with the measurement not pinned", () => {
-    expect(JOURNEY.steps[1].tag).toBe(
-      "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The testnet demo vault's ledger holds five more, by Payables, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. That day the code allowed the fourth and the fifth, and the vault paid each invoice, 2.00 test USDC. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run on the Canary's two; on the demo vault's five it passed on 2026-11-12, with the invoices committed in the repository.",
-    );
-    expect(JOURNEY.steps[1].tag).not.toMatch(/not recorded/);
+    // Step 2's note says it in two short lines, the limit next to the claim, and links the table of checks below.
+    const note = JOURNEY.steps[1].note;
+    expect(note?.label).toBe("On testnet");
+    expect(note?.lines.map((l) => partsText(l.parts))).toEqual([
+      "The Canary's ledger holds two attested decisions, and the demo vault's ledger five more. All seven pass the offline checks A1 to A7 and the online checks O1 and O2. The checks, below",
+      "The TEE measurement is not pinned, so this does not show which model image ran.",
+    ]);
+    expect(note?.lines[0]?.parts).toContainEqual({ label: "The checks, below", href: "#attested" });
+    expect(JSON.stringify(note)).not.toMatch(/not recorded/);
     const row = README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter"));
     expect(row).toContain("**Built**");
     expect(row).toContain("**Recorded on NEAR testnet**");
@@ -504,6 +512,147 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     // The two decisions are the Canary's, in the ledger the team published (test/canary-vault.test.ts).
     expect(row).toContain(
       "docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11",
+    );
+  });
+
+  it("the attested decisions on testnet, cell by cell, as the README and each verifier output record them", () => {
+    const row = (
+      README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter")) ?? ""
+    ).replace(/\s+/g, " ");
+    const blob = (path: string) => `${LINKS.github}/blob/main/${path}`;
+    const file = (path: string) => text(ROOT, ...path.split("/"));
+    const cell = (check: string, ledger: number) => {
+      const c = ATTESTED.rows.find((r) => r.check === check)?.cells[ledger];
+      if (c === undefined) throw new Error(`no cell ${check}, ${ledger}`);
+      const hrefs = c.detail.flatMap((p) => (typeof p === "string" ? [] : [p.href]));
+      return { result: c.result, words: `${c.result}${partsText(c.detail)}`, hrefs };
+    };
+    const CANARY = "docs/evidence/canary-vault";
+    const DEMO = "docs/evidence/demo-vault";
+    expect(ATTESTED.rows.map((r) => r.check)).toEqual([
+      "A1 to A7, offline",
+      "O1 and O2, online",
+      "A8",
+      "Which model image ran",
+    ]);
+    expect(ATTESTED.ledgers.map((l) => l.short)).toEqual(["Canary", "Demo vault"]);
+
+    // A1 to A7: both of the Canary's on 2026-11-11, all five of the demo vault's on 2026-11-12.
+    expect(cell("A1 to A7, offline", 0)).toEqual({
+      result: "Pass",
+      words: "Pass on both, 2026-11-11. Output",
+      hrefs: [blob(`${CANARY}/verify-2026-11-11.txt`)],
+    });
+    expect(file(`${CANARY}/verify-2026-11-11.txt`)).toMatch(
+      /generated 2026-11-11T[\s\S]*2 attested decisions pass A1.A7;/,
+    );
+    expect(cell("A1 to A7, offline", 1)).toEqual({
+      result: "Pass",
+      words: "Pass on all five, 2026-11-12. Output",
+      hrefs: [blob(`${DEMO}/verify-2026-11-12-video.txt`)],
+    });
+    expect(file(`${DEMO}/verify-2026-11-12-video.txt`)).toMatch(
+      /generated 2026-11-12T[\s\S]*5 attested decisions pass A1.A7;/,
+    );
+    expect(row).toContain(
+      "The demo vault's ledger holds 5 more, made by Payables, which pass A1 to A7.",
+    );
+
+    // O1 and O2: the Canary's two on 2026-11-11; the demo vault's five at 16:13 UTC, after entries 10 to 13 at 01:10.
+    expect(cell("O1 and O2, online", 0)).toEqual({
+      result: "Pass",
+      words: "Pass on both, 2026-11-11. Output",
+      hrefs: [blob(`${CANARY}/verify-online-2026-11-11.txt`)],
+    });
+    expect(file(`${CANARY}/verify-online-2026-11-11.txt`)).toMatch(
+      /generated 2026-11-11T[\s\S]*2 DCAP-genuine TDX quotes bound to this request[\s\S]*2 GPU payloads bound to the request nonce and verified by NRAS/,
+    );
+    expect(cell("O1 and O2, online", 1)).toEqual({
+      result: "Pass",
+      words:
+        "Pass on all five, entry 15 included, 2026-11-12 at 16:13 UTC. Output Entries 10 to 13 passed first, at 01:10 UTC; entry 15 came later. Output",
+      hrefs: [
+        blob(`${DEMO}/verify-online-a8-2026-11-12.txt`),
+        blob(`${DEMO}/verify-online-2026-11-12.txt`),
+      ],
+    });
+    expect(row).toContain(
+      "A later live run with `--online` the same day, at 16:13 UTC, passed O1 and O2 on all five, entry 15 included ([online output](docs/evidence/demo-vault/verify-online-a8-2026-11-12.txt))",
+    );
+    expect(row).toContain(
+      "With `--online` at 01:10 UTC that day, the four attested decisions the demo vault held then, entries 10 to 13, passed O1 and O2 ([online output](docs/evidence/demo-vault/verify-online-2026-11-12.txt)); entry 15 came later.",
+    );
+    expect(file(`${DEMO}/verify-online-a8-2026-11-12.txt`)).toMatch(
+      /generated 2026-11-12T16:13[\s\S]*5 DCAP-genuine TDX quotes bound to this request[\s\S]*5 GPU payloads bound to the request nonce and verified by NRAS/,
+    );
+    expect(file(`${DEMO}/verify-online-2026-11-12.txt`)).toMatch(
+      /generated 2026-11-12T01:10[\s\S]*4 DCAP-genuine TDX quotes bound to this request/,
+    );
+
+    // A8: not run on the Canary's, which holds no invoice text; passed on the demo vault's five, invoices committed.
+    expect(cell("A8", 0)).toEqual({
+      result: "Not run",
+      words: "Not run: its ledger holds no invoice text. Why",
+      hrefs: [blob(`${CANARY}/README.md#what-check-e-proves-for-seq-1-and-2`)],
+    });
+    expect(row).toContain(
+      "A8 was not run on the Canary's 2, since the ledger holds no invoice text",
+    );
+    expect(file(`${CANARY}/README.md`)).toContain("### What check e proves for seq 1 and 2");
+    expect(file(`${CANARY}/README.md`).replace(/\s+/g, " ")).toContain(
+      "The ledger holds no invoice text, so check e says `A8 not run`",
+    );
+    expect(cell("A8", 1)).toEqual({
+      result: "Pass",
+      words: "Pass on all five, 2026-11-12, with the invoices committed in the repository. Output",
+      hrefs: [blob(`${DEMO}/verify-a8-2026-11-12.txt`)],
+    });
+    expect(row).toContain(
+      "on the demo vault's 5 it passed on 2026-11-12, with the invoices committed in the repository ([output](docs/evidence/demo-vault/verify-a8-2026-11-12.txt))",
+    );
+    expect(file(`${DEMO}/verify-a8-2026-11-12.txt`)).toContain(
+      "passes for 5 of 5 attested decisions",
+    );
+
+    // The measurement caveat spans both ledgers, with the finding the README cites.
+    const image = ATTESTED.rows.find((r) => r.check === "Which model image ran");
+    expect(image?.cells).toHaveLength(1);
+    expect(cell("Which model image ran", 0)).toEqual({
+      result: "Not shown",
+      words:
+        "Not shown. The TEE measurement is not pinned, so these checks do not show which model image ran. Finding of 2026-11-12",
+      hrefs: [blob("docs/measurement-pin-2026-11.md")],
+    });
+    expect(row).toContain(
+      "The TEE measurement is not pinned, so this does not show which model image ran",
+    );
+    expect(row).toContain("([finding of 2026-11-12](docs/measurement-pin-2026-11.md))");
+    expect(file("docs/measurement-pin-2026-11.md")).toContain("Checked on 2026-11-12");
+
+    // The column heads: the Canary's ledger as published, the demo vault's five by Payables.
+    expect(partsText(ATTESTED.ledgers[0].sub)).toBe(
+      "2026-11-10, published in the repository: 2 attested decisions",
+    );
+    expect(ATTESTED.ledgers[0].sub).toContainEqual({
+      label: "published in the repository",
+      href: blob(`${CANARY}/ledger-2026-11-10.jsonl`),
+    });
+    expect(ATTESTED.ledgers[0].name).toContainEqual({ label: "Canary", href: "/canary" });
+    expect(row).toContain(
+      "The Canary's ledger of 2026-11-10, published on 2026-11-11, holds 2 decisions",
+    );
+    expect(partsText(ATTESTED.ledgers[1].sub)).toBe(
+      "2026-11-11 and 2026-11-12, by Payables: 5 attested decisions",
+    );
+  });
+
+  it("styles a check that was not run or not shown exactly as one that passed", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    for (const word of ["Pass", "Not run", "Not shown"]) {
+      expect(html, word).toContain(`<span class="${j.result}">${word}</span>`);
+    }
+    expect(new Set(ATTESTED.rows.flatMap((r) => r.cells.map((c) => c.result)))).toEqual(
+      new Set(["Pass", "Not run", "Not shown"]),
     );
   });
 
@@ -529,8 +678,8 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(HERO.paid.payee).toBe(demo.payee);
     expect(HERO.paid.tx.url).toBe(explorerTxUrl("testnet", HERO.paid.tx.hash));
     // The same transaction the invoice story and the README's demo table link.
-    expect(STORY.invoices[0].links).toContainEqual({
-      label: `Tx ${HERO.paid.tx.label}`,
+    expect(STORY.invoices[0].evidence.tx).toContainEqual({
+      label: HERO.paid.tx.label,
       url: HERO.paid.tx.url,
     });
     expect(README).toContain(
@@ -646,7 +795,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
         }
       ).direct_refusal.over_per_payment_tx,
     );
-    const limit = /at most (\d+) USDC/.exec(JSON.stringify(JOURNEY.steps[3].panel))?.[1];
+    const limit = /at most (\d+) USDC/.exec(JOURNEY.steps[3].caption)?.[1];
     const asked = /(\d+) USDC/.exec(JSON.stringify(entry("6 USDC")))?.[1];
     expect(Number(asked)).toBeGreaterThan(Number(limit));
     expect(README).toContain(
@@ -883,7 +1032,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
 
 describe("the payment journey", () => {
   const prose = README.replace(/\s+/g, " ");
-  const step = (n: number) => {
+  const step = (n: number): JourneyStep => {
     const found = JOURNEY.steps.find((s) => s.n === n);
     if (found === undefined) throw new Error(`no step ${n}`);
     return found;
@@ -926,20 +1075,27 @@ describe("the payment journey", () => {
   });
 
   it("runs the commands on the README's fixture, and points to the demo vault's proof page for a real ledger", () => {
-    // With npx the tag says "these commands run", from a clone "this command runs".
-    expect(step(5).tag).toContain("on a test fixture");
-    expect(step(5).tag).not.toContain("no ledger key or anchors yet");
-    expect(step(5).tag).toContain(
-      "The testnet demo vault's proof page runs the same checks on its own ledger and chain data.",
+    // Two short lines, each with its lead: what the commands run on, then where the same checks run on real data.
+    const note = step(5).note;
+    expect(note?.label).toBe(CLI_ON_NPM ? "What the commands run on" : "What the command runs on");
+    expect(note?.lines.map((l) => l.lead)).toEqual(["A test fixture.", "On real data."]);
+    expect(note?.lines[0]?.parts).toContainEqual({
+      label: "the file in the repository",
+      href: LINKS.fixture,
+    });
+    expect(partsText(note?.lines[1]?.parts ?? [])).toBe(
+      "The testnet demo vault's proof page runs the same checks on its own ledger and chain data. Its record, below",
     );
+    expect(note?.lines[1]?.parts).toContainEqual({ label: "Its record, below", href: "#record" });
+    expect(JSON.stringify(note)).not.toContain("no ledger key or anchors yet");
     expect(step(5).body).toContain("With a ledger key, the SDK anchors the ledger root");
   });
 
   it("marks the ledger as what the SDK does, and says the demo vault's ledger holds a refusal too", () => {
     expect(prose).toContain("without the SDK, a model or a ledger");
     expect(step(3).body).toContain("The SDK signs the decision into the ledger");
-    // The four invoices just below step 5 show it, so step 3 carries no "Today" note (audit P1-10).
-    expect(step(3).tag).toBeUndefined();
+    // The four invoices just below step 5 show it, so step 3 carries no note (audit P1-10).
+    expect(step(3).note).toBeUndefined();
     expect(visibleText(landing())).toContain("The SDK signs the decision into the ledger");
     // Check d ties each spend to its decision; the refusal is a decision with no spend (test/demo-vault.test.ts).
     const demo = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")).demo_vault;
@@ -964,10 +1120,10 @@ describe("the payment journey", () => {
     expect(commands).toEqual(VERIFY_LINES);
     // One command per line, so Windows PowerShell 5.1 (no `&&`) runs each as written.
     for (const command of commands) expect(command).not.toMatch(/&&|;|\|/);
-    expect(step(5).tag).toContain(
+    expect(partsText(step(5).note?.lines[0]?.parts ?? [])).toBe(
       onNpm
-        ? "this site serves an exact copy of the file in the repository."
-        : "Build it from a clone first (README step 1).",
+        ? "This site serves an exact copy of the file in the repository."
+        : "The command reads the file in the repository. Build the CLI from a clone first (README step 1).",
     );
     // PowerShell 5.1 reads `curl` as Invoke-WebRequest, so the panel says to type curl.exe there.
     if (onNpm) expect(step(5).panel[0]).toEqual({ note: VERIFY_NOTE });
@@ -978,17 +1134,33 @@ describe("the payment journey", () => {
     expect(css).toMatch(/\.prompt {[^}]*user-select: none/);
   });
 
-  it("sets what is true today apart as a note labelled Today, on steps 2 and 5 only (audit P1-10)", () => {
-    expect(JOURNEY.today).toBe("Today");
-    expect(JOURNEY.steps.filter((s) => s.tag !== undefined).map((s) => s.n)).toEqual([2, 5]);
-    const out = visibleText(renderToStaticMarkup(createElement(Home)));
-    for (const n of [2, 5]) expect(out, `step ${n}`).toContain(`Today ${step(n).tag}`);
-    // A left rule in the brand's gold, not the filled beige pill it replaces.
-    const css = text(WEB, "src", "components", "site", "site.module.css");
-    const today = css.slice(css.indexOf(".today {"), css.indexOf("}", css.indexOf(".today {")));
-    expect(today).toContain("border-left: 3px solid var(--color-gold-deep)");
-    expect(today).not.toContain("background");
-    expect(css).not.toMatch(/^\.tag \{/m);
+  it("sets what is true on testnet apart as a labelled note, on steps 2 and 5 only, in short lines (audit P1-10)", () => {
+    expect(JOURNEY.steps.filter((s) => s.note !== undefined).map((s) => s.n)).toEqual([2, 5]);
+    const html = renderToStaticMarkup(createElement(Home));
+    // As a browser reads it: a link's new-tab arrow, and its words for a screen reader, left out.
+    const out = textContent(html)
+      .replace(/↗ \(opens in a new tab\)/g, "")
+      .replace(/\s+/g, " ");
+    for (const n of [2, 5]) {
+      const note = step(n).note;
+      if (note === undefined) throw new Error(`no note on step ${n}`);
+      // Its label, then each line on its own, the lead first: never one long paragraph.
+      expect(note.lines.length, `step ${n}`).toBeGreaterThan(1);
+      for (const line of note.lines) {
+        const words = `${line.lead === undefined ? "" : `${line.lead} `}${partsText(line.parts)}`;
+        expect(words.length, `step ${n}`).toBeLessThan(200);
+        expect(out, `step ${n}`).toContain(words.replace(/\s+/g, " ").trim());
+      }
+      expect(html).toContain(`<p class="${j.noteLabel}">${note.label}</p>`);
+    }
+    // A left rule in the brand's gold, not the filled beige pill it replaced.
+    const css = text(WEB, "src", "components", "site", "journey.module.css");
+    const rule = css.slice(css.indexOf("\n.note {"), css.indexOf("}", css.indexOf("\n.note {")));
+    expect(rule).toContain("border-left: 3px solid var(--color-gold-deep)");
+    expect(rule).not.toContain("background");
+    expect(text(WEB, "src", "components", "site", "site.module.css")).not.toMatch(
+      /^\.(?:tag|today) \{/m,
+    );
   });
 
   it("shows the example mandate with mandate 1's approval limit", () => {
@@ -997,13 +1169,21 @@ describe("the payment journey", () => {
 
   it("does not present the proposal panel as the fields of ModelProposal", () => {
     expect(step(2).panelLabel).toBe("What the proposal is bound to");
-    expect(step(2).panel).toContainEqual({ note: "What the proposal is bound to" });
+    expect(step(2).caption).toBe("What the proposal is bound to");
   });
 
   it("dates the check_spend result by when mandate 1 expires", () => {
-    expect(step(4).panel[0]).toEqual({
-      note: "check_spend on mandate 1, at most 5 USDC, valid until 2026-12-01",
-    });
+    expect(step(4).caption).toBe(
+      "`check_spend` on mandate 1, at most 5 USDC, valid until 2026-12-01",
+    );
+    // Every panel opens with a caption strip, and its lines hold no caption of their own.
+    for (const x of JOURNEY.steps) {
+      expect(x.caption.length, `step ${x.n}`).toBeGreaterThan(0);
+      expect(
+        x.panel.filter((l) => "note" in l && l.note !== VERIFY_NOTE),
+        `step ${x.n}`,
+      ).toEqual([]);
+    }
   });
 });
 
@@ -1707,8 +1887,11 @@ describe("the rendered landing page", () => {
 
   it("links the journey's check_spend step to the live check", () => {
     const html = renderToStaticMarkup(createElement(Home));
-    expect(JOURNEY.steps[3].tryIt).toBe("Try it yourself above.");
-    expect(html).toMatch(/href="#try"[^>]*>Try it yourself above\.</);
+    expect(JOURNEY.steps[3].tryIt).toEqual({
+      label: "Run this check yourself, above",
+      href: "#try",
+    });
+    expect(html).toMatch(/href="#try"[^>]*>Run this check yourself, above</);
   });
 
   it("says under the closing headline how long the evaluation takes", () => {
@@ -2303,10 +2486,11 @@ describe("colours", () => {
     }
   });
 
-  it("are read from tokens: site.module.css, head.module.css and docs.module.css hold no literal colour", () => {
+  it("are read from tokens: site.module.css, head.module.css, journey.module.css and docs.module.css hold no literal colour", () => {
     for (const parts of [
       ["src", "components", "site", "site.module.css"],
       ["src", "components", "site", "head.module.css"],
+      ["src", "components", "site", "journey.module.css"],
       ["src", "components", "docs", "docs.module.css"],
     ]) {
       const module = text(WEB, ...parts);

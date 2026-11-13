@@ -392,22 +392,34 @@ export const LIVE_CHECK = {
 
 // --- what happens to one payment ------------------------------------------------------------------
 
-/** One line of a step's panel: a quiet note, a command to copy, a key and its value, or a plain line. A tone is said in words too. */
+/**
+ * One line of a step's panel, under its caption: a quiet note, a command to copy, a key and its value, or a plain
+ * line. A tone is said in words too.
+ */
 export type PanelLine =
   | { note: string }
   | { command: string }
   | { key: string; value: string; tone?: "pass" | "fail" }
   | { text: string; tone?: "pass" };
 
+/** One short line of a step's note: a lead in bold when it has one, then the copy and its link. */
+export interface NoteLine {
+  lead?: string;
+  parts: readonly CopyPart[];
+}
+
 export interface JourneyStep {
   n: number;
   title: string;
   body: string;
-  /** What is true of this step today, shown under the label `JOURNEY.today`. */
-  tag?: string;
+  /** What is true of this step on testnet, set apart by a gold rule: a label, then short lines, each with its link. */
+  note?: { label: string; lines: readonly NoteLine[] };
   /** A link from this step to the live check above. */
-  tryIt?: string;
+  tryIt?: { label: string; href: string };
+  /** The panel's name for a screen reader (ScrollRegion's label). */
   panelLabel: string;
+  /** The strip every panel opens with. Backticks are code. */
+  caption: string;
   panel: readonly PanelLine[];
 }
 
@@ -427,11 +439,16 @@ export const VERIFIER_OUTPUT = {
 
 export const CONTRACT_REFUSAL_CODE = "OverPerPayment";
 
+/** The journey's anchors inside #payment: its record on testnet, the invoices' table and the attested decisions. */
+export const JOURNEY_IDS = {
+  record: "record",
+  invoices: "invoices",
+  attested: "attested",
+} as const;
+
 export const JOURNEY = {
   eyebrow: "How a payment works",
   title: "What happens to one invoice",
-  /** The label of a step's note on what is true today (audit P1-10). */
-  today: "Today",
   intro:
     "The owner signs the rules once. When an invoice arrives, your agent asks to pay it. It never holds the money or types an address. The model may advise, code decides, and the contract has the last word.",
   steps: [
@@ -440,8 +457,8 @@ export const JOURNEY = {
       title: "The owner signs a mandate",
       body: "From their own wallet: who gets paid, how much per payment and in total, how many times, until when, and above what amount a person must approve.",
       panelLabel: "Mandate fields",
+      caption: "An example mandate",
       panel: [
-        { note: "An example mandate" },
         { key: "payee", value: "probarion-payee.testnet" },
         { key: "max_per_payment", value: "5 USDC" },
         { key: "max_total", value: "20 USDC" },
@@ -453,10 +470,25 @@ export const JOURNEY = {
       n: 2,
       title: "A private model proposes, if there is one",
       body: "It runs in a TEE on NEAR AI Cloud. Its attestation is bound by a nonce to one position in one vault's ledger. It only gives advice: it cannot widen a mandate.",
-      tag: "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The testnet demo vault's ledger holds five more, by Payables, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. That day the code allowed the fourth and the fifth, and the vault paid each invoice, 2.00 test USDC. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run on the Canary's two; on the demo vault's five it passed on 2026-11-12, with the invoices committed in the repository.",
+      note: {
+        label: "On testnet",
+        lines: [
+          {
+            parts: [
+              "The Canary's ledger holds two attested decisions, and the demo vault's ledger five more. All seven pass the offline checks A1 to A7 and the online checks O1 and O2. ",
+              { label: "The checks, below", href: `#${JOURNEY_IDS.attested}` },
+            ],
+          },
+          {
+            parts: [
+              "The TEE measurement is not pinned, so this does not show which model image ran.",
+            ],
+          },
+        ],
+      },
       panelLabel: "What the proposal is bound to",
+      caption: "What the proposal is bound to",
       panel: [
-        { note: "What the proposal is bound to" },
         { key: "action", value: "pay" },
         { key: "mandate_id", value: "1" },
         { key: "nonce", value: "next ledger position + vault" },
@@ -468,19 +500,17 @@ export const JOURNEY = {
       title: "Code decides, and signs before anything moves",
       body: "Deterministic rules run first and cannot be removed. The SDK signs the decision into the ledger before anything is sent, and it records refusals too.",
       panelLabel: "Built-in rules",
-      panel: [
-        { note: "decide(), built-in rules include" },
-        ...RULES_SHOWN.map((text) => ({ text })),
-      ],
+      caption: "`decide()`, built-in rules include",
+      panel: RULES_SHOWN.map((text) => ({ text })),
     },
     {
       n: 4,
       title: "The contract decides last",
       body: "Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. Above the approval limit, the spend waits for an approver's own wallet. The agent's key cannot approve anything, not even its own payment.",
-      tryIt: "Try it yourself above.",
+      tryIt: { label: "Run this check yourself, above", href: "#try" },
       panelLabel: "check_spend results on the testnet vault",
+      caption: "`check_spend` on mandate 1, at most 5 USDC, valid until 2026-12-01",
       panel: [
-        { note: "check_spend on mandate 1, at most 5 USDC, valid until 2026-12-01" },
         { key: "2 USDC", value: "ok: true", tone: "pass" },
         { key: "6 USDC", value: `ok: false, ${CONTRACT_REFUSAL_CODE}`, tone: "fail" },
       ],
@@ -489,10 +519,34 @@ export const JOURNEY = {
       n: 5,
       title: "Check a published record",
       body: "With a ledger key, the SDK anchors the ledger root on the vault, and the owner can publish the ledger on a proof page. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
-      tag: CLI_ON_NPM
-        ? "These commands run on a test fixture: this site serves an exact copy of the file in the repository. The testnet demo vault's proof page runs the same checks on its own ledger and chain data."
-        : "This command runs on a test fixture. Build it from a clone first (README step 1). The testnet demo vault's proof page runs the same checks on its own ledger and chain data.",
+      note: {
+        label: CLI_ON_NPM ? "What the commands run on" : "What the command runs on",
+        lines: [
+          {
+            lead: "A test fixture.",
+            parts: CLI_ON_NPM
+              ? [
+                  "This site serves an exact copy of ",
+                  { label: "the file in the repository", href: LINKS.fixture },
+                  ".",
+                ]
+              : [
+                  "The command reads ",
+                  { label: "the file in the repository", href: LINKS.fixture },
+                  ". Build the CLI from a clone first (README step 1).",
+                ],
+          },
+          {
+            lead: "On real data.",
+            parts: [
+              "The testnet demo vault's proof page runs the same checks on its own ledger and chain data. ",
+              { label: "Its record, below", href: `#${JOURNEY_IDS.record}` },
+            ],
+          },
+        ],
+      },
       panelLabel: "Verifier output",
+      caption: "Verifier output",
       panel: [
         ...(CLI_ON_NPM ? [{ note: VERIFY_NOTE }] : []),
         ...VERIFY_LINES.map((command) => ({ command })),
@@ -503,86 +557,258 @@ export const JOURNEY = {
   ] satisfies readonly JourneyStep[],
 } as const;
 
-// --- the demo vault's four invoices ---------------------------------------------------------------
+// --- the journey's record on testnet: the demo vault's four invoices ------------------------------
 
 /** The run of 2026-11-09 on the testnet demo vault, in docs/evidence/demo-vault (test/invoice-story.test.ts). */
 const DEMO_EVIDENCE = "docs/evidence/demo-vault";
+/** The Canary's ledger entries of 2026-11-10, as published, and their verifier outputs (test/canary-vault.test.ts). */
+const CANARY_EVIDENCE = "docs/evidence/canary-vault";
 const demoLedger = (lines: string) => blob(`${DEMO_EVIDENCE}/ledger-2026-11-09.jsonl#${lines}`);
-const demoInvoice = (id: string) => ({
-  label: "Invoice",
-  url: blob(`${DEMO_EVIDENCE}/invoice-${id}.txt`),
-});
+/** A demo vault transaction as one link, its verb before the hash (the console's screenshots below). */
 const demoTx = (verb: string, fact: TxFact) => ({ label: `${verb}${fact.label}`, url: fact.url });
+
+/** A link of an invoice's evidence: a file name, a hash after its verb, or a ledger range. */
+export interface EvidenceLink {
+  verb?: string;
+  label: string;
+  url: string;
+}
+/** One of an invoice's three evidence slots: its links, or the words that say why it has none. */
+export type EvidenceSlot = string | readonly EvidenceLink[];
 
 export type StoryTone = "paid" | "refused" | "held";
 
 export interface StoryInvoice {
   /** The invoice number, which names its file in DEMO_EVIDENCE. */
   invoice: string;
-  title: string;
+  /** Under the number, when the same file went in again. */
+  again?: string;
   asks: string;
-  pill: string;
+  outcome: string;
   tone: StoryTone;
   body: string;
-  links: readonly { label: string; url: string }[];
+  /** The same three slots, in the same order, on every row. */
+  evidence: { invoice: EvidenceSlot; tx: EvidenceSlot; ledger: EvidenceSlot };
 }
 
+const invoiceFile = (id: string): EvidenceLink => ({
+  label: `invoice-${id}.txt`,
+  url: blob(`${DEMO_EVIDENCE}/invoice-${id}.txt`),
+});
+const txLink = (fact: TxFact, verb?: string): EvidenceLink =>
+  verb === undefined
+    ? { label: fact.label, url: fact.url }
+    : { verb, label: fact.label, url: fact.url };
+const NOTHING_SENT = "None, nothing was sent";
+
 export const STORY = {
+  eyebrow: "As it ran on NEAR testnet",
   title: "Four invoices on the testnet demo vault",
   caption: "Invoices we sent to our own demo vault on NEAR testnet.",
   intro:
     "Its mandate pays `probarion-payee.testnet`, at most 5 test USDC a payment, and holds anything above 3 for an approver. Whatever an invoice says, the money can only go to that payee. No model read these invoices: the code read each amount, and nothing was sent until the owner confirmed it in their wallet.",
+  head: {
+    invoice: "Invoice and outcome",
+    asks: "What it asked",
+    happened: "What happened",
+    evidence: "Evidence",
+  },
+  slots: { invoice: "Invoice", tx: "Transaction", ledger: "Ledger" },
   invoices: [
     {
       invoice: "INV-2001",
-      title: "INV-2001",
       asks: "2 test USDC to the mandate's payee",
-      pill: "Paid",
+      outcome: "Paid",
       tone: "paid",
       body: "The owner confirmed the amount. The agent's key sent spend 1, and the vault paid `probarion-payee.testnet`.",
-      links: [
-        demoInvoice("INV-2001"),
-        demoTx("Tx ", demoPaid),
-        { label: "Ledger entries 0 to 2", url: demoLedger("L1-L3") },
-      ],
+      evidence: {
+        invoice: [invoiceFile("INV-2001")],
+        tx: [txLink(demoPaid)],
+        ledger: [{ label: "Entries 0 to 2", url: demoLedger("L1-L3") }],
+      },
     },
     {
       invoice: "INV-2001",
-      title: "INV-2001, sent again",
+      again: "sent again",
       asks: "The same file a second time",
-      pill: "Refused on upload",
+      outcome: "Refused on upload",
       tone: "refused",
       body: 'The console answered "This invoice was already processed." Nothing was decided or sent, so the ledger has no entry for it.',
-      links: [],
+      evidence: { invoice: "Same file as above", tx: NOTHING_SENT, ledger: "No entry" },
     },
     {
       invoice: "INV-2002",
-      title: "INV-2002",
       asks: '"We changed banks": 2 test USDC to `new-account.testnet`',
-      pill: "Refused by code",
+      outcome: "Refused by code",
       tone: "refused",
       body: "Rule `mandate.payee_mismatch`: the mandate pays another account, so nothing was sent. The refusal is signed into the ledger as entry 3.",
-      links: [demoInvoice("INV-2002"), { label: "Ledger entry 3", url: demoLedger("L4") }],
+      evidence: {
+        invoice: [invoiceFile("INV-2002")],
+        tx: NOTHING_SENT,
+        ledger: [{ label: "Entry 3", url: demoLedger("L4") }],
+      },
     },
     {
       invoice: "INV-2003",
-      title: "INV-2003",
       asks: "4 test USDC, above the 3 USDC approval limit",
-      pill: "Held, then paid",
+      outcome: "Held, then paid",
       tone: "held",
       body: "The owner confirmed it, and the vault held spend 2. The approver approved it from their own key, and the vault paid.",
-      links: [
-        demoInvoice("INV-2003"),
-        demoTx("Held ", tx("6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb", "6oDNZEUB…y2Tb")),
-        demoTx("Approved ", tx("47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf", "47VCARhw…NCJf")),
-        { label: "Ledger entries 4 to 6", url: demoLedger("L5-L7") },
-      ],
+      evidence: {
+        invoice: [invoiceFile("INV-2003")],
+        tx: [
+          txLink(tx("6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb", "6oDNZEUB…y2Tb"), "Held"),
+          txLink(tx("47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf", "47VCARhw…NCJf"), "Approved"),
+        ],
+        ledger: [{ label: "Entries 4 to 6", url: demoLedger("L5-L7") }],
+      },
     },
   ] satisfies readonly StoryInvoice[],
   proof: {
-    text: "Its proof page runs checks a to i on this ledger and the chain.",
+    text: "The demo vault's proof page runs checks a to i on its ledger and the chain.",
     label: "Open the proof page",
     href: "/proof/demo.vaults.probarion.testnet",
+  },
+  files: {
+    label: "The demo vault's files and transactions",
+    url: blob(`${DEMO_EVIDENCE}/README.md`),
+  },
+} as const;
+
+// --- the journey's record on testnet: the attested decisions ---------------------------------------
+
+/**
+ * One ledger's result for one check: the result word, which a pass and a limit wear alike, then what it rests on,
+ * ending with the verifier output or the record that says so.
+ */
+export interface AttestedCell {
+  result: string;
+  detail: readonly CopyPart[];
+}
+export interface AttestedRow {
+  check: string;
+  /** One cell per ledger, in the order of ATTESTED.ledgers; a row with one cell spans them all. */
+  cells: readonly AttestedCell[];
+}
+
+const output = (path: string) => ({ label: "Output", href: blob(path) });
+
+/** The attested decisions on testnet, by check and by ledger (the README's NEAR AI Cloud row; test/site-facts.test.ts). */
+export const ATTESTED = {
+  title: "Attested decisions on testnet",
+  caption:
+    "The demo vault's five came later, from Payables runs on 2026-11-11 and 2026-11-12: invoices INV-2006 to INV-2010, ledger entries 10 to 13 and 15, not the four invoices above. The Canary is a separate vault.",
+  checkHead: "Check",
+  ledgers: [
+    {
+      short: "Canary",
+      name: ["The ", { label: "Canary", href: "/canary" }, "'s ledger"],
+      sub: [
+        "2026-11-10, ",
+        {
+          label: "published in the repository",
+          href: blob(`${CANARY_EVIDENCE}/ledger-2026-11-10.jsonl`),
+        },
+        ": 2 attested decisions",
+      ],
+    },
+    {
+      short: "Demo vault",
+      name: ["The demo vault's ledger"],
+      sub: ["2026-11-11 and 2026-11-12, by Payables: 5 attested decisions"],
+    },
+  ] satisfies readonly { short: string; name: readonly CopyPart[]; sub: readonly CopyPart[] }[],
+  rows: [
+    {
+      check: "A1 to A7, offline",
+      cells: [
+        {
+          result: "Pass",
+          detail: [" on both, 2026-11-11. ", output(`${CANARY_EVIDENCE}/verify-2026-11-11.txt`)],
+        },
+        {
+          result: "Pass",
+          detail: [
+            " on all five, 2026-11-12. ",
+            output(`${DEMO_EVIDENCE}/verify-2026-11-12-video.txt`),
+          ],
+        },
+      ],
+    },
+    {
+      check: "O1 and O2, online",
+      cells: [
+        {
+          result: "Pass",
+          detail: [
+            " on both, 2026-11-11. ",
+            output(`${CANARY_EVIDENCE}/verify-online-2026-11-11.txt`),
+          ],
+        },
+        {
+          result: "Pass",
+          detail: [
+            " on all five, entry 15 included, 2026-11-12 at 16:13 UTC. ",
+            output(`${DEMO_EVIDENCE}/verify-online-a8-2026-11-12.txt`),
+            " Entries 10 to 13 passed first, at 01:10 UTC; entry 15 came later. ",
+            output(`${DEMO_EVIDENCE}/verify-online-2026-11-12.txt`),
+          ],
+        },
+      ],
+    },
+    {
+      check: "A8",
+      cells: [
+        {
+          result: "Not run",
+          detail: [
+            ": its ledger holds no invoice text. ",
+            {
+              label: "Why",
+              href: blob(`${CANARY_EVIDENCE}/README.md#what-check-e-proves-for-seq-1-and-2`),
+            },
+          ],
+        },
+        {
+          result: "Pass",
+          detail: [
+            " on all five, 2026-11-12, with the invoices committed in the repository. ",
+            output(`${DEMO_EVIDENCE}/verify-a8-2026-11-12.txt`),
+          ],
+        },
+      ],
+    },
+    {
+      check: "Which model image ran",
+      cells: [
+        {
+          result: "Not shown",
+          detail: [
+            ". The TEE measurement is not pinned, so these checks do not show which model image ran. ",
+            { label: "Finding of 2026-11-12", href: blob("docs/measurement-pin-2026-11.md") },
+          ],
+        },
+      ],
+    },
+  ] satisfies readonly AttestedRow[],
+  /** Two of the five led to payments: spends 4 and 5, ledger entries 14 and 16. */
+  paid: {
+    lead: "Paid.",
+    text: "On 2026-11-12 the code allowed two of the five, entries 13 and 15 (INV-2009 and INV-2010), and the vault paid each invoice, 2.00 test USDC, on testnet.",
+    txs: [
+      {
+        label: "Spend 4",
+        tx: tx("EA7MbLtsRjQUBbycfNyh6u1ieLNU5WXtyGy2K8eiPBuU", "EA7MbLts…PBuU"),
+      },
+      {
+        label: "Spend 5",
+        tx: tx("3YEGw5Qdp9RbnR5LXFbAKXWPPhgiz7hf6vdDapfXvEE4", "3YEGw5Qd…vEE4"),
+      },
+    ],
+  },
+  more: {
+    label: "What each check covers, and what it does not",
+    href: "/docs/trust/verifier-checks",
   },
 } as const;
 
