@@ -867,7 +867,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Mainnet vault",
-      pill: "On mainnet: 2 payments (1 to Base), 1 refusal",
+      pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
       readme: [
         {
           start: "Mainnet vault",
@@ -1083,7 +1083,7 @@ describe("the status list", () => {
       {
         id: "mainnet-vault",
         row: "Mainnet vault",
-        pill: "On mainnet: 2 payments (1 to Base), 1 refusal",
+        pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
         tone: "live",
       },
     ]);
@@ -1670,10 +1670,10 @@ describe("the problem, the comparison and the integrate section", () => {
       "On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR.",
     );
     expect(w.body).toContain(
-      "On mainnet one payout through NEAR Intents has run, 1.00 USDC to a Base address on 2026-11-13.",
+      "On mainnet one payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
     );
     expect(prose).toContain(
-      "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to a Base address this way",
+      "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to the owner's own Base address this way, a test decided by code rules alone",
     );
     expect(prose).toContain("the POA bridge released 0.9976 USDC on Base, keeping a fee of 0.0024");
     expect(prose).toContain("a Base or Solana address paid out through NEAR Intents");

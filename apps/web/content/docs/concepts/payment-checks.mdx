@@ -341,4 +341,4 @@ The contract is the final word. Even if every line of off-chain code were wrong,
 - `check_spend` reserves nothing. A pass now does not keep the use, the amount or the ref for a later spend.
 - `approve` does not run the 14 checks again.
 - The daily backstop is one limit for the whole vault, not one per mandate or per agent key.
-- On mainnet the checks have run on three spends only, all on `v0.probarion.near`: on 2026-11-11 one paid and one was refused with `NoMandate`, and on 2026-11-13 one paid a Base address through NEAR Intents.
+- On mainnet the checks have run on three spends only, all on `v0.probarion.near`: on 2026-11-11 one paid and one was refused with `NoMandate`, and on 2026-11-13 one was `burned`: 1.00 USDC for the owner's own Base address through NEAR Intents, a test decided by code rules alone.

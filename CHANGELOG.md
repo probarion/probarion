@@ -27,9 +27,9 @@ The software is an unaudited beta.
   snapshot, the live `verify` output of 07:24:43 UTC (8 passed, 0 failed, 0 unproven, 1 skipped), the spend
   outcomes, the burn and POA bridge statuses, the 1Click quotes and status, the order of every transaction, the
   gas of spend 2, the invoice and purchase order texts, and a README that lists every transaction on nearblocks.io
-  and basescan.org and says how to check it again. `docs/mainnet-proof.json` and
-  `contracts/deployments/mainnet.json` record the eight NEAR transactions and the Base transfer, and the judge
-  holds the run's snapshot to its committed verifier output.
+  and basescan.org and says how to check it again. `docs/mainnet-proof.json` records the eight NEAR transactions
+  and the Base transfer, `contracts/deployments/mainnet.json` records the top-up, mandate 2, spend 2 and the Base
+  transfer, and the judge holds the run's snapshot to its committed verifier output.
 
 - The landing page's mainnet payout section, `#mainnet`, between the ink band and the console screenshots. One
   dark card per Base payout says "A test, not a customer payment" and how the payout was decided (on 2026-11-13, by
@@ -66,13 +66,13 @@ The software is an unaudited beta.
 - `JUDGES.md`, a page for judges and screeners whose first part takes two minutes: the mechanism in one sentence
   (the model proposes, code rules decide, the contract checks again), three links to open (the demo vault's proof
   page with its live TEE check, the landing page's live `check_spend` and the mainnet transactions of 2026-11-11),
-  `pnpm judge` with the line its offline quick run printed on 2026-11-13 (at commit 53a726e since the Base
+  `pnpm judge` with the line its offline quick run printed on 2026-11-13 (at commit 6193a71 since the Base
   payout), what is proven with its evidence and transactions, assume breach (a fooled model, the software inside
   the TEE, the agent key, the agent host and its keys) and why the TEE verdict is not enforced on chain, the worst
   case with the agent key public, priced on `v0.probarion.near` by view calls on 2026-11-13, who it is for as a
   labeled hypothesis with the unit costs the repository and the chain record, and what is not done yet. A marked
   spot (an HTML comment) waited for the mainnet Base payout, which ran on 2026-11-13 and is now the fourth link.
-  The README gets a "For judges: start here" block of 11 lines under its header and a link in its top row, and
+  The README gets a "For judges: start here" block of 11 lines (14 since the Base payout added its link) under its header and a link in its top row, and
   `AGENTS.md` links the page. `scripts/check-claims.mjs` checks `JUDGES.md` as it checks the README and
   `AGENTS.md` (links, tx hashes, accounts, paths and commands, facts), and a test holds it to that.
 - `docs/evidence/mainnet-v0/gas-2026-11-13.json`: the gas and NEAR burned by the two agent-key spends of
@@ -1100,15 +1100,21 @@ The software is an unaudited beta.
 ### Changed
 
 - The judge's `live-verify-mainnet-v0` step verifies `v0.probarion.near` with its committed ledger
-  (`--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl`) and the run's invoice texts
-  (`--invoices`), and expects checks c, d, e and h to say what the chain and that ledger now hold. Its snapshot
-  guard also reads the subfolders of `docs/evidence`. The README (the "For judges" block, the status rows, the
+  (`--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl`) and the run's invoice text
+  (`--invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt`, one file, so the verifier warns about
+  no other `.txt` file of the folder), and expects checks c, d, e and h to say what the chain and that ledger now
+  hold. With `--offline` its skip says it reads NEAR mainnet, not testnet. Its snapshot guard also reads the
+  subfolders of `docs/evidence`. The README (the "For judges" block, the status rows, the
   NEAR Intents row, the verify command and a section for the run), `JUDGES.md` (a fourth link, two rows of what
   is proven, the worst case and the costs read again), `AGENTS.md`, `SECURITY.md`, `docs/THREAT_MODEL.md`, the
-  mainnet runbook, the landing page's mainnet pill and NEAR facts, the terms page's status line, the rules for
-  agents, the SDK reference and the docs pages that said no Base payout had run now tell the run, and the tests
+  mainnet runbook, the landing page's mainnet pill and NEAR facts, the terms page's status line (and its date,
+  now 2026-11-13), the rules for agents, the SDK reference and the docs pages that said no Base payout had run
+  now tell the run, each as a test to the owner's own Base address, decided by code rules alone, and the tests
   that hold those texts follow. A docs test fails when a page calls the Base payout unrun while
-  `contracts/deployments/mainnet.json` records it.
+  `contracts/deployments/mainnet.json` records it (`proof.first_base_payout_tx`), and another when a docs page
+  or a rule for agents tells the payout without both labels. The S1 record says the two refusals by code were
+  false ones (the right amount and address, and the mandate's asset account in the hint) and adds 1Click's
+  settlement transaction, `FJA7rehn…`, signed by `intents.near`.
 
 - The README has a "Privacy & Private AI" section after "NEAR technology used, and how", linked from
   the top row of links, from Contents and from a line under the tagline. It says what the TEE
@@ -1481,6 +1487,61 @@ The software is an unaudited beta.
   the /docs HTTP error table gains the Extension API rows.
 
 ### Fixed
+
+- `@probarion/core`: the asset rule of the entry below matched only the bare asset account, and an
+  attested model can add a label to it. In the testnet rehearsal of the second mainnet Base payout,
+  on 2026-11-13 at 09:17 UTC in vault `s2-rehearsal-1.vaults.probarion.testnet` (test tokens),
+  `z-ai/glm-5.3-flash` proposed to pay the mandate's Base address with confidence 0.95 and set
+  `near_account` to `base-usdc.probarion.testnet (asset)`, the mandate's `payee.asset` followed by
+  " (asset)"; `mandate.payee_mismatch` refused it (ledger seq 1, anchored, nothing paid). In the
+  trusted proposal's hint, `payeeHintContradiction` now also takes the asset followed by one space
+  and one label in parentheses of 1 to 40 characters, ASCII letters in words joined by single spaces,
+  as naming no other payee. A label with a dot, digit, colon or other sign, spaces inside the
+  parentheses at either end, two labels, text after the label, or the label after any other
+  account still contradicts, so the label cannot hold a dotted account such as `vendor.testnet`, a
+  `0x` address or a number. A bare word still fits; like the hint's `name`, it is compared and not
+  sent, and the contract pays only the mandate's payee. The invoice's hint is
+  unchanged: any `near_account` refuses there. When only spaces around a labelled asset differ, the
+  detail quotes the value as given. Unit tests cover the labelled asset and 21 values next to it.
+  The /docs pages "Why spend has no payee" and "Policy rules" say the same.
+
+- `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` a correct attested proposal for
+  a Base payee when the model's payee hint also put the mandate's own asset account in
+  `near_account`. It was seen on NEAR mainnet on 2026-11-13 in vault `v0.probarion.near`, mandate 2:
+  1.00 USDC on Base to the owner's own Base address, a test of the cross-chain path and not a
+  customer payment. Ledger entry 0 (07:17:47 UTC, model `z-ai/glm-5.3-flash`, confidence 0.95) and
+  entry 1 (07:22:23 UTC, `Qwen/Qwen3.8-27B`, confidence 0.9) both proposed to pay the mandate's Base
+  address `0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27` and set `near_account` to
+  `base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near`, the mandate's `payee.asset` (USDC on
+  Base in NEAR Intents). The rule refused both with "invoice names NEAR account
+  base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near; the mandate pays
+  base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27" (the detail says "invoice" for either hint: the
+  account came from the models' hint, and the invoice INV-M002 names no NEAR account and no
+  address), so that payment was decided by the rules alone (entry 2, `decided_by: "rules-only"`,
+  spend 2) and then paid out on Base. For a Base or Solana payee, `payeeHintContradiction` in
+  `packages/core/src/policy.ts` now takes a `near_account` equal to the mandate's `payee.asset`,
+  compared exactly with no trimming and no case change, as naming no other payee, but only in the
+  trusted proposal's hint: the model is shown the mandate's payee, asset included, and the asset is
+  the token the mandate pays in. `decide()` and the eval's checks of a model's proposal pass the new
+  option `ownAssetNamesNoPayee` for that hint. In the invoice's hint any `near_account` still
+  refuses, the asset included, as before: the console reads only the first NEAR account of an
+  invoice's text, so an invoice that writes the asset first could otherwise hide another payee
+  behind it. The extension's queue check of an invoice stays as strict. Any other `near_account`
+  still contradicts, the asset in another letter case or with spaces included (the detail then
+  quotes the value as given, so it does not read like the asset that passes), and the chain and
+  address checks are unchanged, so the asset given as the `address` still refuses. The rule for a
+  NEAR payee, the schema and the system prompt of `probarion-proposal/v1` (check A8 knows the system
+  prompt by its hash) and the contract are unchanged. `verify` does not re-run the policy, so ledger
+  entries already written, these two included, are unaffected. Unit tests cover the asset and the
+  contradictions next to it, and `packages/core/test/policy-mainnet-replay.test.ts` replays the two
+  recorded mainnet proposals: `mandate.payee_mismatch` now passes for both, and every other rule
+  gives the outcome and detail the ledger recorded; with the asset in the invoice's hint instead,
+  the rule refuses as recorded. `apps/web/src/lib/payables/asset-payee-hint.test.ts` reads invoice
+  texts with `extractFacts` and decides them: a Base and a Solana invoice that write the asset
+  before another NEAR account are refused, with no model and with a model hint that copies the
+  asset. The /docs pages "Why spend has no payee" and "Policy rules" say the same, and the line
+  citations of `docs/THREAT_MODEL.md` follow the code. No eval case or committed eval result has an
+  asset account in a hint, so the eval results are unchanged.
 
 - The Canary gives its model up to 55 s instead of 40 s, and says so when the model's time runs out.
   On probarion.xyz the "Ignore previous instructions" example message was decided with no proposal

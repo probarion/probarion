@@ -652,17 +652,17 @@ export const LIVE_VAULTS = {
   },
 };
 
-/** The mainnet vault's signed ledger, committed after S1 (2026-11-13), and the folder that holds its invoice. */
+/** The mainnet vault's signed ledger, committed after S1 (2026-11-13), and the invoice its attested decisions read. */
 export const MAINNET_V0_LEDGER = "docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl";
-const MAINNET_V0_INVOICES = "docs/evidence/mainnet-v0/s1-2026-11-13";
+export const MAINNET_V0_INVOICE = "docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt";
 
 /**
- * The repository's evidence for the mainnet vault: the invoice text for A8, the pre-ledger decisions and the
- * recorded transactions.
+ * The repository's evidence for the mainnet vault: the invoice text for A8 (one file, so no other `.txt` of the
+ * folder is read and warned about), the pre-ledger decisions and the recorded transactions.
  */
 const MAINNET_V0_EVIDENCE = [
-  "--invoices",
-  MAINNET_V0_INVOICES,
+  "--invoice",
+  MAINNET_V0_INVOICE,
   "--evidence",
   "docs/evidence",
   "--proof",
@@ -1299,6 +1299,7 @@ export function planSteps(root = ROOT) {
     {
       id: "live-verify-mainnet-v0",
       kind: "live",
+      network: "mainnet",
       needs: "build",
       title:
         "live verify of the mainnet vault v0.probarion.near with its committed ledger passes a to h, i skips (no factory)",
@@ -1531,7 +1532,10 @@ async function gate(step, flags, failed, network) {
   }
   if (step.kind === "live") {
     if (flags.offline)
-      return { result: "SKIPPED", detail: "--offline: this step reads NEAR testnet" };
+      return {
+        result: "SKIPPED",
+        detail: `--offline: this step reads NEAR ${step.network ?? "testnet"}`,
+      };
     const net = await network();
     if (!net.ok) return { result: "SKIPPED", detail: `the network is down (${net.reason})` };
   }
