@@ -26,6 +26,7 @@ const MODULES: Readonly<Record<string, string>> = {
   journey: "src/components/site/journey.module.css",
   integrate: "src/components/site/integrate.module.css",
   console: "src/components/site/console.module.css",
+  hero: "src/components/site/hero.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -518,6 +519,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       // The console: the record under the head's lede, and a capture's full-size link over its transaction.
       ["console", ".record", "margin-top", 17, "site", ".site"],
       ["console", ".ev", "gap", 15, "site", ".site"],
+      // The hero: one step of the Canary's rehearsal under the next.
+      ["hero", ".steps li + li", "margin-top", 14, "hero", ".steps"],
     ];
     for (const [file, selector, prop, px, lhFile, lhSelector] of cases) {
       const lh = Number(decl(lhFile, lhSelector, "line-height"));
@@ -558,7 +561,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["integrate", ".partNote"],
       ["integrate", ".useBody"],
       ["console", ".actionsText"],
-      ["site", ".duelNote"],
+      ["hero", ".cap"],
+      ["hero", ".steps"],
       ["site", ".proofIntro"],
       ["site", ".compareMore"],
       ["site", ".boFine"],

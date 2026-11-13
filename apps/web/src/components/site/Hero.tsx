@@ -2,18 +2,33 @@ import Link from "next/link";
 import { RouteLink } from "@/components/RouteLink";
 import { ExternalLink } from "@/components/ui";
 import { type CopyPart, HERO, NUMBERS, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
+import h from "./hero.module.css";
+import { Outcome } from "./JourneyRecord";
 import { Rich } from "./Rich";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
+
+/** The id of the mainnet record's sentence, which names its list of transactions. */
+const MAINNET_ID = "hero-mainnet";
+
+/** A short hash that opens its explorer in a new tab: mono, then the arrow, which ExternalLink also says in words. */
+function TxLink({ tx, className }: { tx: TxFact; className: string }) {
+  return (
+    <ExternalLink className={`${s.link} ${h.tx} ${className}`} href={tx.url}>
+      {tx.label}
+      <span className={h.ext} aria-hidden="true">
+        ↗
+      </span>
+    </ExternalLink>
+  );
+}
 
 function TxRow({ tx }: { tx: TxFact }) {
   return (
     <div>
       <dt>Tx</dt>
       <dd>
-        <ExternalLink className={`${s.link} ${s.cardHash}`} href={tx.url}>
-          {tx.label}
-        </ExternalLink>
+        <TxLink tx={tx} className={s.cardHash} />
       </dd>
     </div>
   );
@@ -36,16 +51,58 @@ function Parts({ parts }: { parts: readonly CopyPart[] }) {
   );
 }
 
+/** A card's label, its last part (a date, an invoice number) kept whole, so that it never breaks at its hyphen. */
+function CardLabel({ text }: { text: string }) {
+  const cut = text.lastIndexOf(", ") + 2;
+  return (
+    <span className={h.cardLabel}>
+      {text.slice(0, cut)}
+      <span className={h.nowrap}>{text.slice(cut)}</span>
+    </span>
+  );
+}
+
+/** The mainnet record: what runs where, then one ruled row per transaction, its outcome, what happened and its hash. */
+function MainnetRecord() {
+  const m = HERO.mainnet;
+  return (
+    <div className={h.evidence}>
+      <p className={h.evLead} id={MAINNET_ID}>
+        <strong>{m.lead}</strong>
+        <Rich text={m.intro} />
+      </p>
+      <ul className={h.evRows} aria-labelledby={MAINNET_ID}>
+        {m.rows.map((r) => (
+          <li key={r.tx.hash} className={h.evRow}>
+            <Outcome tone={r.tone}>{r.state}</Outcome>
+            <span className={h.evWhat}>
+              <Rich text={r.what} />
+            </span>
+            <span className={h.evTx}>
+              Tx <TxLink tx={r.tx} className={h.evHash} />
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/*
+ * Each card has four parts, in this order: its label and state, the amount, the rows, the link. From 621px the two
+ * cards share those four rows of the pair's grid, so that their labels, amounts, rows and links line up.
+ */
+
 function PaidCard() {
   const c = HERO.paid;
   return (
-    <article className={`${s.card} ${s.metal}`} aria-label={c.aria}>
+    <article className={`${s.card} ${s.metal} ${h.paid}`} aria-label={c.aria}>
       <div className={s.cardTop}>
-        <span>{c.label}</span>
+        <CardLabel text={c.label} />
         <span className={s.state}>{c.state}</span>
       </div>
       <div className={s.cardBig}>{c.big}</div>
-      <dl className={s.rows}>
+      <dl className={`${s.rows} ${h.cardRows}`}>
         <div>
           <dt>Vault</dt>
           <dd>{c.vault}</dd>
@@ -62,6 +119,9 @@ function PaidCard() {
         </div>
         <TxRow tx={c.tx} />
       </dl>
+      <Link className={`${s.link} ${s.cardLink} ${h.cardEnd}`} href={c.proof.href}>
+        {c.proof.label} <span aria-hidden="true">→</span>
+      </Link>
     </article>
   );
 }
@@ -69,13 +129,13 @@ function PaidCard() {
 function RefusedCard() {
   const c = HERO.refused;
   return (
-    <article className={`${s.card} ${s.obsidian}`} aria-label={c.aria}>
+    <article className={`${s.card} ${s.obsidian} ${h.canary}`} aria-label={c.aria}>
       <div className={s.cardTop}>
-        <span>{c.label}</span>
+        <CardLabel text={c.label} />
         <span className={s.state}>{c.state}</span>
       </div>
       <div className={s.cardBig}>{c.big}</div>
-      <dl className={s.rows}>
+      <dl className={`${s.rows} ${h.cardRows}`}>
         <div>
           <dt>Vault</dt>
           <dd>{c.vault}</dd>
@@ -96,7 +156,7 @@ function RefusedCard() {
         </div>
         <TxRow tx={c.tx} />
       </dl>
-      <Link className={`${s.link} ${s.cardLink}`} href={c.tryIt.href}>
+      <Link className={`${s.link} ${s.cardLink} ${h.cardEnd}`} href={c.tryIt.href}>
         {c.tryIt.label} <span aria-hidden="true">→</span>
       </Link>
     </article>
@@ -105,13 +165,13 @@ function RefusedCard() {
 
 export function Hero() {
   return (
-    <section className={s.hero}>
+    <section className={h.hero}>
       <div className={s.wrap}>
         <p className={`${s.eyebrow} ${s.heroEyebrow}`}>{HERO.eyebrow}</p>
         <h1 className={s.h1}>
           <span>{HERO.line1}</span> <span className={s.gold}>{HERO.line2}</span>
         </h1>
-        <div className={s.heroGrid}>
+        <div className={h.heroGrid}>
           <div>
             <p className={s.lede}>{HERO.lede}</p>
             <div className={s.cta}>
@@ -125,16 +185,24 @@ export function Hero() {
                 {HERO.verify} <span aria-hidden="true">→</span>
               </Link>
             </div>
+            <MainnetRecord />
             <p className={s.fineprint}>
               <Parts parts={HERO.fineprint} />
             </p>
           </div>
-          <div className={s.duel}>
+          {/* The caption is first in the source, so that a phone reads it above both cards; from 621px it sits under the paid card. */}
+          <div className={h.duel}>
+            <p className={h.cap}>
+              <span className={h.capLead}>{HERO.both.lead}</span>
+              {HERO.both.rest}
+            </p>
             <PaidCard />
             <RefusedCard />
-            <p className={s.duelNote}>
-              <Rich text={HERO.note} />
-            </p>
+            <ol className={h.steps} aria-label={HERO.canarySteps.label}>
+              {HERO.canarySteps.items.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
           </div>
         </div>
       </div>

@@ -23,6 +23,7 @@ import { parseVia } from "@/lib/canary/via";
 import { explorerAccountUrl, explorerTxUrl } from "@/lib/config";
 import { docsHref, findPage, PAGES } from "@/lib/docs/registry";
 import { CLI_ON_NPM, cli } from "@/lib/proof/cli";
+import { spendAnchorId } from "@/lib/proof/decisions";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import {
   ATTESTED,
@@ -135,6 +136,13 @@ const partsText = (parts: readonly (string | { label: string })[]) =>
     .join("")
     .replace(/`/g, "");
 const hrefs = (html: string) => [...html.matchAll(/\shref="([^"]*)"/g)].map((m) => m[1] ?? "");
+/** The hero's two captions as one text: the shared caption, then the Canary's three steps. */
+const heroNote = [`${HERO.both.lead}${HERO.both.rest}`, ...HERO.canarySteps.items].join(" ");
+/** What a screen reader says for a piece of markup: decoration (aria-hidden) dropped, the new-tab words too. */
+const spoken = (html: string) =>
+  visibleText(html.replace(/<span[^>]*aria-hidden="true"[^>]*>[^<]*<\/span>/g, ""))
+    .replace(/ \(opens in a new tab\)/g, "")
+    .trim();
 
 describe("the ledger test", () => {
   it("shows the recorded result that the verifier really gives", async () => {
@@ -293,8 +301,13 @@ describe("what an offline run shows", () => {
   });
 
   it("promises only what needs no account today", () => {
-    expect(partsText(HERO.fineprint)).toContain(
-      "Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet and a refusal on mainnet. You need no account to read the chain or run the verifier.",
+    expect(
+      partsText(HERO.fineprint).endsWith(
+        " You need no account to read the chain or run the verifier.",
+      ),
+    ).toBe(true);
+    expect(`${HERO.mainnet.lead}${HERO.mainnet.intro}`.replace(/`/g, "")).toBe(
+      "Testnet today. On NEAR mainnet, one small vault, v0.probarion.near, with real USDC:",
     );
   });
 
@@ -669,7 +682,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     const demo = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")).demo_vault as {
       account: string;
       payee: string;
-      spends: { invoice: string; amount: string; spend_tx: string; result: string }[];
+      spends: { id: number; invoice: string; amount: string; spend_tx: string; result: string }[];
     };
     const spend = demo.spends.find((x) => x.spend_tx === HERO.paid.tx.hash);
     expect(spend).toMatchObject({ invoice: "INV-2001", result: "paid" });
@@ -705,6 +718,16 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     const events = text(ROOT, "contracts", "vault", "src", "events.rs");
     expect(events).toMatch(/\n {4}SpendPaid \{/);
     expect(HERO.paid.event).toBe("spend_paid");
+    // The card's link: that same spend's card on the demo vault's proof page, in this tab. The evidence lists the
+    // transaction as spend 1, and the proof page gives spend N the anchor spend-N.
+    expect(spend?.id).toBe(1);
+    expect(HERO.paid.proof.href).toBe(`${STORY.proof.href}#${spendAnchorId(spend?.id ?? -1)}`);
+    expect(HERO.paid.proof.href).toBe("/proof/demo.vaults.probarion.testnet#spend-1");
+    const link = new RegExp(
+      `<a[^>]*href="${HERO.paid.proof.href}"[^>]*>${HERO.paid.proof.label} `,
+    ).exec(landing());
+    expect(link?.[0]).toBeDefined();
+    expect(link?.[0]).not.toContain('target="_blank"');
   });
 
   it("the hero's refusal: the Canary rehearsal of 2026-11-10, refused by code and then by the contract", () => {
@@ -734,17 +757,23 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(canary).toContain(
       "so the Canary sent it to the contract unfiltered, with the agent key",
     );
-    expect(HERO.note).toContain(
-      "our own fake invoice fooled the model into proposing 50 test USDC. Code refused it: it found no amount it could read with certainty, and the Canary's own rule refuses every attempt.",
+    expect(heroNote).toContain(
+      "Our own fake invoice fooled the model into proposing 50 test USDC. Code refused it: it found no amount it could read with certainty, and the Canary's own rule refuses every attempt.",
     );
     expect(canary).toContain(
       "`invoice.amount_invalid`: the amount reader found no total it could read with certainty",
     );
     expect(canary).toContain("The Canary's own rule, which refuses");
     expect(canary).toContain("every attempt, refused it too (`custom.canary_no_autopay`)");
-    expect(HERO.note).toContain(
+    expect(heroNote).toContain(
       "sent it to the contract unfiltered, on purpose, and the contract refused it",
     );
+    // The three steps under the Canary card keep the evidence's order: the model, the code, then the contract.
+    const [model, code, contract] = HERO.canarySteps.items;
+    expect(HERO.canarySteps.items).toHaveLength(3);
+    expect(model).toContain("fooled the model into proposing 50 test USDC");
+    expect(code.startsWith("Code refused it:")).toBe(true);
+    expect(contract).toContain("and the contract refused it");
   });
 
   it("the hero's payment was signed by its vault's agent key, as the note says", () => {
@@ -758,7 +787,8 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(text(ROOT, "docs", "evidence", "canary-vault", "README.md")).toMatch(
       /\| Agent key \| `ed25519:\w+`, can call `spend` only/,
     );
-    expect(HERO.note).toContain("each sent by its vault's agent key");
+    expect(HERO.both.rest).toContain("each sent by its vault's agent key");
+    expect(HERO.both.lead).toBe("Both cards");
   });
 
   it("the hero's Canary link opens the Canary, tagged as a visit from the home page", () => {
@@ -780,9 +810,19 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(out).toContain(
       `${p.label} ${p.state} ${p.big} Vault ${p.vault} Payee ${p.payee} Event ${p.event} Tx ${p.tx.label}`,
     );
+    expect(out).toContain(`Tx ${p.tx.label} ↗ (opens in a new tab) ${p.proof.label} →`);
     const r = HERO.refused;
     expect(out).toContain(
-      `${r.label} ${r.state} ${r.big} Vault ${r.vault} Limit ${r.limit} Contract ${r.code} Paid ${r.paid} Tx ${r.tx.label} (opens in a new tab) ${r.tryIt.label}`,
+      `${r.label} ${r.state} ${r.big} Vault ${r.vault} Limit ${r.limit} Contract ${r.code} Paid ${r.paid} Tx ${r.tx.label} ↗ (opens in a new tab) ${r.tryIt.label}`,
+    );
+    // The two captions: what both cards are, then the Canary's three steps, numbered by the list.
+    expect(out).toContain(`${HERO.both.lead}${HERO.both.rest}`);
+    const list = new RegExp(
+      `<ol[^>]*aria-label="${HERO.canarySteps.label}"[^>]*>([\\s\\S]*?)</ol>`,
+    );
+    const steps = list.exec(landing())?.[1] ?? "";
+    expect([...steps.matchAll(/<li>([^<]*)<\/li>/g)].map((m) => textContent(m[1] ?? ""))).toEqual(
+      HERO.canarySteps.items,
     );
     expect(HERO.refused.state).toBe("Blocked");
     expect(out).not.toContain("Mandate 999 Refused");
@@ -817,10 +857,9 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(CHAIN.intro).toBe(
       "A smoke run of the contract alone on NEAR testnet, with test tokens, on 2026-11-01.",
     );
-    expect(HERO.note).toContain("test tokens");
-    expect(partsText(HERO.fineprint)).toContain(
-      "one small vault, v0.probarion.near, with a payment on mainnet and a refusal on mainnet",
-    );
+    expect(HERO.both.rest).toContain("test tokens");
+    expect(HERO.mainnet.intro).toContain("one small vault, `v0.probarion.near`, with real USDC");
+    expect(HERO.mainnet.rows.map((r) => r.tx)).toEqual([MAINNET_TX.payment, MAINNET_TX.refusal]);
   });
 
   it("the hero's two mainnet transactions are the mainnet vault's payment and refusal, on the mainnet explorer", () => {
@@ -836,12 +875,13 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       expect(t.hash.endsWith(tail ?? "?")).toBe(true);
     }
     expect(record).toContain("v0.probarion.near");
-    const links = HERO.fineprint.filter((p) => typeof p !== "string");
-    expect(links.map((l) => l.href)).toEqual([
-      "#integrate",
+    // One row each in the hero's mainnet record; the audience line under it links the developers' section only.
+    expect(HERO.mainnet.rows.map((r) => r.tx.url)).toEqual([
       MAINNET_TX.payment.url,
       MAINNET_TX.refusal.url,
     ]);
+    const links = HERO.fineprint.filter((p) => typeof p !== "string");
+    expect(links.map((l) => l.href)).toEqual(["#integrate"]);
     const html = landing();
     expect(html).toContain(`href="${MAINNET_TX.payment.url}"`);
     expect(html).toContain(`href="${MAINNET_TX.refusal.url}"`);
@@ -2770,9 +2810,9 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
     expect(HERO.lede.split(/\s+/).length).toBeLessThanOrEqual(40);
   });
 
-  it("says who it is for and what runs where in one line under the buttons", () => {
+  it("says who it is for in one line under the mainnet record", () => {
     expect(partsText(HERO.fineprint)).toBe(
-      "For teams whose AI agent pays supplier invoices, and for developers who want to give an agent money without the keys. Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet and a refusal on mainnet. You need no account to read the chain or run the verifier.",
+      "For teams whose AI agent pays supplier invoices, and for developers who want to give an agent money without the keys. You need no account to read the chain or run the verifier.",
     );
     const html = renderToStaticMarkup(createElement(Home));
     const lines = [...html.matchAll(/<p class="[^"]*fineprint[^"]*">([\s\S]*?)<\/p>/g)];
@@ -2780,12 +2820,53 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
     expect(textContent(lines[0]?.[1] ?? "").replace(/ \(opens in a new tab\)/g, "")).toBe(
       partsText(HERO.fineprint),
     );
-    // Its words, held to the README: the Payables agent runs on testnet, and the mainnet vault made one payment and
-    // one refusal.
+    // The record sits between the buttons' row and this line.
+    const record = html.indexOf('id="hero-mainnet"');
+    expect(record).toBeGreaterThan(html.indexOf(`>${HERO.verify} `));
+    expect(record).toBeLessThan(html.indexOf(lines[0]?.[0] ?? "?"));
+  });
+
+  it("says what runs where, then the mainnet vault's payment and refusal, one row each, in the README's words", () => {
+    // "Testnet today": the Payables agent runs on testnet. "Real USDC": the README's mainnet row.
+    expect(HERO.mainnet.lead).toBe("Testnet today.");
     expect(statusOf("Payables agent").pill).toBe("Live on testnet");
-    expect(README).toContain("Under mandate 1, spend 1 paid 1 USDC to the owner's own wallet");
+    expect(HERO.mainnet.intro).toContain("with real USDC");
+    expect(README).toContain(
+      "| Mainnet vault `v0.probarion.near` | **Live on NEAR mainnet** since 2026-11-11, with real USDC",
+    );
+    const [paid, refused] = HERO.mainnet.rows;
+    // The payment: spend 1 under mandate 1, to the owner's own wallet.
+    expect(paid).toMatchObject({ tone: "paid", state: "Paid", tx: MAINNET_TX.payment });
+    expect(paid.what).toBe("1 USDC to the owner's own wallet");
+    expect(README).toContain(`Under mandate 1, spend 1 paid ${paid.what}`);
+    // The refusal: mandate 999, which does not exist. "Blocked", the word of the Canary card beside it.
+    expect(refused).toMatchObject({ tone: "refused", state: "Blocked", tx: MAINNET_TX.refusal });
+    expect(refused.state).toBe(HERO.refused.state);
+    expect(refused.what).toBe("Mandate 999 does not exist: `NoMandate`");
     expect(README).toContain(
       "a spend against mandate 999 was refused on chain with `PROBARION:NoMandate`",
     );
+    expect(README).toContain(
+      `| The agent key called \`spend\` on mandate 999, which does not exist | [\`${MAINNET_TX.refusal.label}\`](${MAINNET_TX.refusal.url}) | Refused by the contract: \`PROBARION:NoMandate\``,
+    );
+    // Each on the mainnet explorer, never testnet's.
+    for (const row of HERO.mainnet.rows) {
+      expect(row.tx.url).toBe(explorerTxUrl("mainnet", row.tx.hash));
+      expect(row.tx.url).not.toContain("testnet");
+    }
+    // As a visitor reads it: the sentence names the list, and each row says what the facts say.
+    const html = renderToStaticMarkup(createElement(Home));
+    const lead = /<p[^>]*id="hero-mainnet"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
+    expect(textContent(lead)).toBe(`${HERO.mainnet.lead}${HERO.mainnet.intro}`.replace(/`/g, ""));
+    const list =
+      /<ul[^>]*aria-labelledby="hero-mainnet"[^>]*>([\s\S]*?)<\/ul>/.exec(html)?.[1] ?? "";
+    const rows = [...list.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) => m[1] ?? "");
+    expect(rows.map(spoken)).toEqual(
+      HERO.mainnet.rows.map((r) => `${r.state} ${r.what.replace(/`/g, "")} Tx ${r.tx.label}`),
+    );
+    for (const [i, row] of HERO.mainnet.rows.entries()) {
+      expect(rows[i]).toContain(`href="${row.tx.url}"`);
+      expect(rows[i]).toContain('target="_blank"');
+    }
   });
 });

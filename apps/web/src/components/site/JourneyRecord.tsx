@@ -113,6 +113,16 @@ const OUT_TONE: Readonly<Record<StoryTone, string | undefined>> = {
   held: j.outHeld,
 };
 
+/** An outcome in words with its mark: the journey's invoices, and the hero's mainnet record, say it the same way. */
+export function Outcome({ tone, children }: { tone: StoryTone; children: ReactNode }) {
+  return (
+    <span className={`${j.out} ${OUT_TONE[tone]}`}>
+      <Mark tone={tone} />
+      {children}
+    </span>
+  );
+}
+
 /** One evidence slot: its name, then its links, or the words that say why it has none. */
 function Slot({ name, slot, mono }: { name: string; slot: EvidenceSlot; mono: boolean }) {
   return (
@@ -148,10 +158,7 @@ function InvoiceRow({ card }: { card: StoryInvoice }) {
           <span className={j.invId}>{card.invoice}</span>
           {card.again === undefined ? null : <span className={j.again}>{card.again}</span>}
         </span>
-        <span className={`${j.out} ${OUT_TONE[card.tone]}`}>
-          <Mark tone={card.tone} />
-          {card.outcome}
-        </span>
+        <Outcome tone={card.tone}>{card.outcome}</Outcome>
       </th>
       <td className={j.asked} {...ROLE.cell}>
         <Rich text={card.asks} />

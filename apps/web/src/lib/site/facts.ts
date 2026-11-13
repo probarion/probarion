@@ -184,15 +184,34 @@ export const HERO = {
   docs: { route: "/docs", label: "Explore the docs" },
   /** A light link after the buttons, to the demo vault's proof page (STORY.proof.href). */
   verify: "Verify it yourself",
-  /** One line under the buttons: who it is for, what runs where, and the mainnet vault's two transactions. */
+  /**
+   * Under the buttons, ahead of the audience line: what runs where, then the mainnet vault's payment and refusal of
+   * 2026-11-11 (MAINNET_TX), one row each, in the README's words. Its Base payout of 2026-11-13 is left to the page's
+   * mainnet section (#mainnet), which owns that transaction.
+   */
+  mainnet: {
+    lead: "Testnet today.",
+    intro: " On NEAR mainnet, one small vault, `v0.probarion.near`, with real USDC:",
+    rows: [
+      {
+        tone: "paid",
+        state: "Paid",
+        what: "1 USDC to the owner's own wallet",
+        tx: MAINNET_TX.payment,
+      },
+      {
+        tone: "refused",
+        state: "Blocked",
+        what: "Mandate 999 does not exist: `NoMandate`",
+        tx: MAINNET_TX.refusal,
+      },
+    ],
+  },
+  /** The line under the mainnet record: who it is for, and what needs no account. */
   fineprint: [
     "For teams whose AI agent pays supplier invoices, and for ",
     { label: "developers", href: "#integrate" },
-    " who want to give an agent money without the keys. Testnet today, and one small vault, `v0.probarion.near`, with ",
-    { label: "a payment on mainnet", href: MAINNET_TX.payment.url },
-    " and ",
-    { label: "a refusal on mainnet", href: MAINNET_TX.refusal.url },
-    ". You need no account to read the chain or run the verifier.",
+    " who want to give an agent money without the keys. You need no account to read the chain or run the verifier.",
   ] satisfies readonly CopyPart[],
   paid: {
     aria: "A payment the contract allowed",
@@ -203,6 +222,11 @@ export const HERO = {
     payee: "probarion-payee.testnet",
     event: "spend_paid",
     tx: demoPaid,
+    /** Spend 1 on the demo vault's proof page (STORY.proof.href), the card's own transaction. */
+    proof: {
+      label: "Check it on its proof page",
+      href: "/proof/demo.vaults.probarion.testnet#spend-1",
+    },
   },
   /** The team's own attempt on the Canary (lib/canary/rehearsal.ts): code refused it, then raw mode sent it anyway. */
   refused: {
@@ -217,7 +241,20 @@ export const HERO = {
     tx: tx(REHEARSAL.txHash, "6XuxN42d…v6z8DH"),
     tryIt: { label: "Try to make it pay you", href: withVia("/canary", "home") },
   },
-  note: "Real transactions on NEAR testnet, with test tokens, each sent by its vault's agent key. On the Canary our own fake invoice fooled the model into proposing 50 test USDC. Code refused it: it found no amount it could read with certainty, and the Canary's own rule refuses every attempt. The Canary then sent it to the contract unfiltered, on purpose, and the contract refused it.",
+  /** Under the paid card, or above both cards on a phone: what the two cards are. */
+  both: {
+    lead: "Both cards",
+    rest: " show real transactions on NEAR testnet, with test tokens, each sent by its vault's agent key.",
+  },
+  /** Under the Canary card: its rehearsal in three steps, in the evidence's order (docs/evidence/canary-vault). */
+  canarySteps: {
+    label: "What happened on the Canary",
+    items: [
+      "Our own fake invoice fooled the model into proposing 50 test USDC.",
+      "Code refused it: it found no amount it could read with certainty, and the Canary's own rule refuses every attempt.",
+      "The Canary then sent it to the contract unfiltered, on purpose, and the contract refused it.",
+    ],
+  },
 } as const;
 
 export const PROBLEM = {

@@ -251,10 +251,7 @@ a.netPill:hover {
   text-underline-offset: 3px;
 }
 
-/* Hero. Like every section, it owns G (--space-section) of paper below itself. */
-.hero {
-  padding-block: clamp(36px, 6vw, 76px) var(--space-section);
-}
+/* Hero: its type and its cards. The section's layout is hero.module.css. */
 .heroEyebrow {
   margin-bottom: 14px;
 }
@@ -274,13 +271,6 @@ a.netPill:hover {
   background-clip: text;
   color: transparent;
   padding-bottom: 0.08em;
-}
-.heroGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: clamp(32px, 5vw, 72px);
-  margin-top: clamp(32px, 4vw, 56px);
-  align-items: start;
 }
 .lede {
   font-size: clamp(19px, 1.65vw, 23px);
@@ -312,11 +302,6 @@ a.netPill:hover {
   max-width: 34em;
 }
 
-.duel {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
 .card {
   border-radius: 24px;
   padding: 24px;
@@ -438,13 +423,6 @@ a.netPill:hover {
   align-self: flex-start;
   font-size: 14px;
   font-weight: 500;
-}
-.duelNote {
-  grid-column: 1 / -1;
-  max-width: var(--container-measure);
-  font-size: 14px;
-  color: var(--color-mute);
-  padding-inline: 4px;
 }
 
 /* Numbers */
@@ -1777,7 +1755,6 @@ a.netPill:hover {
   .compare td:last-child {
     padding-bottom: 16px;
   }
-  .heroGrid,
   .bandGrid,
   .tamper {
     grid-template-columns: minmax(0, 1fr);
@@ -1886,9 +1863,6 @@ a.netPill:hover {
     align-self: center;
     padding-inline: 0;
     font-size: 14px;
-  }
-  .duel {
-    grid-template-columns: minmax(0, 1fr);
   }
   .status {
     grid-template-columns: minmax(0, 1fr);

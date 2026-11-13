@@ -147,6 +147,7 @@ describe("the landing's one rhythm", () => {
   const globals = read("src", "app", "globals.css");
   const head = read("src", "components", "site", "head.module.css");
   const site = read("src", "components", "site", "site.module.css");
+  const hero = read("src", "components", "site", "hero.module.css");
   const rule = (css: string, selector: string) => {
     const at = css.indexOf(`\n${selector} {`);
     expect(at, selector).toBeGreaterThan(-1);
@@ -162,7 +163,7 @@ describe("the landing's one rhythm", () => {
 
   it("puts G below each section, the hero and the ink band, and none above a section", () => {
     expect(rule(head, ".section")).toContain("padding-block: 0 var(--space-section);");
-    expect(rule(site, ".hero")).toMatch(/padding-block: [^;]+ var\(--space-section\);/);
+    expect(rule(hero, ".hero")).toMatch(/padding-block: [^;]+ var\(--space-section\);/);
     expect(rule(site, ".band")).toContain("margin-bottom: var(--space-section);");
     // The closing's rule sits halfway down its gap, on the wrap's left edge like every head's hairline.
     expect(rule(site, ".close")).toContain("padding-block: 0 var(--space-section);");
