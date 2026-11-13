@@ -1433,22 +1433,33 @@ The software is an unaudited beta.
   `base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near`, the mandate's `payee.asset` (USDC on
   Base in NEAR Intents). The rule refused both with "invoice names NEAR account
   base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near; the mandate pays
-  base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27", so that payment was decided by the rules alone
-  (entry 2, `decided_by: "rules-only"`, spend 2) and then paid out on Base. For a Base or Solana
-  payee, `payeeHintContradiction` in `packages/core/src/policy.ts` now takes a `near_account` equal
-  to the mandate's `payee.asset`, compared exactly with no trimming and no case change, as naming no
-  other payee: it is the token the mandate pays in. Any other `near_account` still contradicts, the
-  asset in another letter case or with spaces included, and the chain and address checks are
-  unchanged, so the asset given as the `address` still refuses. The rule for a NEAR payee, the
-  schema and the system prompt of `probarion-proposal/v1` (check A8 knows the system prompt by its
-  hash) and the contract are unchanged. `verify` does not re-run the policy, so ledger entries
-  already written, these two included, are unaffected. Unit tests cover the asset and the
+  base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27" (the detail says "invoice" for either hint: the
+  account came from the models' hint, and the invoice INV-M002 names no NEAR account and no
+  address), so that payment was decided by the rules alone (entry 2, `decided_by: "rules-only"`,
+  spend 2) and then paid out on Base. For a Base or Solana payee, `payeeHintContradiction` in
+  `packages/core/src/policy.ts` now takes a `near_account` equal to the mandate's `payee.asset`,
+  compared exactly with no trimming and no case change, as naming no other payee, but only in the
+  trusted proposal's hint: the model is shown the mandate's payee, asset included, and the asset is
+  the token the mandate pays in. `decide()` and the eval's checks of a model's proposal pass the new
+  option `ownAssetNamesNoPayee` for that hint. In the invoice's hint any `near_account` still
+  refuses, the asset included, as before: the console reads only the first NEAR account of an
+  invoice's text, so an invoice that writes the asset first could otherwise hide another payee
+  behind it. The extension's queue check of an invoice stays as strict. Any other `near_account`
+  still contradicts, the asset in another letter case or with spaces included (the detail then
+  quotes the value as given, so it does not read like the asset that passes), and the chain and
+  address checks are unchanged, so the asset given as the `address` still refuses. The rule for a
+  NEAR payee, the schema and the system prompt of `probarion-proposal/v1` (check A8 knows the system
+  prompt by its hash) and the contract are unchanged. `verify` does not re-run the policy, so ledger
+  entries already written, these two included, are unaffected. Unit tests cover the asset and the
   contradictions next to it, and `packages/core/test/policy-mainnet-replay.test.ts` replays the two
   recorded mainnet proposals: `mandate.payee_mismatch` now passes for both, and every other rule
-  gives the outcome and detail the ledger recorded. The /docs pages "Why spend has no payee" and
-  "Policy rules" say the same, and the line citations of `docs/THREAT_MODEL.md` follow the code. No
-  eval case or committed eval result has an asset account in a hint, so the eval results are
-  unchanged.
+  gives the outcome and detail the ledger recorded; with the asset in the invoice's hint instead,
+  the rule refuses as recorded. `apps/web/src/lib/payables/asset-payee-hint.test.ts` reads invoice
+  texts with `extractFacts` and decides them: a Base and a Solana invoice that write the asset
+  before another NEAR account are refused, with no model and with a model hint that copies the
+  asset. The /docs pages "Why spend has no payee" and "Policy rules" say the same, and the line
+  citations of `docs/THREAT_MODEL.md` follow the code. No eval case or committed eval result has an
+  asset account in a hint, so the eval results are unchanged.
 
 - The Canary gives its model up to 55 s instead of 40 s, and says so when the model's time runs out.
   On probarion.xyz the "Ignore previous instructions" example message was decided with no proposal

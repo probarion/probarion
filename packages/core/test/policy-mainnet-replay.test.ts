@@ -185,6 +185,9 @@ describe("replay: the two attested mainnet proposals code refused on 2026-11-13"
       ]) {
         const changed = { ...r.proposal, payee_hint: { ...RECORDED_HINT, near_account } };
         const decision = decide(replayInput(r, changed));
+        // When only spaces differ from the asset, the detail quotes the value as given.
+        const given =
+          near_account.trim() === BASE_USDC ? ` (given as ${JSON.stringify(near_account)})` : "";
         expect(decision.verdict, near_account).toBe("refuse");
         expect(
           decision.rules.find((x) => x.id === "mandate.payee_mismatch"),
@@ -192,9 +195,22 @@ describe("replay: the two attested mainnet proposals code refused on 2026-11-13"
         ).toEqual({
           id: "mandate.payee_mismatch",
           outcome: "refuse",
-          detail: `invoice names NEAR account ${near_account.trim()}; the mandate pays base:${OWNER_BASE}`,
+          detail: `invoice names NEAR account ${near_account.trim()}${given}; the mandate pays base:${OWNER_BASE}`,
         });
       }
+    });
+
+    it(`seq ${r.seq} (${r.model}): an invoice that names the asset account is still refused`, () => {
+      // Only the model's hint may carry the asset: the run's invoice named no NEAR account.
+      const i = replayInput(r);
+      const decision = decide({
+        ...i,
+        invoice: { ...i.invoice, payee_hint: { ...RECORDED_HINT } },
+      });
+      expect(decision.verdict).toBe("refuse");
+      expect(decision.rules.find((x) => x.id === "mandate.payee_mismatch")).toEqual(
+        recordedRules(r.proposal.confidence).find((x) => x.id === "mandate.payee_mismatch"),
+      );
     });
   }
 });

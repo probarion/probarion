@@ -237,7 +237,7 @@ per address and 300 in all per network in 10 minutes (`LIMITS` in `apps/web/src/
 vault, whose role it reads again on every request, at most 20 per account and network in 10 minutes.
 It reads the text and its facts as the console upload does, and refuses, storing nothing, an invoice
 whose mandate cannot take invoices now, whose payee contradicts the chosen mandate's (core's
-`payeeHintContradiction`, the check the cycle runs, `packages/core/src/policy.ts:222-224`), or that
+`payeeHintContradiction`, the check the cycle runs, `packages/core/src/policy.ts:240-242`), or that
 the contract's `check_spend` view would refuse now. It stores the rest straight in `awaiting_owner`,
 as an upload is stored (the file sealed, or in zero-retention mode no file, name or facts but the
 amount), with the checks it passed and the hold `extension.mandate_chosen`, without which
@@ -290,10 +290,10 @@ token, with the reach of a stolen token above.
 
 | Failure | Behaviour |
 |---|---|
-| NEAR AI Cloud down | Decisions fall back to the rules alone, and the ledger records `decided_by: "rules-only"` (`packages/core/src/policy.ts:497`). `verify` check e applies only to decisions with model evidence |
+| NEAR AI Cloud down | Decisions fall back to the rules alone, and the ledger records `decided_by: "rules-only"` (`packages/core/src/policy.ts:515`). `verify` check e applies only to decisions with model evidence |
 | 1Click down | Only mainnet top-ups wait; payouts from existing Intents balances continue |
 | POA bridge slow or down (mainnet) | The spend stays "burned, awaiting bridge", and nobody pays it again ([RUNBOOK](RUNBOOK.md#burned-awaiting-bridge)). Testnet has no bridge |
-| Intents balance low | The rule `intents.balance_low` holds the spend (`packages/core/src/policy.ts:336-346`) |
+| Intents balance low | The rule `intents.balance_low` holds the spend (`packages/core/src/policy.ts:354-364`) |
 | An RPC URL rate-limited (HTTP 429) or failing | The SDK's RPC client tries the next URL of its list, in order (`packages/sdk/src/rpc.ts:410-421`; [RPC failover](RUNBOOK.md#rpc-failover)). The web app takes each network's list from `NEAR_RPC_URLS_MAINNET` or `NEAR_RPC_URLS_TESTNET`, and the bare `NEAR_RPC_URLS` for its default network only (`apps/web/src/lib/env.ts:154-167`). The SDK and the CLI read only the bare `NEAR_RPC_URLS` (or `--rpc`), for whichever network they are given (`packages/sdk/src/rpc.ts:168-180`) |
 | An RPC URL that serves the other chain | Sign-in and Register answer 503 `wrong_chain`, mint no session and register nothing |
 | Two processes writing one vault's ledger | The database's compare-and-append refuses the second with `ledger_conflict` (`apps/web/src/lib/ledger/store.ts:111`), and an anchor out of order fails with `PROBARION:BadSeq`. The SDK marks the rest `LEDGER_FORK_RISK`: it sends no spend for a decision that did not land at the position it was attested for, and it warns and does not anchor when the chain's last anchor covers more entries than its ledger holds (`packages/sdk/src/probarion.ts:978-982`, `:1099-1103`). Two writers with two ledger files still fork the vault's history, which `verify` check c then reports. The MCP server refuses a spend with `LEDGER_FORK_RISK` when its ledger file does not hold the entries the vault's latest anchor covers (`packages/mcp/src/guard.ts`): that catches another writer once it has anchored, and one that has not is found later by check d |
