@@ -67,6 +67,12 @@ describe("the mainnet samples the site serves", () => {
     expect(copy.equals(original)).toBe(true);
   });
 
+  it("is marked -text in .gitattributes, so git keeps the copies' bytes as it keeps their sources'", () => {
+    expect(source(".gitattributes").toString("utf8")).toMatch(
+      /^apps\/web\/public\/samples\/mainnet\/\*\* -text$/m,
+    );
+  });
+
   it("holds those files and no other, so a stale copy cannot stay behind", () => {
     expect(filesUnder(SERVED_DIR).sort()).toEqual(SERVED.map((f) => f.path).sort());
   });
@@ -128,7 +134,7 @@ describe("the no-clone workflow", () => {
   it("downloads the served files of the pushed commit and verifies with probarion 0.1.1", () => {
     expect(wf).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: a GitHub Actions expression, plain text here
-      "https://raw.githubusercontent.com/probarion/probarion/${{ github.sha }}/apps/web/public/samples/mainnet",
+      "https://raw.githubusercontent.com/probarion/probarion/${{ github.event.pull_request.head.sha || github.sha }}/apps/web/public/samples/mainnet",
     );
     for (const f of SERVED.filter((s) => !s.path.startsWith("invoices/"))) {
       expect(wf).toContain(`-o ${f.path} "$B/${f.path}"`);

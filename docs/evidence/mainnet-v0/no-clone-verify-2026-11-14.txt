@@ -13,7 +13,8 @@ https://probarion.xyz/samples/mainnet/ (apps/web/public/samples/mainnet in the r
 
 Each one is a byte-for-byte copy of the file on its right; apps/web/test/samples-mainnet.test.ts compares them.
 The blocks below download the first three into an empty folder and run `npx -y probarion@0.1.1 verify` on mainnet,
-with no clone and no key. Verify reads the chain with RPC view calls only. It signs and sends nothing.
+with no clone and no key. Verify reads the chain with read-only RPC requests (views, and tx lookups of the burn
+transactions). It signs nothing and sends no transaction.
 
 probarion.xyz did not serve these files yet when these runs were made, so the runs fetched
 the same bytes from two other places:
@@ -24,8 +25,9 @@ the same bytes from two other places:
 Run 5 is the repository's CLI on the served copies, with the two invoice texts.
 
 Machine: Windows 10 Pro 10.0.19045, Node v24.12.0, npm 11.6.2. Git Bash 5.2.12 with curl 7.87.0, and Windows
-PowerShell 5.1.19041.6456 with curl.exe 8.13.0. This machine has no Node 22: .github/workflows/no-clone-verify.yml
-runs the Bash block on Node 22 and Node 24 for every pull request and every push to dev and main.
+PowerShell 5.1.19041.6456 with curl.exe 8.13.0. This machine has no Node 22. .github/workflows/no-clone-verify.yml
+is set to run the Bash block on Node 22 and Node 24 for every pull request and every push to dev and main; its
+first result is not recorded here yet.
 Each run's first line gives its time in UTC (2026-11-13, 19:02 to 19:11 UTC). Program output is verbatim.
 
 Result
@@ -48,9 +50,9 @@ Run 1: Git Bash, local server
 $ mkdir -p probarion-mainnet && cd probarion-mainnet
 $ B=http://127.0.0.1:4802/samples/mainnet
 $ curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \
-$   -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
+>   -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
 $ npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
-$   --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
+>   --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
 Probarion verify: v0.probarion.near (mainnet)
 entries 6, anchors 4, generated 2026-11-13T19:02:34.930Z
 
@@ -99,13 +101,13 @@ Run 3: Git Bash, raw.githubusercontent.com at f35f9e0
 $ mkdir -p probarion-mainnet && cd probarion-mainnet
 $ R=https://raw.githubusercontent.com/probarion/probarion/f35f9e0754010a789a583988ffb9f99ca6b58749
 $ curl -fsS --create-dirs -o ledger.jsonl "$R/docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl" \
-$   -o mainnet-proof.json "$R/docs/mainnet-proof.json" -o evidence/v0-decision-m001.json "$R/docs/evidence/v0-decision-m001.json"
+>   -o mainnet-proof.json "$R/docs/mainnet-proof.json" -o evidence/v0-decision-m001.json "$R/docs/evidence/v0-decision-m001.json"
 $ sha256sum ledger.jsonl mainnet-proof.json evidence/v0-decision-m001.json
-$ npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
-$   --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
 18ff5149240fe099cc6c163ee625b573340da35f82d6b28890f2db1dd7669b31 *ledger.jsonl
 a67cd55ce7539f49cf5d368f02c436cbb3d8df630a66f99e9707864ca72dbda3 *mainnet-proof.json
 d00e8ccc7a99a23a7f56d22d68aa69c7050330ac61e5c88c74bf013d188fb4f1 *evidence/v0-decision-m001.json
+$ npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
+>   --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
 Probarion verify: v0.probarion.near (mainnet)
 entries 6, anchors 4, generated 2026-11-13T19:03:27.456Z
 
@@ -153,8 +155,8 @@ Run 5: the repository's CLI with the invoice texts (needs a clone and a build)
 # 2026-11-13T19:10:42Z Git Bash 5.2.12(1)-release (x86_64-pc-msys), node v24.12.0, the repository CLI, packages/cli built at f35f9e0 (it takes --invoice; its package.json still says 0.1.1)
 $ D=apps/web/public/samples/mainnet
 $ node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near --ledger $D/ledger.jsonl \
-$   --invoice $D/invoices/invoice-INV-M002.txt --invoice $D/invoices/invoice-INV-M003.txt \
-$   --evidence $D/evidence --proof $D/mainnet-proof.json
+>   --invoice $D/invoices/invoice-INV-M002.txt --invoice $D/invoices/invoice-INV-M003.txt \
+>   --evidence $D/evidence --proof $D/mainnet-proof.json
 Probarion verify: v0.probarion.near (mainnet)
 entries 6, anchors 4, generated 2026-11-13T19:10:44.936Z
 

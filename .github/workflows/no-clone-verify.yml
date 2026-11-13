@@ -3,10 +3,12 @@ name: no-clone verify
 # The README's no-clone check of the mainnet vault, run the way a reader runs it: no checkout, no install, no key
 # and no secret. In an empty folder it downloads the vault's signed ledger, the recorded transactions and spend 1's
 # pre-ledger decision as this commit holds them in apps/web/public/samples/mainnet (the files the site serves at
-# https://probarion.xyz/samples/mainnet), then runs probarion 0.1.1 from npm, which reads mainnet with RPC view
-# calls only. It passes when checks a to h pass and check i skips (no factory made the vault), and it runs on
-# Node 22 and Node 24: probarion 0.1.1 declares Node 24 or newer. apps/web/test/samples-mainnet.test.ts keeps the
-# served files byte for byte equal to their sources in docs/. The action is pinned by the full SHA ci.yml uses.
+# https://probarion.xyz/samples/mainnet), then runs probarion 0.1.1 from npm, which reads mainnet with read-only
+# RPC requests and signs nothing. It passes when checks a to h pass and check i skips (no factory made the vault).
+# It runs on Node 24, which probarion 0.1.1 declares (engines node >=24), and on Node 22 to learn whether 0.1.1 also
+# works there. On a pull request it reads the branch's pushed head commit, not the merge commit GitHub generates.
+# apps/web/test/samples-mainnet.test.ts keeps the served files byte for byte equal to their sources in docs/. The
+# action is pinned by the full SHA ci.yml uses.
 
 on:
   push:
@@ -37,7 +39,7 @@ jobs:
       # The README's Bash block as it is, with B at this commit's copy of the files instead of probarion.xyz.
       - name: Run the README block in an empty folder
         env:
-          SAMPLES: https://raw.githubusercontent.com/probarion/probarion/${{ github.sha }}/apps/web/public/samples/mainnet
+          SAMPLES: https://raw.githubusercontent.com/probarion/probarion/${{ github.event.pull_request.head.sha || github.sha }}/apps/web/public/samples/mainnet
         run: |
           set -o pipefail
           cd "$RUNNER_TEMP"
