@@ -150,22 +150,26 @@ export function CheckResult({ run, shareHref }: { run: DoneRun; shareHref?: stri
 
       <details className="mt-4">
         <summary className="cursor-pointer text-sm font-medium">{R.json}</summary>
-        <pre className={`${CODE_BLOCK} max-h-96 overflow-auto`}>
-          {JSON.stringify({ ...assessment, signals }, null, 2)}
-        </pre>
+        {/* Its full height, with no scroll box of its own: the disclosure is the opt-in, and a box that scrolls with nothing
+            focusable in it cannot be scrolled from a keyboard in every browser. */}
+        <pre className={CODE_BLOCK}>{JSON.stringify({ ...assessment, signals }, null, 2)}</pre>
       </details>
 
       <h3 className={H3}>{R.cli}</h3>
       <code className={CODE_BLOCK}>{cliCommand(input)}</code>
       <p className={`text-xs ${muted}`}>{R.cliNote}</p>
-      <p className="mt-4 text-sm">{R.advice}</p>
-      {shareHref === undefined ? null : (
-        <p className="mt-2 text-sm">
-          <a className={link} href={shareHref}>
-            {R.link}
-          </a>
-        </p>
-      )}
+      {/* Its own box: the page's reading rule sets the gap between two paragraphs, and from the small CLI note to the
+          advice that gap is under WCAG 1.4.8's 2.5em. */}
+      <div className="mt-4 text-sm">
+        <p>{R.advice}</p>
+        {shareHref === undefined ? null : (
+          <p className="mt-2">
+            <a className={link} href={shareHref}>
+              {R.link}
+            </a>
+          </p>
+        )}
+      </div>
     </div>
   );
 }

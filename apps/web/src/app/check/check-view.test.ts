@@ -11,6 +11,7 @@ import {
   formOf,
   formToHash,
   networkHint,
+  networkOfName,
   POISONED_BASE,
   parseCheckForm,
   type RequestEntry,
@@ -76,6 +77,17 @@ describe("the form", () => {
     expect(run("near:vendor.testnet", "mainnet")).toContain("a testnet name");
     expect(run("near:vendor.near", "mainnet")).toBeNull();
     expect(run(`base:${POISONED_BASE}`, "testnet")).toBeNull();
+  });
+
+  it("takes the network from a named NEAR payee's suffix, and from nothing else", () => {
+    expect(networkOfName("vendor.near")).toBe("mainnet");
+    expect(networkOfName(" near:vendor.near ")).toBe("mainnet");
+    expect(networkOfName("near:vendor.testnet")).toBe("testnet");
+    expect(networkOfName("near:vendor.nea")).toBeNull();
+    expect(networkOfName(`near:${"a".repeat(64)}`)).toBeNull();
+    expect(networkOfName(`base:${POISONED_BASE}`)).toBeNull();
+    expect(networkOfName("")).toBeNull();
+    expect(networkOfName("Not A Name")).toBeNull();
   });
 });
 

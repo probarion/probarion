@@ -29,12 +29,13 @@ export const CHECK_PAGE = {
   meta: {
     title: "Check a payee",
     description:
-      "Allow, warn or block for a payee on NEAR, Base or Solana, with the reasons. Your browser reads public nodes itself, before an owner signs a mandate.",
+      "Allow, warn or block for a payee on NEAR or Base, with the reasons. A Solana payee is not read on its own chain. Your browser reads public nodes itself, before an owner signs a mandate.",
   },
   eyebrow: "Payee check",
   title: "Check a payee before you sign a mandate",
-  // The plan's line, with "does not" for "never": the agent's key can call one method, and `spend` has no address field.
-  lede: "The agent does not pick a payee, so Probarion checks the payee where it is chosen: when the owner signs a mandate.",
+  // The agent's key can call one method, and `spend` has no address field. "Before": the console's mandate form does not
+  // run this check, so the page does not say that signing does.
+  lede: "The agent does not pick a payee, so the place to check one is where it is chosen: before the owner signs a mandate.",
   why: "The agent's key can call one method, spend, and spend has no address field. A payee enters through the mandate the owner signs.",
   how: "Name a payee, and this page answers allow, warn or block, with the reasons. Your browser reads public NEAR and Base nodes itself. No wallet, no sign-in, and the check calls no Probarion server route.",
   form: {
@@ -64,7 +65,7 @@ export const CHECK_PAGE = {
     cli: "The same check in a terminal",
     cliNote:
       "In a clone of the repository, once the CLI is built. Release 0.1.1 on npm does not have this command.",
-    readOnly: "Read-only: views and block headers, nothing signed or sent.",
+    readOnly: "Read-only: views and block headers, no transaction signed or sent.",
     advice:
       "The verdict is advice for the owner who writes this payee into a mandate. It changes nothing on chain.",
     failed: (message: string) =>

@@ -55,13 +55,15 @@ describe("/check", () => {
   it("is a built, static page with its own title", () => {
     expect(metadata.title).toBe("Check a payee");
     expect(String(metadata.description)).toContain("Your browser reads public nodes itself");
+    // Solana is not read on its own chain, so the description does not offer it beside NEAR and Base.
+    expect(String(metadata.description)).toContain("A Solana payee is not read on its own chain.");
     expect(PLANNED_ROUTES).not.toContain("/check");
   });
 
   it("says why the check runs where a payee is chosen, in the brief's words", () => {
     const t = text(page());
     expect(t).toContain(
-      "The agent does not pick a payee, so Probarion checks the payee where it is chosen: when the owner signs a mandate.",
+      "The agent does not pick a payee, so the place to check one is where it is chosen: before the owner signs a mandate.",
     );
     expect(t).toContain(
       "The agent's key can call one method, spend, and spend has no address field. A payee enters through the mandate the owner signs.",
@@ -139,6 +141,7 @@ describe("a finished check", () => {
     );
     expect(t).toContain("Release 0.1.1 on npm does not have this command.");
     expect(t).toContain("It changes nothing on chain.");
+    expect(t).toContain("Read-only: views and block headers, no transaction signed or sent.");
     expect(html).toContain('href="#x"');
   });
 

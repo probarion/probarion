@@ -18,10 +18,15 @@ import { type CheckInput, EXAMPLES, statusLine } from "./check-view";
 import { PayeeCheck } from "./PayeeCheck";
 
 const replaceState = vi.fn();
+/** The ids the page asked the document to focus, in order. */
+const focused: string[] = [];
 function stubWindow(hash = "") {
   vi.stubGlobal("window", {
     location: { hash, host: "localhost:3604" },
     history: { replaceState },
+  });
+  vi.stubGlobal("document", {
+    getElementById: (id: string) => ({ focus: () => focused.push(id) }),
   });
 }
 
@@ -95,6 +100,7 @@ beforeEach(() => {
   mocks.runCheck.mockReset();
   mocks.runCheck.mockImplementation(async (input: CheckInput) => doneRun(input));
   replaceState.mockReset();
+  focused.length = 0;
   stubWindow();
 });
 afterEach(() => {
@@ -126,6 +132,25 @@ describe("the check, used", () => {
     expect(f.fieldOf("Payee").props.error).toBeUndefined();
     expect(f.fieldOf("Vault (optional)").props.error).toBe("Not A Vault is not a NEAR account id.");
     expect(mocks.runCheck).not.toHaveBeenCalled();
+    // Each wrong send puts the focus on the field that is wrong, the same one twice included.
+    expect(focused).toEqual(["check-payee", "check-payee", "check-vault"]);
+    expect(f.control("Payee").props.id).toBe("check-payee");
+    expect(f.control("Vault (optional)").props.id).toBe("check-vault");
+  });
+
+  it("clears the last result when the form is then wrong, so no verdict stands under another payee", async () => {
+    const f = open();
+    f.type("Payee", "near:vendor.testnet");
+    await f.send();
+    expect(elements(f.region()).some((e) => e.type === CheckResult)).toBe(true);
+    expect(textOf(f.status())).not.toBe("");
+    f.type("Payee", "");
+    await f.send();
+    expect(elements(f.region()).some((e) => e.type === CheckResult)).toBe(false);
+    expect(textOf(f.status())).toBe("");
+    expect(f.fieldOf("Payee").props.error).toBe("Name a payee.");
+    expect(focused).toEqual(["check-payee"]);
+    expect(mocks.runCheck).toHaveBeenCalledTimes(1);
   });
 
   it("runs one check at a time, says so meanwhile, then shows the result and puts the check in the fragment", async () => {
@@ -218,13 +243,46 @@ describe("the check, used", () => {
     expect(f.control("Payee").props.value).toBe("base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27");
   });
 
-  it("notes a .near name checked on testnet, and still runs it", async () => {
+  it("shows what is wrong with a link's check, and leaves the focus where the page load put it", async () => {
+    stubWindow("#network=mainnet&payee=0xabc");
+    const f = open();
+    await Promise.resolve();
+    f.view.flush();
+    expect(mocks.runCheck).not.toHaveBeenCalled();
+    expect(f.fieldOf("Payee").props.error).toBe(
+      "Write near:0xabc or base:0xabc: a bare 0x value is both.",
+    );
+    expect(focused).toEqual([]);
+  });
+
+  it("takes the network from a .near or .testnet name until the visitor picks one", () => {
     const f = open();
     f.type("Payee", "near:vendor.near");
-    expect(textOf(f.view.result)).toContain(
+    expect(f.control("Network").props.value).toBe("mainnet");
+    f.type("Payee", "vendor.testnet");
+    expect(f.control("Network").props.value).toBe("testnet");
+    // A name with neither suffix, and a Base address, keep the address's network.
+    f.type("Payee", `near:${"a".repeat(64)}`);
+    expect(f.control("Network").props.value).toBe("testnet");
+    f.type("Payee", "base:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27");
+    expect(f.control("Network").props.value).toBe("testnet");
+    f.type("Payee", "near:vendor.near");
+    expect(textOf(f.view.result)).not.toContain("a mainnet name");
+    expect(f.control("Payee").props["aria-describedby"]).toBeUndefined();
+  });
+
+  it("notes a .near name checked on a testnet the visitor chose, ties the note to the field, and still runs it", async () => {
+    const f = open();
+    f.type("Network", "testnet");
+    f.type("Payee", "near:vendor.near");
+    expect(f.control("Network").props.value).toBe("testnet");
+    const note = elements(f.view.result).find((e) => e.props.id === "check-network-hint");
+    expect(textOf(note)).toBe(
       "vendor.near ends in .near, a mainnet name, and the network chosen is testnet.",
     );
+    expect(f.control("Payee").props["aria-describedby"]).toBe("check-network-hint");
     await f.send();
     expect(mocks.runCheck).toHaveBeenCalledTimes(1);
+    expect(mocks.runCheck.mock.calls[0]?.[0]).toMatchObject({ network: "testnet" });
   });
 });

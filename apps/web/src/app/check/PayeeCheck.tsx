@@ -15,6 +15,7 @@ import {
   formOf,
   formToHash,
   networkHint,
+  networkOfName,
   parseCheckForm,
   statusLine,
 } from "./check-view";
@@ -29,27 +30,40 @@ import { type DoneRun, type FailedRun, runCheck } from "./run";
 const F = CHECK_PAGE.form;
 
 type Run = { kind: "idle" } | { kind: "busy"; input: CheckInput } | DoneRun | FailedRun;
-type Errors = Partial<Record<"network" | "payee" | "vault", string>>;
+type FieldName = "network" | "payee" | "vault";
+type Errors = Partial<Record<FieldName, string>>;
+/** Each control's id: a wrong field takes the focus, so its error is what a screen reader reads next. */
+const fieldId = (field: FieldName) => `check-${field}`;
+const HINT_ID = "check-network-hint";
 
 export function PayeeCheck() {
   const addressNetwork = useBrowserNetwork();
-  // The network the visitor chose; until then, the address's own network (mainnet before the page knows it).
+  // The network the visitor chose; until then, a named payee's suffix (.near or .testnet), else the address's own
+  // network (mainnet before the page knows it).
   const [chosen, setChosen] = useState<NetworkId | null>(null);
   const [payee, setPayee] = useState("");
   const [vault, setVault] = useState("");
   const [errors, setErrors] = useState<Errors>({});
+  // A new object for each wrong send, so the same field takes the focus again.
+  const [focusOn, setFocusOn] = useState<{ field: FieldName } | null>(null);
   const [run, setRun] = useState<Run>({ kind: "idle" });
   const [mounted, setMounted] = useState(false);
   const running = useRef(false);
-  const network: NetworkId = chosen ?? addressNetwork ?? "mainnet";
+  const network: NetworkId = chosen ?? networkOfName(payee) ?? addressNetwork ?? "mainnet";
   const busy = run.kind === "busy";
 
-  /** One check at a time: a press while one reads does nothing (the button says so with aria-disabled). */
-  async function start(form: CheckForm) {
+  /**
+   * One check at a time: a press while one reads does nothing (the button says so with aria-disabled). A wrong form
+   * clears the last result, which was for another payee, and puts the focus on the field that is wrong, unless the
+   * form came from a link as the page loaded.
+   */
+  async function start(form: CheckForm, focusOnError = true) {
     if (running.current) return;
     const parsed = parseCheckForm(form);
     if (!parsed.ok) {
       setErrors({ [parsed.field]: parsed.problem });
+      setRun({ kind: "idle" });
+      if (focusOnError) setFocusOn({ field: parsed.field });
       return;
     }
     setErrors({});
@@ -84,8 +98,13 @@ export function PayeeCheck() {
     setChosen(form.network as NetworkId);
     setPayee(form.payee);
     setVault(form.vault);
-    void start(form);
+    void start(form, false);
   }, []);
+
+  // After the render that shows the error, so the field is read with it.
+  useEffect(() => {
+    if (focusOn !== null) document.getElementById(fieldId(focusOn.field))?.focus();
+  }, [focusOn]);
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -108,9 +127,10 @@ export function PayeeCheck() {
     <div>
       {/* The form beside the examples from 1024px; one column below. */}
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
-        <form onSubmit={submit} noValidate aria-label={F.title}>
+        <form onSubmit={submit} noValidate aria-label={F.title} className="[&_span]:max-w-measure">
           <Field label={F.network} error={errors.network}>
             <select
+              id={fieldId("network")}
               className={inputClass}
               value={network}
               onChange={(e) => setChosen(e.target.value as NetworkId)}
@@ -121,9 +141,11 @@ export function PayeeCheck() {
           </Field>
           <Field label={F.payee} hint={F.payeeHint} error={errors.payee}>
             <input
+              id={fieldId("payee")}
               className={`${inputClass} font-mono`}
               type="text"
               name="payee"
+              aria-describedby={hint === null ? undefined : HINT_ID}
               value={payee}
               onChange={(e) => setPayee(e.target.value)}
               placeholder={F.payeePlaceholder}
@@ -135,6 +157,7 @@ export function PayeeCheck() {
           </Field>
           <Field label={F.vault} hint={F.vaultHint} error={errors.vault}>
             <input
+              id={fieldId("vault")}
               className={`${inputClass} font-mono`}
               type="text"
               name="vault"
@@ -146,7 +169,11 @@ export function PayeeCheck() {
               spellCheck={false}
             />
           </Field>
-          {hint === null ? null : <p className="mb-3 text-sm text-wait">{hint}</p>}
+          {hint === null ? null : (
+            <p id={HINT_ID} className="mb-3 text-sm text-wait">
+              {hint}
+            </p>
+          )}
           <button
             type="submit"
             className={buttonClass}
@@ -172,7 +199,10 @@ export function PayeeCheck() {
                 >
                   {ex.label}
                 </button>
-                <span id={`check-ex-${ex.id}`} className="text-sm text-mute wrap-anywhere">
+                <span
+                  id={`check-ex-${ex.id}`}
+                  className="max-w-measure text-sm text-mute wrap-anywhere"
+                >
                   {ex.note}
                 </span>
               </li>

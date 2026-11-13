@@ -141,4 +141,11 @@ describe("a finished check's markup", () => {
     expect(html.match(/<summary/g)).toHaveLength(2);
     expect([...html.matchAll(/<h([1-6])\b/g)].map((m) => m[1])).toEqual(["3", "3", "3", "3"]);
   });
+
+  it("caps no block of text at a height, so nothing scrolls that a keyboard cannot reach", async () => {
+    const html = await result();
+    const pre = tags(html, "pre");
+    expect(pre).toHaveLength(1);
+    for (const t of pre) expect(t).not.toMatch(/max-h-|overflow-(y-)?(auto|scroll)/);
+  });
 });

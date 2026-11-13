@@ -69,6 +69,17 @@ export function networkHint(input: CheckInput): string | null {
     : null;
 }
 
+/**
+ * The network a named NEAR payee's suffix gives: mainnet for a `.near` name, testnet for a `.testnet` one, else null.
+ * The form takes it until the visitor picks a network, so a `.near` name is not checked on testnet by default.
+ */
+export function networkOfName(payee: string): NetworkId | null {
+  const parsed = parsePayeeRef(payee);
+  if (!parsed.ok || parsed.payee.chain !== "near") return null;
+  const { address } = parsed.payee;
+  return address.endsWith(".near") ? "mainnet" : address.endsWith(".testnet") ? "testnet" : null;
+}
+
 // --- examples --------------------------------------------------------------------------------------------------
 
 export interface Example {
