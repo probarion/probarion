@@ -872,30 +872,29 @@ export interface ShipCard {
   id: string;
   /** The place, by its owner's name for it. */
   name: string;
-  /** Under the name, in the gold small capitals of the rows' labels: what Probarion ships there. */
+  /** Above the name, in the gold small capitals of the rows' labels: what Probarion ships there. */
   kind: string;
-  /** The logo above the name: its owner's own file (components/site/ShipLogos.tsx), or Probarion's mark. */
+  /**
+   * The logo at the top of the card: the place's owner's own file (components/site/ShipLogos.tsx), or, on the store's
+   * card, Probarion's mark, which is the extension's own icon (the store's logo is not used).
+   */
   icon: "npm" | "mcp" | "github" | "probarion";
   /** What a visitor gets there, starting with what they do. */
   body: string;
   /** What is there, by its exact names: a name in backticks is an identifier and is set in mono. */
   ids: readonly string[];
+  /** What the exact names are, as a screen reader names their list. */
+  idsLabel: string;
   /** Under the names: the version, or the license. */
   meta: string;
-  /** The card's one link: its label names the page it opens. */
+  /** The card's one link: its label names what it opens, and whose, as a screen reader's list of links reads it. */
   link: { label: string; href: string };
-}
-
-/** One entry of the note under the rows: a part of the stack that has no row of its own. */
-export interface StackEntry {
-  name: string;
-  body: string;
 }
 
 /**
  * After the status list: what Probarion is built on, each with its evidence, the rest of its stack, where to get it,
  * and the trademark notices. NEAR's logo stands in for its name; NEAR AI Cloud is named in text; the npm, MCP and
- * GitHub logos sit above the names of their cards. The trademark lead is the README's License line, and the lead and
+ * GitHub logos sit at the top of their cards. The trademark lead is the README's License line, and the lead and
  * the notices together are the one trademark text of the section (test/built-on.test.ts holds both).
  */
 export const BUILT_ON = {
@@ -943,7 +942,7 @@ export const BUILT_ON = {
       ],
     },
   ] satisfies readonly BuiltOnRow[],
-  /** Right under the rows: the parts of the stack with no row of their own, each as the README words it. */
+  /** The card's last, quieter row: the parts of the stack with no row of their own, each as the README words it. */
   also: {
     title: "Also in the stack",
     items: [
@@ -956,28 +955,33 @@ export const BUILT_ON = {
         body: "The attestation that `verify --online` checks: the TDX quote (O1) and the GPU evidence (O2).",
       },
     ],
-  } satisfies { title: string; items: readonly StackEntry[] },
+  } satisfies { title: string; items: readonly { name: string; body: string }[] },
+  /** The cards' own heading, a peer of the section's title, and its id (the heading names the cards' region). */
   shipsTitle: "Where to get Probarion",
+  shipsId: "get-probarion",
   ships: [
     {
       id: "npm",
       name: "npm public registry",
       kind: "Packages",
       icon: "npm",
-      body: "Install the CLI, the SDK and the MCP server, and the core they share, each with npm provenance.",
+      body: "Install the CLI, the SDK, the MCP server and the core they share, each with npm provenance.",
       ids: ["`probarion`", "`@probarion/sdk`", "`@probarion/mcp`", "`@probarion/core`"],
+      idsLabel: "Package names",
       meta: "Version 0.1.1",
-      link: { label: "The SDK's npm page", href: LINKS.npmSdk },
+      link: { label: "@probarion/sdk on npm", href: LINKS.npmSdk },
     },
     {
       id: "mcp-registry",
       name: "Official MCP Registry",
       kind: "MCP server",
       icon: "mcp",
-      body: "Find the MCP server in the public directory of MCP servers. The entry names its npm package.",
+      body: "Find the MCP server in the MCP Registry by the name below. Its entry names the npm package.",
       ids: ["`io.github.probarion/probarion`"],
+      idsLabel: "Server name",
       meta: "Version 0.1.1, from `@probarion/mcp`",
-      link: { label: "The MCP Registry entry", href: LINKS.mcpRegistry },
+      // The address is the registry's search for the server's name, which lists its entry.
+      link: { label: "Probarion in the MCP Registry", href: LINKS.mcpRegistry },
     },
     {
       id: "github",
@@ -986,19 +990,22 @@ export const BUILT_ON = {
       icon: "github",
       body: "Read the MIT source and the CI that runs the sandbox tests and the reproducible build.",
       ids: ["`probarion/probarion`"],
+      idsLabel: "Repository",
       meta: "MIT License",
-      link: { label: "The GitHub repository", href: LINKS.github },
+      link: { label: "Probarion on GitHub", href: LINKS.github },
     },
     {
       id: "chrome-web-store",
       name: "Chrome Web Store",
-      kind: "Browser extension",
+      // Chrome, not any browser: the README and the extension's README say Chrome 127 or newer.
+      kind: "Chrome extension",
       icon: "probarion",
       body: "Install the extension that queues invoices from your browser. It cannot pay or approve.",
       // The listing's name, not an identifier: set in the sans.
       ids: ["Probarion"],
+      idsLabel: "Listing name",
       meta: "Version 0.1.0",
-      link: { label: "The Chrome Web Store listing", href: LINKS.chromeWebStore },
+      link: { label: "Probarion's store listing", href: LINKS.chromeWebStore },
     },
   ] satisfies readonly ShipCard[],
   /**

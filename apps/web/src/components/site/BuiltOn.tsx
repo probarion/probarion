@@ -109,7 +109,11 @@ function ShipId({ text }: { text: string }) {
   );
 }
 
-/** A card's logo, on a row of its own above the name it shows, and hidden from screen readers with it. */
+/**
+ * A card's logo, on a row of its own at the top of the card, hidden from screen readers (the card's heading names the
+ * place). npm, MCP and GitHub: the place's owner's own mark. The store's card: Probarion's mark, which is the
+ * extension's own icon, right above the "Chrome extension" label; the store's logo is not used.
+ */
 function ShipLogo({ icon }: { icon: ShipCard["icon"] }) {
   return (
     <span className={sh.shipLogo} aria-hidden="true">
@@ -127,24 +131,27 @@ function ShipLogo({ icon }: { icon: ShipCard["icon"] }) {
 }
 
 /**
- * One place to get Probarion. Five rows, shared with the other cards of its row (ships.module.css): the logo; the name
- * and what ships there; what a visitor gets; the exact names with the version; and the link, a full-width row at the
- * foot of the card.
+ * One place to get Probarion. Five rows, shared with the other cards of its row (ships.module.css): the logo; what
+ * ships there over the place's name, as the rows set a label over a name; what a visitor gets; the exact names, a list
+ * named for a screen reader, with the version; and the link, a full-width row at the foot of the card.
  */
 function Ship({ ship }: { ship: ShipCard }) {
-  const ids: ReactNode[] = ship.ids.flatMap((id, at) =>
-    at === 0 ? [<ShipId key={id} text={id} />] : [" ", <ShipId key={id} text={id} />],
-  );
   return (
     <li className={sh.ship}>
       <ShipLogo icon={ship.icon} />
       <div className={sh.shipHead}>
-        <h4 className={sh.shipName}>{ship.name}</h4>
         <p className={sh.shipKind}>{ship.kind}</p>
+        <h3 className={sh.shipName}>{ship.name}</h3>
       </div>
       <p className={sh.shipBody}>{ship.body}</p>
       <div className={sh.shipArt}>
-        <p className={sh.shipIds}>{ids}</p>
+        <ul className={sh.shipIds} aria-label={ship.idsLabel} {...LIST}>
+          {ship.ids.map((id) => (
+            <li key={id}>
+              <ShipId text={id} />
+            </li>
+          ))}
+        </ul>
         <p className={sh.shipMeta}>
           <Rich text={ship.meta} />
         </p>
@@ -154,6 +161,29 @@ function Ship({ ship }: { ship: ShipCard }) {
           {ship.link.label}
         </EvidenceLink>
       </div>
+    </li>
+  );
+}
+
+/**
+ * The card's last row, quieter than the two above it: the parts of the stack with no row of their own. It is a row of
+ * the card (the same tracks, padding and hairline), with its label where the rows have theirs and an entry in each of
+ * the other two tracks.
+ */
+function Stack() {
+  return (
+    <li className={s.boRow}>
+      <p className={`${s.boLabel} ${sh.stackLabel}`}>{BUILT_ON.also.title}</p>
+      <dl className={sh.stackList}>
+        {BUILT_ON.also.items.map((item) => (
+          <div key={item.name} className={sh.stackItem}>
+            <dt className={sh.stackName}>{item.name}</dt>
+            <dd className={sh.stackBody}>
+              <Whole text={item.body} />
+            </dd>
+          </div>
+        ))}
+      </dl>
     </li>
   );
 }
@@ -219,28 +249,18 @@ export function BuiltOn() {
               </ul>
             </li>
           ))}
+          <Stack />
         </ul>
-        <div className={sh.stack}>
-          <h3 className={sh.stackTitle}>{BUILT_ON.also.title}</h3>
-          <dl className={sh.stackList}>
-            {BUILT_ON.also.items.map((item) => (
-              <div key={item.name} className={sh.stackItem}>
-                <dt className={sh.stackName}>{item.name}</dt>
-                <dd className={sh.stackBody}>
-                  <Whole text={item.body} />
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-        <div className={sh.get}>
-          <h3 className={sh.getTitle}>{BUILT_ON.shipsTitle}</h3>
+        <section className={sh.get} aria-labelledby={BUILT_ON.shipsId}>
+          <h2 className={s.boTitle} id={BUILT_ON.shipsId}>
+            {BUILT_ON.shipsTitle}
+          </h2>
           <ul className={sh.ships} {...LIST}>
             {BUILT_ON.ships.map((ship) => (
               <Ship key={ship.id} ship={ship} />
             ))}
           </ul>
-        </div>
+        </section>
         <Legal />
       </div>
     </section>
