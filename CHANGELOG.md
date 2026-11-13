@@ -1180,6 +1180,15 @@ The software is an unaudited beta.
 
 ### Changed
 
+- `/canary` puts the attempt first. Its title is now "Fool the model. Watch the contract say no.", and the "Your
+  attempt" card sits right under it, above the vault card. One line over the form says how many have tried, from the
+  leaderboard the page already reads: the outside visitors first once there are any (the smaller of browsers and
+  addresses, "at least"), the team's own attempts apart. With the testnet board as read on 2026-11-13 (0 outside
+  attempts, 6 by the team) it reads "6 attempts so far, all by the team. Be the first visitor.", and the scoreboard
+  shows that line instead of three tiles of zeros. A board that cannot be read shows no line. `?via=tg` is a new source for links sent on Telegram (the
+  database's check is a shape, so no migration), and `docs/ops/metrics.md` lists it. Nothing seeds an attempt. Check:
+  `pnpm exec vitest run src/lib/canary/copy.test.ts src/components/canary/Leaderboard.test.ts src/app/canary` in
+  `apps/web` (0, 1 and many visitors).
 - The landing's "What works today, and what does not" is a status board. A summary computed from
   the rows comes first: how many are Verified, and what each row marked In part or Not tried yet
   misses. A key then defines the two marks every row can carry: Proof (Verified, In part, Not tried

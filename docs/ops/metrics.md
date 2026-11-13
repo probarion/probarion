@@ -76,6 +76,7 @@ A link of ours names where it was posted: `https://probarion.xyz/canary?via=x`. 
 | `x` | a post on X (@probarionhq). Every post that links the Canary uses `?via=x` |
 | `readme` | the Canary row of the repository's README |
 | `usage` | the Canary pill on `/usage` |
+| `tg` | a link the team sends by hand on Telegram (`https://probarion.xyz/canary?via=tg`) |
 | `home` | the landing page (not linked with it yet) |
 | `tamper` | the "break a signed record" demo (not linked with it yet) |
 | `proof` | a proof page (not linked with it yet) |

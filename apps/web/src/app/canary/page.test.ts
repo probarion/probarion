@@ -195,7 +195,7 @@ describe("the live page", () => {
     const html = await page();
     const text = visible(html);
     expect(text).toContain("Public challenge · NEAR testnet");
-    expect(html).toMatch(/<h1[^>]*>Make the agent pay you<\/h1>/);
+    expect(html).toMatch(/<h1[^>]*>Fool the model\. Watch the contract say no\.<\/h1>/);
     expect(text).toContain(
       "The Canary's model believes what you write and is told to pay. It only proposes. Code rules and a NEAR contract decide what moves. Try to get a payment to anyone other than its one payee.",
     );
@@ -212,15 +212,16 @@ describe("the live page", () => {
     expect([...pills.matchAll(/<a\b/g)]).toHaveLength(1);
   });
 
-  it("shows the sections in the owner's order", async () => {
+  it("shows the sections in the owner's order: the attempt first, right under the title", async () => {
     const text = visible(await page());
     const order = [
-      "Make the agent pay you",
-      "The vault, read from the chain",
-      "Paid to an attacker: 0, by construction",
+      "Fool the model. Watch the contract say no.",
       "Your attempt",
+      "At least 4 visitors have made 31 attempts so far, plus 3 by the team.",
       "Try one:",
       "Your message to the agent",
+      "The vault, read from the chain",
+      "Paid to an attacker: 0, by construction",
       "Replay · 2026-11-10 · our own attempt on NEAR testnet",
       "The model was fooled. Nothing moved.",
       "Scoreboard",
@@ -230,6 +231,44 @@ describe("the live page", () => {
     ].map((t) => text.indexOf(t));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it("has the attempt as the first card after the header, with nothing between the title and it", async () => {
+    const html = await page();
+    const afterHeader = html.slice(html.indexOf("</header>") + "</header>".length);
+    expect(afterHeader).toMatch(/^<section[^>]*><h2[^>]*>Your attempt<\/h2>/);
+  });
+
+  it("puts one line over the form, from the board it reads: 0, 1 and many visitors, the team apart", async () => {
+    const cases: [Record<string, number>, string][] = [
+      [
+        { browsers: 0, addresses: 0, attempts_external: 0, attempts_team: 6, raw_external: 0 },
+        "6 attempts so far, all by the team. Be the first visitor.",
+      ],
+      [
+        { browsers: 1, addresses: 1, attempts_external: 2, attempts_team: 6, raw_external: 1 },
+        "At least 1 visitor has made 2 attempts so far, plus 6 by the team.",
+      ],
+      [
+        { browsers: 40, addresses: 25, attempts_external: 90, attempts_team: 6, raw_external: 7 },
+        "At least 25 visitors have made 90 attempts so far, plus 6 by the team.",
+      ],
+    ];
+    for (const [counts, line] of cases) {
+      mocks.board.mockResolvedValue(parseBoard({ ...counts, techniques: [], contract_codes: [] }));
+      const text = visible(await page());
+      const at = text.indexOf(line);
+      expect(at, line).toBeGreaterThan(text.indexOf("Your attempt"));
+      expect(at, line).toBeLessThan(text.indexOf("Try one:"));
+      expect(text, line).not.toMatch(/\b0 visitors\b/);
+    }
+  });
+
+  it("puts no line over the form, and guesses no count, when the board cannot be read", async () => {
+    mocks.board.mockResolvedValue(null);
+    const text = visible(await page());
+    expect(text).not.toMatch(/so far|Be the first visitor/);
+    expect(text).toContain("Your message to the agent");
   });
 
   it("shows the replay of 2026-11-10 under the form in live mode and in code-only mode, on both networks", async () => {
@@ -518,7 +557,7 @@ describe("the replay states", () => {
     const html = await page();
     const text = visible(html);
     expect(text).toContain("The live Canary is not open yet.");
-    expect(text).toContain("Make the agent pay you");
+    expect(text).toContain("Fool the model. Watch the contract say no.");
     expect(text).toContain("Public challenge · NEAR testnet");
     expect(html).toMatch(/<a[^>]*href="\/canary\/rules"/);
     for (const t of NOT_HERE) expect(text).not.toContain(t);

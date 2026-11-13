@@ -110,6 +110,53 @@ describe("the scoreboard", () => {
   });
 });
 
+describe("the scoreboard before an outside visitor has tried", () => {
+  const none = (team: number) =>
+    board({
+      browsers: 0,
+      addresses: 0,
+      attempts_external: 0,
+      attempts_team: team,
+      raw_external: 0,
+      techniques: [],
+      contract_codes: [],
+    });
+
+  it("is the one line, and no tile of zeros: 0 visitors, 6 by the team", () => {
+    const html = renderBoard(none(6));
+    const text = visible(html);
+    expect(text).toContain("6 attempts so far, all by the team. Be the first visitor.");
+    expect(text).toContain("Updated every minute.");
+    expect(text).not.toMatch(/At least|0 visitors|Sent straight to the contract|none yet/);
+    expect(html).not.toContain("<table");
+  });
+
+  it("says there are no attempts yet when the team has made none either", () => {
+    expect(visible(renderBoard(none(0)))).toContain("No attempts yet. Be the first visitor.");
+  });
+
+  it("shows the tiles again from the first outside attempt: 1 visitor, then many", () => {
+    const one = visible(
+      renderBoard(
+        board({
+          browsers: 1,
+          addresses: 1,
+          attempts_external: 1,
+          raw_external: 0,
+          attempts_team: 6,
+        }),
+      ),
+    );
+    expect(one).toContain("At least 1 visitor ");
+    expect(one).toContain("Attempts 1");
+    expect(one).toContain("plus 6 by the team, counted apart");
+    expect(one).not.toContain("Be the first");
+    const many = visible(renderBoard(board()));
+    expect(many).toContain("At least 4 visitors");
+    expect(many).not.toContain("Be the first");
+  });
+});
+
 const row = (over: Partial<FeedRow> = {}): FeedRow => ({
   created_at: "2026-11-06T10:15:30.123456+00:00",
   techniques: ["payee_change", "fake_invoice"],

@@ -6,6 +6,7 @@ import { LatestAttempts, Scoreboard } from "@/components/canary/Leaderboard";
 import { RehearsalCard } from "@/components/canary/RehearsalCard";
 import { ReplayView } from "@/components/canary/ReplayView";
 import { ByConstructionCard, ReplayCards, SideCards } from "@/components/canary/StaticCards";
+import { Tally } from "@/components/canary/Tally";
 import { VaultCard } from "@/components/canary/VaultCard";
 import c from "@/components/site/canary.module.css";
 import s from "@/components/site/site.module.css";
@@ -119,7 +120,7 @@ function Replay({
  * private). It is the Canary of the network of the address it
  * was opened at: that network's vault, chain and board. A link of ours names its source in the address (`?via=x`), and
  * the form sends it with each attempt; any other value is no source. Both the live page and the replay show the replay
- * of the team's attempt on testnet of 2026-11-10 (RehearsalCard): under the form, or under the recorded attacks.
+ * of the team's attempt on testnet of 2026-11-10 (RehearsalCard): under the vault, or under the recorded attacks.
  */
 export default async function CanaryPage({
   searchParams,
@@ -150,15 +151,18 @@ export default async function CanaryPage({
   if (vault.mandates?.length === 0)
     return <Replay network={view.network} banner="closed" via={via} />;
   const { summary } = vault;
+  // The attempt comes first, right under the title, with the one line of how many have tried; the vault it attacks and
+  // why an address cannot work come next.
   return (
     <div className={`${s.site} ${s.wrap} ${c.page}`}>
       <Header network={view.network} via={via} />
-      <VaultCard network={view.network} vault={view.vault} summary={summary} />
-      <ByConstructionCard />
       <section className={brandCardClass}>
         <h2 className={c.cardTitle}>{CANARY_COPY.form.title}</h2>
+        <Tally board={board} className="mb-4" />
         <CanaryForm network={view.network} mode={view.mode} via={via} />
       </section>
+      <VaultCard network={view.network} vault={view.vault} summary={summary} />
+      <ByConstructionCard />
       <RehearsalCard />
       <Scoreboard board={board} />
       <LatestAttempts feed={feed} network={view.network} />

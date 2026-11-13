@@ -6,6 +6,7 @@ import { CANARY_COPY, refusedSub, teamSub, visitorsSub, visitorsUnit } from "@/l
 import { thousands, utcMinute } from "@/lib/canary/format";
 import type { Network } from "@/lib/config";
 import { Chip } from "./Chip";
+import { Tally } from "./Tally";
 
 const B = CANARY_COPY.board;
 const F = CANARY_COPY.feed;
@@ -36,7 +37,8 @@ function Tile({
 /**
  * The challenge's numbers: what the page can stand behind and nothing else. There is no "paid to an attacker" figure,
  * because nothing measures one; the page says what is true by construction instead (StaticCards). A scoreboard that could
- * not be read says so and shows no figure.
+ * not be read says so and shows no figure. Until an outside visitor has tried, every outside figure is a zero (the
+ * techniques and the codes count outside attempts only), so the board is then the one line over the form instead.
  */
 export function Scoreboard({ board }: { board: Board | null }) {
   return (
@@ -44,6 +46,11 @@ export function Scoreboard({ board }: { board: Board | null }) {
       <h2 className={c.cardTitle}>{B.title}</h2>
       {board === null ? (
         <p className={c.muted}>{B.unavailable}</p>
+      ) : board.attempts_external === 0 ? (
+        <>
+          <Tally board={board} />
+          <p className={c.fresh}>{B.updated}</p>
+        </>
       ) : (
         <>
           <div className={c.tiles}>
