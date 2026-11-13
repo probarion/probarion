@@ -1,11 +1,13 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { createElement, Fragment, type ReactNode } from "react";
 import { ExternalLink } from "@/components/ui";
 import { BUILT_ON, type ShipCard } from "@/lib/site/facts";
+import { richParts } from "@/lib/site/rich";
 import { BrandMark } from "./BrandMark";
 import { NearLogo } from "./NearLogo";
 import { Rich } from "./Rich";
 import { GithubMark, McpLogo, NpmLogo } from "./ShipLogos";
+import sh from "./ships.module.css";
 import s from "./site.module.css";
 
 /** The header's mark keeps "probarion-coin"; this second mark on the page gets its own gradient id. */
@@ -61,20 +63,112 @@ function CheckGlyph() {
   );
 }
 
+/** A date in the copy, such as 2026-11-13. */
+const DATE = /(\d{4}-\d{2}-\d{2})/;
+
+/**
+ * A line of copy as Rich shows it, with the pieces a line break would split kept whole: each code span
+ * (`verify --online`) and each date, which a browser may otherwise break at a hyphen.
+ */
+function Whole({ text }: { text: string }) {
+  const parts: ReactNode[] = richParts(text).flatMap((part) =>
+    part.code
+      ? [createElement("code", { className: sh.nowrap }, part.text)]
+      : part.text
+          .split(DATE)
+          .map((piece, at) =>
+            at % 2 === 1 ? createElement("span", { className: sh.nowrap }, piece) : piece,
+          ),
+  );
+  return createElement(Fragment, null, ...parts.filter((p) => p !== ""));
+}
+
+/**
+ * One of a card's exact names: an identifier (in backticks) in mono, with a place to break after each "/", so that
+ * `io.github.probarion/probarion` breaks at its slash on a narrow card and never mid-word; a plain name (the store
+ * listing's) in the sans.
+ */
+function ShipId({ text }: { text: string }) {
+  const [part] = richParts(text);
+  if (part === undefined || !part.code) return <span className={sh.shipListing}>{text}</span>;
+  // Each piece is keyed by where it starts in the name; every piece after the first follows a "/".
+  let start = 0;
+  return (
+    <code>
+      {part.text.split(/(?<=\/)/).map((piece) => {
+        const at = start;
+        start += piece.length;
+        return (
+          <Fragment key={at}>
+            {at > 0 && <wbr />}
+            {piece}
+          </Fragment>
+        );
+      })}
+    </code>
+  );
+}
+
 /** A card's logo, on a row of its own above the name it shows, and hidden from screen readers with it. */
 function ShipLogo({ icon }: { icon: ShipCard["icon"] }) {
   return (
-    <span className={s.shipLogo} aria-hidden="true">
+    <span className={sh.shipLogo} aria-hidden="true">
       {icon === "npm" ? (
-        <NpmLogo className={s.npmLogo} />
+        <NpmLogo className={sh.npmLogo} />
       ) : icon === "mcp" ? (
-        <McpLogo className={s.mcpLogo} />
+        <McpLogo className={sh.mcpLogo} />
       ) : icon === "github" ? (
-        <GithubMark className={s.githubMark} />
+        <GithubMark className={sh.githubMark} />
       ) : (
         <BrandMark gradientId={EXTENSION_MARK_GRADIENT} />
       )}
     </span>
+  );
+}
+
+/**
+ * One place to get Probarion. Five rows, shared with the other cards of its row (ships.module.css): the logo; the name
+ * and what ships there; what a visitor gets; the exact names with the version; and the link, a full-width row at the
+ * foot of the card.
+ */
+function Ship({ ship }: { ship: ShipCard }) {
+  const ids: ReactNode[] = ship.ids.flatMap((id, at) =>
+    at === 0 ? [<ShipId key={id} text={id} />] : [" ", <ShipId key={id} text={id} />],
+  );
+  return (
+    <li className={sh.ship}>
+      <ShipLogo icon={ship.icon} />
+      <div className={sh.shipHead}>
+        <h4 className={sh.shipName}>{ship.name}</h4>
+        <p className={sh.shipKind}>{ship.kind}</p>
+      </div>
+      <p className={sh.shipBody}>{ship.body}</p>
+      <div className={sh.shipArt}>
+        <p className={sh.shipIds}>{ids}</p>
+        <p className={sh.shipMeta}>
+          <Rich text={ship.meta} />
+        </p>
+      </div>
+      <div className={sh.shipGo}>
+        <EvidenceLink className={s.link} href={ship.link.href}>
+          {ship.link.label}
+        </EvidenceLink>
+      </div>
+    </li>
+  );
+}
+
+/** The section's last lines: the trademark notices, in two blocks that part at a sentence. */
+function Legal() {
+  const { label, lead, notices } = BUILT_ON.trademark;
+  const half = Math.ceil(notices.length / 2);
+  return (
+    <footer className={sh.legal}>
+      <p className={sh.legalLabel}>{label}</p>
+      <p className={sh.legalLead}>{lead}</p>
+      <p className={sh.legalNotices}>{notices.slice(0, half).join(" ")}</p>
+      <p className={sh.legalNotices}>{notices.slice(half).join(" ")}</p>
+    </footer>
   );
 }
 
@@ -126,30 +220,28 @@ export function BuiltOn() {
             </li>
           ))}
         </ul>
-        <h3 className={s.shipsTitle}>{BUILT_ON.shipsTitle}</h3>
-        <ul className={s.ships} {...LIST}>
-          {BUILT_ON.ships.map((ship) => (
-            <li key={ship.id} className={s.ship}>
-              <ShipLogo icon={ship.icon} />
-              <div className={s.shipHead}>
-                <h4 className={s.shipName}>{ship.name}</h4>
-                <span className={s.shipTag}>{ship.tag}</span>
+        <div className={sh.stack}>
+          <h3 className={sh.stackTitle}>{BUILT_ON.also.title}</h3>
+          <dl className={sh.stackList}>
+            {BUILT_ON.also.items.map((item) => (
+              <div key={item.name} className={sh.stackItem}>
+                <dt className={sh.stackName}>{item.name}</dt>
+                <dd className={sh.stackBody}>
+                  <Whole text={item.body} />
+                </dd>
               </div>
-              <p className={s.shipBody}>
-                <Rich text={ship.body} />{" "}
-                <EvidenceLink className={`${s.link} ${s.shipGo}`} href={ship.link.href}>
-                  {ship.link.label}
-                </EvidenceLink>
-              </p>
-            </li>
-          ))}
-        </ul>
-        <div className={s.boFine}>
-          <p>
-            <Rich text={BUILT_ON.also} />
-          </p>
-          <p>{BUILT_ON.trademark}</p>
+            ))}
+          </dl>
         </div>
+        <div className={sh.get}>
+          <h3 className={sh.getTitle}>{BUILT_ON.shipsTitle}</h3>
+          <ul className={sh.ships} {...LIST}>
+            {BUILT_ON.ships.map((ship) => (
+              <Ship key={ship.id} ship={ship} />
+            ))}
+          </ul>
+        </div>
+        <Legal />
       </div>
     </section>
   );

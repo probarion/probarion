@@ -1,6 +1,7 @@
 /**
- * The logos on the cards of the landing's "Ships through" list, each drawn from its owner's own file and left as it
- * is: no recolour, no crop, no stretch. Each stands beside the name it shows, so each is hidden from screen readers.
+ * The logos on the cards of the landing's "Where to get Probarion" list, each drawn from its owner's own file and left
+ * as it is: no recolour, no crop, no stretch. Each stands above the name it shows, so each is hidden from screen
+ * readers.
  *
  * npm: the black wordmark of github.com/npm/logos. MCP: the light-theme logo of the Model Context Protocol
  * (modelcontextprotocol.io). GitHub: the Invertocat, as Primer Octicons draws it (mark-github-24.svg).

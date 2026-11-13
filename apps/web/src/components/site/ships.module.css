@@ -1,0 +1,312 @@
+/*
+ * Built on, under its rows (components/site/BuiltOn.tsx): the rest of the stack, where to get Probarion, and the
+ * trademark footer, in that order, so that what Probarion runs on stays together and the legal text comes last.
+ *
+ * - The stack note repeats the tracks and the column gap of the rows (.boRow in site.module.css; the test holds them
+ *   equal) and is indented by the card's padding and its 1px border, so that its columns line up with the text of the
+ *   card above it.
+ * - The four cards and the footer share one four-column grid and its 16px gutter.
+ * - Inside each card a subgrid of five rows (logo, name, what you get, the exact names, the link) is shared by the
+ *   cards of a row, so that the names, the version lines and the links line up from card to card.
+ *
+ * Every colour is a token from app/globals.css. Every third-party logo is its owner's file in its own colour, never
+ * stretched.
+ */
+
+/* The rest of the stack: a label in the rows' first track, then one entry in each of the other two. */
+.stack {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr) minmax(232px, 3fr);
+  column-gap: clamp(20px, 3vw, 44px);
+  row-gap: 12px;
+  align-items: baseline;
+  margin-top: 24px;
+  /* The card's padding plus its 1px border. */
+  padding-inline: calc(clamp(22px, 2.6vw, 34px) + 1px);
+}
+/* The small capitals and the gold of the rows' labels (.boLabel). */
+.stackTitle {
+  grid-column: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold-ink);
+}
+.stackList {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  row-gap: 16px;
+}
+.stackItem {
+  min-width: 0;
+}
+.stackName {
+  font-size: 15px;
+  font-weight: 600;
+}
+.stackBody {
+  margin-top: 2px;
+  /* Reading text: about 71 characters a line at most (WCAG 1.4.8). */
+  max-width: var(--container-measure);
+  font-size: 15px;
+  color: var(--color-mute);
+  text-wrap: pretty;
+}
+/* A code span or a date that a line break would split (BuiltOn.tsx sets it). */
+.nowrap {
+  white-space: nowrap;
+}
+
+/* Where to get Probarion */
+.get {
+  margin-top: clamp(48px, 5.5vw, 72px);
+}
+.getTitle {
+  margin-bottom: 20px;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+/*
+ * Four across from 1200px. Each card needs about 230px inside it for its longest name on one line (the MCP server's,
+ * 29 characters of 13px mono, is about 226px), so the row of four starts at 1200px, not at the 1101px of the rows.
+ */
+.ships {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.ship {
+  display: grid;
+  grid-row: span 5;
+  grid-template-rows: subgrid;
+  row-gap: 0;
+  min-width: 0;
+  padding: 22px 22px 0;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+/*
+ * The logo row is as tall on every card. Each logo keeps its file's aspect ratio and colour. npm's wordmark is a solid
+ * block, so it is set a little smaller to look the same size; the MCP logo carries its name in small letters, so it is
+ * set a little larger.
+ */
+.shipLogo {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  color: var(--color-ink);
+}
+.shipLogo svg {
+  display: block;
+  max-width: 100%;
+  height: 26px;
+  width: auto;
+}
+.shipLogo .npmLogo {
+  height: 22px;
+  aspect-ratio: 780 / 250;
+}
+.shipLogo .mcpLogo {
+  height: 28px;
+  aspect-ratio: 1338 / 195;
+}
+.shipLogo .githubMark {
+  aspect-ratio: 1;
+  fill: currentColor;
+}
+.shipHead {
+  margin-top: 18px;
+}
+.shipName {
+  font-size: 17px;
+  font-weight: 600;
+}
+/* What ships there, in the small capitals and the gold of the rows' labels. */
+.shipKind {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold-ink);
+}
+.shipBody {
+  align-self: start;
+  margin-top: 12px;
+  max-width: var(--container-measure);
+  font-size: 15px;
+  color: var(--color-mute);
+  text-wrap: pretty;
+}
+/* The exact names, at the foot of their row, so that the version lines of a row of cards share one line. */
+.shipArt {
+  align-self: end;
+  margin-top: 20px;
+}
+.shipIds {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-ink);
+}
+/* Each name moves to the next line whole; one wider than the card breaks at its "/" (BuiltOn.tsx adds the break). */
+.ship .shipIds code {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 13px;
+}
+.ship .shipIds code:not(:last-child) {
+  margin-right: 10px;
+}
+/* The store listing's name is a name, not an identifier. */
+.shipListing {
+  font-family: var(--font-sans);
+}
+.shipMeta {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.ship .shipMeta code {
+  font-size: 12.5px;
+}
+/* The card's one link is its foot: a full-width row under a hairline, 46px tall, the whole row a target. */
+.shipGo {
+  margin: 18px -22px 0;
+  border-top: 1px solid var(--color-line);
+}
+.shipGo a {
+  display: block;
+  padding: 11.5px 22px 12px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  border-radius: 0 0 15px 15px;
+}
+.shipGo a:hover {
+  text-decoration-thickness: 2px;
+}
+/* Drawn inside the row, so that the card's rounded foot does not cut the ring. */
+.shipGo a:focus-visible {
+  outline-offset: -4px;
+  border-radius: 0 0 14px 14px;
+}
+/* Without subgrid (Chrome before 117, Safari before 16): a column, with the link row at the foot. */
+@supports not (grid-template-rows: subgrid) {
+  .ship {
+    display: flex;
+    flex-direction: column;
+  }
+  .shipBody,
+  .shipArt {
+    align-self: stretch;
+  }
+  .shipBody {
+    flex: 1;
+  }
+}
+
+/* The trademark footer: small and muted, under a hairline, on the cards' columns. */
+.legal {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 16px;
+  /* 13px over 13px text: 2.55em from line to line with the 1.55 line (WCAG 1.4.8), where the blocks stack. */
+  row-gap: 13px;
+  align-items: baseline;
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-line);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-mute);
+}
+.legalLabel {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.legalLead,
+.legalNotices {
+  min-width: 0;
+  max-width: var(--container-measure);
+  text-wrap: pretty;
+}
+
+/* Below 1101px, as the rows do: the note's label over its two entries, which stack in the second track. */
+@media (max-width: 1100px) {
+  .stack {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+  .stackList {
+    grid-column: 2;
+  }
+}
+/* Tablets and small laptops: the cards two by two; the footer's label over the lead and the notices beside it. */
+@media (max-width: 1199px) {
+  .ships,
+  .legal {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .legalLabel {
+    grid-column: 1 / -1;
+  }
+  .legalLead {
+    grid-row: span 2;
+  }
+}
+/* A phone: one column throughout, the cards a little tighter. The rows' padding there is 18px (site.module.css). */
+@media (max-width: 620px) {
+  .stack {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 19px;
+  }
+  .stackList {
+    grid-column: auto;
+  }
+  .ships,
+  .legal {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .legalLead {
+    grid-row: auto;
+  }
+  .ship {
+    padding: 18px 18px 0;
+  }
+  .shipHead {
+    margin-top: 14px;
+  }
+  .shipArt {
+    margin-top: 16px;
+  }
+  .shipGo {
+    margin: 16px -18px 0;
+  }
+  .shipGo a {
+    padding-inline: 18px;
+  }
+}
+@media (forced-colors: active) {
+  /* The npm and MCP logos keep their own black, so on a dark Canvas each sits on a white plate. */
+  .shipLogo .npmLogo,
+  .shipLogo .mcpLogo {
+    forced-color-adjust: none;
+    box-sizing: content-box;
+    padding: 2px 4px;
+    border-radius: 4px;
+    background: var(--color-surface);
+  }
+}

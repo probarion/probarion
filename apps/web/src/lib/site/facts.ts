@@ -870,19 +870,33 @@ export interface BuiltOnRow {
 
 export interface ShipCard {
   id: string;
+  /** The place, by its owner's name for it. */
   name: string;
-  /** In small capitals, at the right of the card's head. */
-  tag: string;
+  /** Under the name, in the gold small capitals of the rows' labels: what Probarion ships there. */
+  kind: string;
   /** The logo above the name: its owner's own file (components/site/ShipLogos.tsx), or Probarion's mark. */
   icon: "npm" | "mcp" | "github" | "probarion";
+  /** What a visitor gets there, starting with what they do. */
   body: string;
+  /** What is there, by its exact names: a name in backticks is an identifier and is set in mono. */
+  ids: readonly string[];
+  /** Under the names: the version, or the license. */
+  meta: string;
+  /** The card's one link: its label names the page it opens. */
   link: { label: string; href: string };
 }
 
+/** One entry of the note under the rows: a part of the stack that has no row of its own. */
+export interface StackEntry {
+  name: string;
+  body: string;
+}
+
 /**
- * After the status list: what Probarion is built on, each with its evidence, and where it ships. NEAR's logo stands in
- * for its name; NEAR AI Cloud is named in text; the npm, MCP and GitHub logos sit above the names of their cards. The
- * trademark line starts with the README's License line (test/built-on.test.ts holds the two together).
+ * After the status list: what Probarion is built on, each with its evidence, the rest of its stack, where to get it,
+ * and the trademark notices. NEAR's logo stands in for its name; NEAR AI Cloud is named in text; the npm, MCP and
+ * GitHub logos sit above the names of their cards. The trademark lead is the README's License line, and the lead and
+ * the notices together are the one trademark text of the section (test/built-on.test.ts holds both).
  */
 export const BUILT_ON = {
   id: "built-on",
@@ -929,44 +943,80 @@ export const BUILT_ON = {
       ],
     },
   ] satisfies readonly BuiltOnRow[],
-  shipsTitle: "Ships through",
+  /** Right under the rows: the parts of the stack with no row of their own, each as the README words it. */
+  also: {
+    title: "Also in the stack",
+    items: [
+      {
+        name: "NEAR Intents",
+        body: "Payouts are built and tested against a testnet stand-in, and one has run on mainnet: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+      },
+      {
+        name: "Intel TDX and NVIDIA NRAS",
+        body: "The attestation that `verify --online` checks: the TDX quote (O1) and the GPU evidence (O2).",
+      },
+    ],
+  } satisfies { title: string; items: readonly StackEntry[] },
+  shipsTitle: "Where to get Probarion",
   ships: [
     {
       id: "npm",
       name: "npm public registry",
-      tag: "Packages",
+      kind: "Packages",
       icon: "npm",
-      body: "`probarion`, `@probarion/core`, `@probarion/sdk` and `@probarion/mcp` 0.1.1, with npm provenance.",
-      link: { label: "@probarion/sdk on npm", href: LINKS.npmSdk },
+      body: "Install the CLI, the SDK and the MCP server, and the core they share, each with npm provenance.",
+      ids: ["`probarion`", "`@probarion/sdk`", "`@probarion/mcp`", "`@probarion/core`"],
+      meta: "Version 0.1.1",
+      link: { label: "The SDK's npm page", href: LINKS.npmSdk },
     },
     {
       id: "mcp-registry",
       name: "Official MCP Registry",
-      tag: "MCP server",
+      kind: "MCP server",
       icon: "mcp",
-      body: "Lists `io.github.probarion/probarion` 0.1.1, the server in `@probarion/mcp`.",
+      body: "Find the MCP server in the public directory of MCP servers. The entry names its npm package.",
+      ids: ["`io.github.probarion/probarion`"],
+      meta: "Version 0.1.1, from `@probarion/mcp`",
       link: { label: "The MCP Registry entry", href: LINKS.mcpRegistry },
     },
     {
       id: "github",
       name: "GitHub",
-      tag: "Source and CI",
+      kind: "Source and CI",
       icon: "github",
-      body: "The MIT source, and the CI that runs the sandbox tests and the reproducible build.",
-      link: { label: "probarion/probarion on GitHub", href: LINKS.github },
+      body: "Read the MIT source and the CI that runs the sandbox tests and the reproducible build.",
+      ids: ["`probarion/probarion`"],
+      meta: "MIT License",
+      link: { label: "The GitHub repository", href: LINKS.github },
     },
     {
       id: "chrome-web-store",
-      name: "Probarion extension",
-      tag: "Chrome extension",
+      name: "Chrome Web Store",
+      kind: "Browser extension",
       icon: "probarion",
-      body: "Version 0.1.0 queues invoices from your browser. It cannot pay or approve.",
+      body: "Install the extension that queues invoices from your browser. It cannot pay or approve.",
+      // The listing's name, not an identifier: set in the sans.
+      ids: ["Probarion"],
+      meta: "Version 0.1.0",
       link: { label: "The Chrome Web Store listing", href: LINKS.chromeWebStore },
     },
   ] satisfies readonly ShipCard[],
-  also: "Also used: Intel TDX and NVIDIA NRAS attestation, which `verify --online` checks (O1 and O2). NEAR Intents payouts are built and tested against a testnet stand-in, and one has run on mainnet: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
-  trademark:
-    "NEAR, NEAR Intents, NEAR AI Cloud, USDC, Base and Solana are trademarks of their respective owners. They are named to say what Probarion is built on or is designed to pay through, not to imply an endorsement. npm is a registered trademark of npm, Inc. Model Context Protocol and MCP are trademarks of LF Projects, LLC. GitHub and the Invertocat logo are trademarks of GitHub, Inc. Chrome and Chrome Web Store are trademarks of Google LLC. Intel is a trademark of Intel Corporation or its subsidiaries. NVIDIA is a trademark of NVIDIA Corporation.",
+  /**
+   * The section's footer. The lead is the README's License line; each notice names the owner of a mark the section
+   * shows or names. Read in order, the lead and the notices are one text, every sentence kept.
+   */
+  trademark: {
+    label: "Trademarks",
+    lead: "NEAR, NEAR Intents, NEAR AI Cloud, USDC, Base and Solana are trademarks of their respective owners. They are named to say what Probarion is built on or is designed to pay through, not to imply an endorsement.",
+    notices: [
+      "npm is a registered trademark of npm, Inc.",
+      "Model Context Protocol and MCP are trademarks of LF Projects, LLC.",
+      "GitHub and the Invertocat logo are trademarks of GitHub, Inc.",
+      "Chrome and Chrome Web Store are trademarks of Google LLC.",
+      "Intel is a trademark of Intel Corporation or its subsidiaries.",
+      "NVIDIA is a trademark of NVIDIA Corporation.",
+    ],
+  },
 } as const;
 
 // --- why not just a spending limit ----------------------------------------------------------------
