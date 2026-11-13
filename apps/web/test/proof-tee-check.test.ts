@@ -1,5 +1,6 @@
-// The live TEE check on /proof: one card after the decisions, the same on every vault's page, and kept apart from the
-// per-decision checks A1 to A7, which read the ledger and never this check. Rendered as a visitor gets it.
+// The live TEE check on /proof: one card right after the result, above the checks and the decisions, the same on every
+// vault's page, and kept apart from the per-decision checks A1 to A7, which read the ledger and never this check.
+// Rendered as a visitor gets it.
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,18 +59,26 @@ function card(out: string): string {
 }
 
 describe("/proof's live TEE check card", () => {
-  it("is on the page once, as its own card after the decisions and before the burns and the offline steps", async () => {
+  it("is on the page once, as its own card right after the result and before the checks, the decisions, the burns and the offline steps", async () => {
     for (const snapshot of [attested, demo]) {
       const out = await page(snapshot);
       expect(count(out, 'id="tee-check"')).toBe(1);
       const at = out.indexOf('id="tee-check"');
-      expect(at).toBeGreaterThan(out.indexOf('id="decisions"'));
-      expect(at).toBeLessThan(out.indexOf('id="verify"'));
+      const result = out.indexOf("data-headline=");
+      expect(at).toBeGreaterThan(result);
+      for (const after of ['aria-labelledby="checks"', 'id="decisions"', 'id="verify"']) {
+        expect(at, after).toBeLessThan(out.indexOf(after));
+      }
       const burns = out.indexOf('aria-labelledby="burns"');
       if (burns > -1) expect(at).toBeLessThan(burns);
-      // Its own card: the decisions section closes before it starts.
-      const decisions = out.slice(out.indexOf('id="decisions"'), out.lastIndexOf("<section", at));
-      expect(count(decisions, "<section")).toBe(count(decisions, "</section>") - 1);
+      // Its own card: the result's section closes before it starts, and it closes before the checks start.
+      const between = out.slice(result, out.lastIndexOf("<section", at));
+      expect(count(between, "<section")).toBe(count(between, "</section>") - 1);
+      const tee = card(out);
+      expect(tee).not.toContain('aria-labelledby="checks"');
+      const end = out.indexOf(tee) + tee.length;
+      expect(out.indexOf('aria-labelledby="checks"')).toBeGreaterThan(end);
+      expect(out.slice(result, end)).not.toContain('aria-labelledby="checks"');
     }
   });
 

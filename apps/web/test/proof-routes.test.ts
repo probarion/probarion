@@ -1,5 +1,7 @@
 // The /proof pages and snapshot.json as a visitor meets them: what each state shows, and what an invalid or hidden
 // vault answers. The reader is a fake (no RPC, no network); the snapshots are signed fixtures that core checks.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { LedgerEntry, Snapshot } from "@probarion/core";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -451,6 +453,46 @@ describe("/proof/[vault]", () => {
     expect((view.props as { decisions: unknown }).decisions).toMatchObject([
       { id: "seq-0", spendIds: ["spend-1"] },
     ]);
+  });
+
+  it("tells the snapshot's story first, then the result, the live TEE check, the checks and each decision", async () => {
+    const { snapshot, out } = await served("ok", "testnet");
+    const order = [
+      "data-story=",
+      'data-headline="ok"',
+      'id="tee-check"',
+      'aria-labelledby="checks"',
+      'id="decisions"',
+      'id="verify"',
+    ].map((m) => out.indexOf(m));
+    expect(order.every((at) => at > -1)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // Counted from this snapshot and dated with its full time, the one the verifier prints.
+    const story = text(out.slice(order[0], out.indexOf("</ul>", order[0])));
+    expect(story).toContain(
+      `As of ${snapshot.taken_at}, this vault has paid out 1 spend on chain, 25 USDC in all.`,
+    );
+    expect(story).toContain("It was paid on the code rules alone.");
+    expect(story).toContain(
+      "No decision was refused or held, and the contract refused no payment.",
+    );
+  });
+
+  it("leaves the story out, and still shows the checks, when the decision rows cannot be built", async () => {
+    h.rowsDown = true;
+    const { out } = await served("ok", "testnet");
+    expect(out).not.toContain("data-story=");
+    expect(out).toContain('data-headline="ok"');
+  });
+
+  it("stays a live page, read per request and rate-limited per address: no revalidate and no cache", () => {
+    const src = readFileSync(
+      fileURLToPath(new URL("../src/app/proof/[vault]/page.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(src).toContain('export const dynamic = "force-dynamic";');
+    expect(src).toMatch(/takeToken\(serviceDb\(\), `proof:\$\{ip\}`/);
+    expect(src).not.toMatch(/revalidate|unstable_cache|"use cache"|fetchCache|cacheLife/);
   });
 
   it("builds the decision rows once per cached snapshot, not once per view", async () => {
