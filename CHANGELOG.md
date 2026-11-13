@@ -1423,6 +1423,21 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- `@probarion/core`: the asset rule of the entry below matched only the bare asset account, and an
+  attested model can add a label to it. In the testnet rehearsal of the second mainnet Base payout,
+  on 2026-11-13 at 09:17 UTC in vault `s2-rehearsal-1.vaults.probarion.testnet` (test tokens),
+  `z-ai/glm-5.3-flash` proposed to pay the mandate's Base address with confidence 0.95 and set
+  `near_account` to `base-usdc.probarion.testnet (asset)`, the mandate's `payee.asset` followed by
+  " (asset)"; `mandate.payee_mismatch` refused it (ledger seq 1, anchored, nothing paid). In the
+  trusted proposal's hint, `payeeHintContradiction` now also takes the asset followed by one space
+  and one label in parentheses of 1 to 40 ASCII letters in words joined by single spaces, as naming
+  no other payee. A label with a dot, digit, colon or other sign, spaces inside the parentheses at
+  either end, two labels, text after the label, or the label after any other account still
+  contradicts, so the label cannot hold an account, an address or an amount. The invoice's hint is
+  unchanged: any `near_account` refuses there. When only spaces around a labelled asset differ, the
+  detail quotes the value as given. Unit tests cover the labelled asset and 21 values next to it.
+  The /docs pages "Why spend has no payee" and "Policy rules" say the same.
+
 - `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` a correct attested proposal for
   a Base payee when the model's payee hint also put the mandate's own asset account in
   `near_account`. It was seen on NEAR mainnet on 2026-11-13 in vault `v0.probarion.near`, mandate 2:

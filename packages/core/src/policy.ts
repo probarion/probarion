@@ -101,6 +101,19 @@ function sameAddress(chain: "base" | "solana", a: string, b: string): boolean {
   return chain === "base" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
+// The label a model may write after the asset account, as in "base-usdc.probarion.testnet (asset)":
+// one space, then parentheses around 1 to 40 characters of ASCII letters in words joined by single
+// spaces. No dot, digit, colon or other sign fits, so the label cannot hold an account, an address or
+// an amount.
+const ASSET_LABEL = /^ \((?=[A-Za-z ]{1,40}\)$)[A-Za-z]+(?: [A-Za-z]+)*\)$/;
+
+/** True if `value` is `asset` exactly, or `asset` followed by one ASSET_LABEL. */
+function isOwnAssetValue(value: string | undefined, asset: string): boolean {
+  if (value === undefined || !value.startsWith(asset)) return false;
+  const rest = value.slice(asset.length);
+  return rest === "" || ASSET_LABEL.test(rest);
+}
+
 /**
  * Returns why the hint contradicts the mandate payee, or null. A payee name never contradicts.
  * `ownAssetNamesNoPayee`: the hint is the trusted model proposal's, so for a Base or Solana payee
@@ -129,9 +142,11 @@ export function payeeHintContradiction(
   // near_account next to the right address: two attested models did on NEAR mainnet on 2026-11-13
   // (ledger entries 0 and 1 of v0.probarion.near). So in the trusted proposal's hint
   // (ownAssetNamesNoPayee) that account names no other payee: it is the token the mandate pays in.
-  // The untrimmed value must equal payee.asset in every character; any other near_account, the
-  // asset in another case or with spaces included, still contradicts, and when only spaces differ
-  // the detail quotes the value as given. In the invoice's hint, read from text anyone can write,
+  // The untrimmed value must equal payee.asset in every character, or be payee.asset followed by
+  // one short label in parentheses (ASSET_LABEL): an attested model wrote "<asset> (asset)" in a
+  // testnet rehearsal on 2026-11-13. Any other near_account, the asset in another case or with
+  // spaces around it included, still contradicts, and when only spaces differ the detail quotes the
+  // value as given. In the invoice's hint, read from text anyone can write,
   // any near_account still contradicts, the asset included: the console reads only the first NEAR
   // account in an invoice's text, so the asset written first could hide another payee. The chain
   // and address checks are unchanged, so the asset given as the address contradicts too.
@@ -150,9 +165,11 @@ export function payeeHintContradiction(
     return null;
   }
   const ownAsset = opts.ownAssetNamesNoPayee === true;
-  if (near !== "" && !(ownAsset && hint.near_account === payee.asset)) {
+  if (near !== "" && !(ownAsset && isOwnAssetValue(hint.near_account, payee.asset))) {
     const given =
-      ownAsset && near === payee.asset ? ` (given as ${JSON.stringify(hint.near_account)})` : "";
+      ownAsset && isOwnAssetValue(near, payee.asset)
+        ? ` (given as ${JSON.stringify(hint.near_account)})`
+        : "";
     const pays = `${payee.chain}:${payee.address}`;
     return `invoice names NEAR account ${near}${given}; the mandate pays ${pays}`;
   }
