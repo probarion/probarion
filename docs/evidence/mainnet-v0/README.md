@@ -137,7 +137,7 @@ now, add `--ledger docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.json
 `--invoice docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt`, and leave out `--snapshot`
 ([the command](s1-2026-11-13/README.md#check-it)). The offline command on `snapshot-2026-11-11.json` still passes.
 
-## 2026-11-13: S2, a Base payout decided by an attested model
+## 2026-11-13: S2, a Base payout decided by an attested model and the code rules
 
 The S1 section above records round 1 and stays true for it. On 2026-11-13, from 11:39 to 11:41 UTC, the owner ran
 round 2 on this vault: the owner signed mandate 3 (0.25 USDC once, to the same Base address, the owner's own), and the

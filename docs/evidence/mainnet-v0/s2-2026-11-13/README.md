@@ -154,8 +154,12 @@ At 11:41:26 UTC the kit's live run printed `8 passed, 0 failed, 0 unproven, 1 sk
 - h: spends 2 and 3 each have one matched burn pair: the `ft_burn` memo is `WITHDRAW_TO:` plus the mandate's address,
   and the vault's `mt_burn` is for the spend's amount.
 
-The kit's run read both invoices from its own folder with `--invoices`, so its output names those local paths; from a
-clone, `--invoice` twice reads the committed copies, and A8 checks the same texts. With round 1's ledger of 4 entries
+The kit ran these checks from its own SDK clone at `c85f41b`, not with the command above as written: with that
+clone's `docs/evidence`, the two burn transactions given with `--burn-tx` in place of `--proof` (that commit's proof
+file had no spend 3), both invoices read from the kit's own folder with `--invoices`, so its output names those local
+paths, and the snapshot written with `--snapshot`. The command above, with `--proof docs/mainnet-proof.json` and
+`--invoice` twice for the committed copies, gives the same `8 passed, 0 failed, 0 unproven, 1 skipped`, and A8 checks
+the same texts: the judge's `live-verify-mainnet-v0` step runs it. With round 1's ledger of 4 entries
 in place of this one, check c fails, because the chain's last anchor covers 6 entries, and check d fails, because
 spend 3's decision is in none of them. To check the recorded run offline, with no network:
 

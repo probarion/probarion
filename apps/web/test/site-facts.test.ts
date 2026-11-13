@@ -492,7 +492,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(JOURNEY.steps[1].tag).not.toMatch(/not recorded/);
     const row = README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter"));
     expect(row).toContain("**Built**");
-    expect(row).toContain("**Recorded on NEAR testnet**");
+    expect(row).toContain("**Recorded on NEAR testnet and, since 2026-11-13, on mainnet**");
     expect(row).toContain("pass A1 to A7 offline");
     expect(row).toContain("pass A1 to A7 offline and, on 2026-11-11, the online checks O1 and O2");
     expect(row).toContain("(docs/evidence/canary-vault/verify-online-2026-11-11.txt)");
@@ -796,7 +796,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
         {
           start: "NEAR AI Cloud adapter",
           says: [
-            "**Recorded on NEAR testnet**",
+            "**Recorded on NEAR testnet and, since 2026-11-13, on mainnet**",
             "pass A1 to A7 offline",
             "the online checks O1 and O2",
             "the four attested decisions the demo vault held then, entries 10 to 13, passed O1 and O2",
