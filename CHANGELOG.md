@@ -88,6 +88,14 @@ The software is an unaudited beta.
   `docs/ops/judging-days.md` holds the run schedule, the owner-only checks and a baseline run (2026-11-13 20:45 UTC:
   15 PASS, 1 WARN for the samples not deployed yet, 0 FAIL, 1 SKIP). Check: `node --test
   scripts/smoke-live.test.mjs` runs its rules against a fake fetch and a fake exec.
+- `/check` runs the CLI's payee check (the next item) in the browser, with no wallet and no server route: a
+  network, a payee and an optional vault give allow, warn or block with the reasons, each read with the host it came
+  from, and the requests the browser sent. It reads public NEAR and Base nodes through `@probarion/sdk/payee`; a read
+  that fails is unknown and warns, and a check that throws says it could not run, so a blocked node is not an allow.
+  Five examples read live, among them mandate 1's payee on `v0.probarion.near` and a made-up Base address with the
+  same first and last 4 hex characters as its Base payee (block, when the vault's payees are read). A check can
+  travel in the URL fragment. The console's mandate form is unchanged. Check it with
+  `pnpm --filter @probarion/web exec vitest run src/app/check` or at `/check` on the site.
 - `probarion payee check <payee> [--vault <id>] [--json]` checks a payee before a mandate names it and prints allow,
   warn or block with one reason per check: the NEAR account exists (block for a missing name, warn for an unfunded
   implicit account), the seed blocklist, a lookalike of a payee of the vault (the same first and last 4 hex
