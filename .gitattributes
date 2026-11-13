@@ -6,6 +6,8 @@ packages/core/test/fixtures/invoice-*.txt -text
 docs/evidence/demo-vault/*.txt -text
 # The 2026-11 mainnet demo: the PO and invoice hashes go on chain (purpose_hash, invoice_hash), so git never converts them.
 docs/evidence/mainnet-v0/*.txt -text
+# The site's byte copies for the no-clone mainnet verify: their sha256 must equal their sources', so git leaves their bytes as they are.
+apps/web/public/samples/mainnet/** -text
 # The demo vault's payments CSV: RFC 4180 CRLF line ends and a BOM, compared byte for byte by test/demo-vault.test.ts.
 docs/evidence/demo-vault/*.csv -text
 # The eval dataset: an invoice hash is the sha256 of the exact text and a purpose_hash of the exact document bytes, so git never converts them.
