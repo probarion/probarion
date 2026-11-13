@@ -66,11 +66,14 @@ from the model's proposal, since the code's own reading of the invoice found no 
 in entry 2). The second cycle (entry 1) asked `Qwen/Qwen3.8-27B`, which proposed
 `pay` with confidence 0.9 and the same `near_account`, and the same rule refused it.
 
-That rule is strict. For a NEAR payee the code accepts the mandate's own account in the hint (the "model hint names the
-mandate's NEAR account" cases in [`packages/core/test/policy.test.ts`](../../../../packages/core/test/policy.test.ts),
-added after testnet runs), but it has no such case for a Base payee, so even the mandate's own asset account counts as
+That rule, as it ran, was strict. For a NEAR payee the code accepted the mandate's own account in the hint (the "model
+hint names the mandate's NEAR account" cases in [`packages/core/test/policy.test.ts`](../../../../packages/core/test/policy.test.ts),
+added after testnet runs), but it had no such case for a Base payee, so even the mandate's own asset account counted as
 another payee. Both proposals had the right amount and Base address, so these were false refusals: they cost two tries
-and no money, and the code was not changed for this run. Each refusal is a signed ledger entry, anchored on chain
+and no money, and the code was not changed for this run. After the run, [PR #142](https://github.com/probarion/probarion/pull/142)
+changed the rule: in a model's proposal, a `near_account` equal to a Base or Solana mandate's own asset account names
+no other payee; in an invoice it is still refused (`policy-mainnet-replay.test.ts` replays entries 0 and 1 of this
+ledger against both versions). Each refusal is a signed ledger entry, anchored on chain
 before the next cycle began. The owner then ran the cycle a third time with no model (the kit's `S1_MODEL=off`, which
 runs the SDK's `Probarion.process()` with no proposer, so the entry has no model rule). The SDK decided with the code rules alone: all 14 rules passed (entry 2), and it sent
 the spend.

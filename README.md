@@ -895,11 +895,13 @@ payment.
 
 Why code rules alone decided the payment: both models proposed paying with the right Base address in
 their payee hint, and also put the mandate's asset account, `base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near`,
-in its `near_account` field. For a mandate that pays a Base address, the rule refuses any NEAR
+in its `near_account` field. For a mandate that pays a Base address, the rule as it ran refused any NEAR
 account in the hint (`payeeHintContradiction` in [`packages/core/src/policy.ts`](packages/core/src/policy.ts)).
-The rule accepts a NEAR mandate's own account in the hint but not a Base mandate's asset account, so both
+It accepted a NEAR mandate's own account in the hint but not a Base mandate's asset account, so both
 refusals were false ones: the proposals had the right amount and address. They cost two tries and no money,
-and the code was not changed for this run. The owner then ran the cycle again
+and the code was not changed for this run. After the run, [PR #142](https://github.com/probarion/probarion/pull/142)
+changed the rule: in a model's proposal, a `near_account` equal to a Base or Solana mandate's own asset account
+names no other payee; in an invoice it is still refused. The owner then ran the cycle again
 with no model, and every code rule passed. So no payment on mainnet has been made on a model's
 proposal yet.
 
