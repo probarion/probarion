@@ -1430,10 +1430,12 @@ The software is an unaudited beta.
   `near_account` to `base-usdc.probarion.testnet (asset)`, the mandate's `payee.asset` followed by
   " (asset)"; `mandate.payee_mismatch` refused it (ledger seq 1, anchored, nothing paid). In the
   trusted proposal's hint, `payeeHintContradiction` now also takes the asset followed by one space
-  and one label in parentheses of 1 to 40 ASCII letters in words joined by single spaces, as naming
-  no other payee. A label with a dot, digit, colon or other sign, spaces inside the parentheses at
-  either end, two labels, text after the label, or the label after any other account still
-  contradicts, so the label cannot hold an account, an address or an amount. The invoice's hint is
+  and one label in parentheses of 1 to 40 characters, ASCII letters in words joined by single spaces,
+  as naming no other payee. A label with a dot, digit, colon or other sign, spaces inside the
+  parentheses at either end, two labels, text after the label, or the label after any other
+  account still contradicts, so the label cannot hold a dotted account such as `vendor.testnet`, a
+  `0x` address or a number. A bare word still fits; like the hint's `name`, it is compared and not
+  sent, and the contract pays only the mandate's payee. The invoice's hint is
   unchanged: any `near_account` refuses there. When only spaces around a labelled asset differ, the
   detail quotes the value as given. Unit tests cover the labelled asset and 21 values next to it.
   The /docs pages "Why spend has no payee" and "Policy rules" say the same.

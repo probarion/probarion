@@ -103,8 +103,10 @@ function sameAddress(chain: "base" | "solana", a: string, b: string): boolean {
 
 // The label a model may write after the asset account, as in "base-usdc.probarion.testnet (asset)":
 // one space, then parentheses around 1 to 40 characters of ASCII letters in words joined by single
-// spaces. No dot, digit, colon or other sign fits, so the label cannot hold an account, an address or
-// an amount.
+// spaces. No dot, digit, colon or other sign fits, so the label cannot hold a dotted account such as
+// vendor.testnet, an implicit or 0x account, a Base address or a number. A bare word still fits
+// ("near", "ten"); like the hint's name, it is compared, not sent, and the contract pays only the
+// mandate's payee.
 const ASSET_LABEL = /^ \((?=[A-Za-z ]{1,40}\)$)[A-Za-z]+(?: [A-Za-z]+)*\)$/;
 
 /** True if `value` is `asset` exactly, or `asset` followed by one ASSET_LABEL. */
