@@ -1656,6 +1656,70 @@ describe("helpers", () => {
       `invoice names address 0x000000000000000000000000000000000000dEaD; the mandate pays ${BASE_ADDRESS}`,
     );
 
+    // The asset with one short label in parentheses, as z-ai/glm-5.3-flash wrote it in the round 2
+    // testnet rehearsal on 2026-11-13 (s2-rehearsal-1.vaults.probarion.testnet, ledger seq 1), names
+    // no other payee in the model's hint; in the invoice's hint it still contradicts.
+    for (const labelled of [
+      `${asset} (asset)`,
+      `${asset} (USDC asset)`,
+      `${asset} (the token the mandate pays in)`,
+      `${asset} (${"a".repeat(40)})`,
+    ]) {
+      const hint: PayeeHint = { near_account: labelled, chain: "base", address: BASE_ADDRESS };
+      expect(payeeHintContradiction(hint, base, model), labelled).toBeNull();
+      expect(payeeHintContradiction(hint, base), labelled).toBe(
+        `invoice names NEAR account ${labelled}; ${pays}`,
+      );
+    }
+    // Anything else around the asset is another value: no space or two spaces before the label,
+    // spaces around it, a dot, digit, colon or sign inside it, a label of 41 characters, two labels,
+    // text after it, or a label after another account.
+    for (const other of [
+      `${asset}(asset)`,
+      `${asset}  (asset)`,
+      `${asset} ( asset)`,
+      `${asset} (asset )`,
+      `${asset} (asset) `,
+      `${asset} (asset)\n`,
+      `${asset} ()`,
+      `${asset} (vendor.testnet)`,
+      `${asset} (pay vendor.testnet)`,
+      `${asset} (0x000000000000000000000000000000000000dEaD)`,
+      `${asset} (asset 2)`,
+      `${asset} (near: vendor)`,
+      `${asset} (asset-x)`,
+      `${asset} (${"a".repeat(41)})`,
+      `${asset} (asset) (asset)`,
+      `${asset} (asset) vendor.testnet`,
+      `${asset}x (asset)`,
+      `${asset}.x (asset)`,
+      `vendor.testnet (asset)`,
+      `sol-usdc.probarion.testnet (asset)`,
+      `${asset.toUpperCase()} (asset)`,
+    ]) {
+      const hint: PayeeHint = { near_account: other, chain: "base", address: BASE_ADDRESS };
+      // When only spaces around the labelled asset differ, the detail quotes the value as given.
+      const given = other !== other.trim() ? ` (given as ${JSON.stringify(other)})` : "";
+      expect(payeeHintContradiction(hint, base, model), JSON.stringify(other)).toBe(
+        `invoice names NEAR account ${other.trim()}${given}; ${pays}`,
+      );
+    }
+    // The label changes nothing about the chain and address checks.
+    expect(
+      payeeHintContradiction(
+        { near_account: `${asset} (asset)`, chain: "base", address: asset },
+        base,
+        model,
+      ),
+    ).toBe(`invoice names address ${asset}; the mandate pays ${BASE_ADDRESS}`);
+    expect(
+      payeeHintContradiction(
+        { near_account: `${asset} (asset)`, chain: "solana", address: BASE_ADDRESS },
+        base,
+        model,
+      ),
+    ).toBe("invoice names chain solana; the mandate pays on base");
+
     // A Solana mandate takes its own asset account from the model's hint, and refuses the Base one.
     const SOL = "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV";
     const sol = {
