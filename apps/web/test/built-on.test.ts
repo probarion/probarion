@@ -13,10 +13,13 @@ import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import { BetaStripView } from "@/components/site/BetaStrip";
 import { BuiltOn } from "@/components/site/BuiltOn";
+import hd from "@/components/site/head.module.css";
 import { NearLogo } from "@/components/site/NearLogo";
+import pm from "@/components/site/parts.module.css";
 import { GithubMark, McpLogo, NpmLogo } from "@/components/site/ShipLogos";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
+import sm from "@/components/site/site.module.css";
 import { seqAnchorId } from "@/lib/proof/decisions";
 import { BUILT_ON, CLOSING, LINKS, STATUS, statusOf } from "@/lib/site/facts";
 import { linkProblem } from "./docs-helpers";
@@ -122,8 +125,8 @@ describe("the built-on section", () => {
     expect(at).toBeGreaterThan(html.indexOf(`id="${STATUS.gaps.id}"`));
     expect(at).toBeLessThan(html.indexOf(CLOSING.line2));
     // A section of the page like the status list: the same section classes, so the same spacing between sections.
-    const status = /<section (class="[^"]+") id="status">/.exec(html)?.[1];
-    expect(html).toContain(`<section ${status} id="built-on">`);
+    const status = /<section (class="[^"]+") id="status"/.exec(html)?.[1];
+    expect(html).toContain(`<section ${status} id="built-on"`);
   });
 
   it("pins the two rows and the four cards, in order", () => {
@@ -902,8 +905,8 @@ describe("the built-on links and landmarks", () => {
       m[1],
       visibleText(m[2] ?? "") || "(logo)",
     ]);
-    // Where to get Probarion is a peer of the section's title, in its style, not a part of what it is built on; the
-    // stack note is a row of the card, with a label like the rows', not a heading.
+    // Where to get Probarion is a peer of the section's title, not a part of what it is built on; the stack note is a
+    // row of the card, with a label like the rows', not a heading.
     expect(headings).toEqual([
       ["h2", BUILT_ON.title],
       ["h3", "(logo)"],
@@ -912,12 +915,14 @@ describe("the built-on links and landmarks", () => {
       ...BUILT_ON.ships.map((c) => ["h3", c.name]),
     ]);
     expect(html).toMatch(/<h3[^>]*><svg[^>]*aria-label="NEAR Protocol"/);
+    // The title is the shared head's (SectionHead.tsx); Where to get Probarion is drawn as the landing's parts are,
+    // under their hairline (parts.module.css), so the page has one heading style per level.
     const [title, ships] = [...html.matchAll(/<h2 class="([^"]*)"/g)].map((m) => m[1]);
-    expect(ships).toBe(title);
-    expect(ships).toMatch(/boTitle/);
+    expect(title).toBe(`${sm.h2} ${hd.title}`);
+    expect(ships).toBe(pm.partTitle);
     // The cards are a region of their own, named by that heading.
     expect(html).toContain(
-      `<section class="${/<section class="([^"]*_get_[^"]*)"/.exec(html)?.[1]}" aria-labelledby="${BUILT_ON.shipsId}"><h2 class="${ships}" id="${BUILT_ON.shipsId}">`,
+      `<section class="${/<section class="([^"]*_get_[^"]*)"/.exec(html)?.[1]}" aria-labelledby="${BUILT_ON.shipsId}"><div class="${pm.partHead}"><h2 class="${ships}" id="${BUILT_ON.shipsId}">`,
     );
     // Each card's kind sits over its name, as the rows set a label over a name, outside the heading.
     for (const c of BUILT_ON.ships)
@@ -1052,18 +1057,16 @@ describe("the built-on links and landmarks", () => {
     );
   });
 
-  it("sets the sentence beside the heading on its last line, at the right, from 961px, and under it below", () => {
-    expect(section()).toMatch(/<div class="[^"]*sectionHead[^"]* [^"]*boHead[^"]*"><h2/);
-    const css = SITE_CSS;
-    // Every section head wraps; this one's heading and sentence are too wide for one line on a desktop.
-    expect(css).toMatch(/\.sectionHead {[^}]*flex-wrap: wrap;[^}]*align-items: flex-end;/);
-    const desktop = mediaBlocks(css, "(min-width: 961px)");
-    expect(desktop).toMatch(/\.boHead {\s*flex-wrap: nowrap;\s*align-items: baseline;\s*}/);
-    expect(desktop).toMatch(
-      /\.boHead > p {\s*max-width: 44em;\s*font-size: 15px;\s*text-align: right;\s*text-wrap: balance;\s*}/,
+  it("opens with the landing's shared head: its label, the heading, then the sentence under it on the same left edge", () => {
+    const html = section();
+    expect(BUILT_ON.eyebrow).toBe("The stack");
+    expect(html).toMatch(
+      new RegExp(
+        `<section class="[^"]+" id="${BUILT_ON.id}" aria-labelledby="${BUILT_ON.id}-title"><div class="[^"]+"><header class="[^"]+"><hgroup><p class="[^"]+">${BUILT_ON.eyebrow}</p><h2 class="[^"]+" id="${BUILT_ON.id}-title">${BUILT_ON.title}</h2></hgroup><p class="[^"]+">`,
+      ),
     );
-    // Nothing sets it outside that block, so at 960px and below the head wraps like every other.
-    expect(css.slice(0, css.indexOf("@media"))).not.toMatch(/\.boHead\b/);
+    // No sentence floats at the right of the heading any more, at any width.
+    expect(SITE_CSS).not.toMatch(/\.boHead\b|\.sectionHead\b/);
   });
 
   it("sets the small labels in the rows' gold small capitals, lets a link wrap, and keeps the footer small and muted", () => {

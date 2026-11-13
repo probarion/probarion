@@ -448,21 +448,7 @@ a.netPill:hover {
   font-weight: 500;
 }
 
-/* Sections */
-.section {
-  padding-block: clamp(64px, 9vw, 128px);
-}
-.flush {
-  padding-top: 0;
-}
-.sectionHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px 48px;
-  margin-bottom: clamp(32px, 4vw, 56px);
-}
+/* Sections: each opens with the shared head (SectionHead.tsx, head.module.css), which sets this heading. */
 .h2 {
   font-weight: 300;
   font-size: clamp(36px, 5.2vw, 76px);
@@ -471,10 +457,6 @@ a.netPill:hover {
   max-width: 13em;
   text-wrap: balance;
   min-width: 0;
-}
-.sectionHead p {
-  max-width: 26em;
-  color: var(--color-mute);
 }
 
 /* Problem: two columns, then the numbers */
@@ -815,13 +797,6 @@ a.netPill:hover {
   text-decoration-color: currentColor;
 }
 /* A footnote to the status section, not a chapter: the heading of the integrations it is built on stays small. */
-.boTitle {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 500;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-}
 
 /*
  * Built on: one card with a row for NEAR and one for NEAR AI Cloud (what it is to Probarion, what it does, the
@@ -1123,23 +1098,6 @@ a.netPill:hover {
   }
   .numbers > div:nth-child(n + 3) {
     border-top: 1px solid var(--color-line);
-  }
-}
-/*
- * Built on, from 961px: the sentence beside the heading sits on the heading's last line, at the right. Section heads
- * wrap, and this heading and sentence are too wide for one line, so without this the sentence would sit under the
- * heading at the left. Balanced, so that its last line is not one word. At 960px and below the two stack.
- */
-@media (min-width: 961px) {
-  .boHead {
-    flex-wrap: nowrap;
-    align-items: baseline;
-  }
-  .boHead > p {
-    max-width: 44em;
-    font-size: 15px;
-    text-align: right;
-    text-wrap: balance;
   }
 }
 @media (max-width: 620px) {

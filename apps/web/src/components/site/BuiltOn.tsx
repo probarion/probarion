@@ -5,7 +5,9 @@ import { BUILT_ON, type ShipCard } from "@/lib/site/facts";
 import { richParts } from "@/lib/site/rich";
 import { BrandMark } from "./BrandMark";
 import { NearLogo } from "./NearLogo";
+import p from "./parts.module.css";
 import { Rich } from "./Rich";
+import { LandingSection } from "./SectionHead";
 import { GithubMark, McpLogo, NpmLogo } from "./ShipLogos";
 import sh from "./ships.module.css";
 import s from "./site.module.css";
@@ -204,65 +206,64 @@ function Legal() {
 
 export function BuiltOn() {
   return (
-    <section className={`${s.section} ${s.flush}`} id={BUILT_ON.id}>
-      <div className={s.wrap}>
-        <div className={`${s.sectionHead} ${s.boHead}`}>
-          <h2 className={s.boTitle}>{BUILT_ON.title}</h2>
-          <p>{BUILT_ON.sub}</p>
-        </div>
-        <ul className={s.boCard} {...LIST}>
-          {BUILT_ON.rows.map((row) => (
-            <li key={row.id} className={s.boRow}>
-              <div className={s.boWho}>
-                <p className={s.boLabel}>{row.label}</p>
-                <h3 className={s.boName}>
-                  {row.mark === "near-logo" ? <NearLogo className={s.nearLogo} /> : row.name}
-                </h3>
-                <ExternalLink className={`${s.link} ${s.boDomain}`} href={row.href}>
-                  {row.domain}
-                  {NBSP}
-                  <span aria-hidden="true">↗</span>
-                </ExternalLink>
-              </div>
-              <div className={s.boWhat}>
-                <p className={s.boBody}>{row.body}</p>
-                <ul className={s.boChecks} {...LIST}>
-                  {row.checks.map((check) => (
-                    <li key={check} className={s.boFact}>
-                      <CheckGlyph />
-                      <span>
-                        <Rich text={check} />
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <p className={s.boNote}>{row.note}</p>
-              </div>
-              <ul className={s.boLinks} {...LIST}>
-                {row.links.map((l) => (
-                  <li key={l.href}>
-                    <EvidenceLink className={s.link} href={l.href}>
-                      {l.label}
-                    </EvidenceLink>
+    <LandingSection
+      id={BUILT_ON.id}
+      head={{ eyebrow: BUILT_ON.eyebrow, title: BUILT_ON.title, lede: BUILT_ON.sub }}
+    >
+      <ul className={s.boCard} {...LIST}>
+        {BUILT_ON.rows.map((row) => (
+          <li key={row.id} className={s.boRow}>
+            <div className={s.boWho}>
+              <p className={s.boLabel}>{row.label}</p>
+              <h3 className={s.boName}>
+                {row.mark === "near-logo" ? <NearLogo className={s.nearLogo} /> : row.name}
+              </h3>
+              <ExternalLink className={`${s.link} ${s.boDomain}`} href={row.href}>
+                {row.domain}
+                {NBSP}
+                <span aria-hidden="true">↗</span>
+              </ExternalLink>
+            </div>
+            <div className={s.boWhat}>
+              <p className={s.boBody}>{row.body}</p>
+              <ul className={s.boChecks} {...LIST}>
+                {row.checks.map((check) => (
+                  <li key={check} className={s.boFact}>
+                    <CheckGlyph />
+                    <span>
+                      <Rich text={check} />
+                    </span>
                   </li>
                 ))}
               </ul>
-            </li>
-          ))}
-          <Stack />
-        </ul>
-        <section className={sh.get} aria-labelledby={BUILT_ON.shipsId}>
-          <h2 className={s.boTitle} id={BUILT_ON.shipsId}>
+              <p className={s.boNote}>{row.note}</p>
+            </div>
+            <ul className={s.boLinks} {...LIST}>
+              {row.links.map((l) => (
+                <li key={l.href}>
+                  <EvidenceLink className={s.link} href={l.href}>
+                    {l.label}
+                  </EvidenceLink>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+        <Stack />
+      </ul>
+      <section className={sh.get} aria-labelledby={BUILT_ON.shipsId}>
+        <div className={p.partHead}>
+          <h2 className={p.partTitle} id={BUILT_ON.shipsId}>
             {BUILT_ON.shipsTitle}
           </h2>
-          <ul className={sh.ships} {...LIST}>
-            {BUILT_ON.ships.map((ship) => (
-              <Ship key={ship.id} ship={ship} />
-            ))}
-          </ul>
-        </section>
-        <Legal />
-      </div>
-    </section>
+        </div>
+        <ul className={sh.ships} {...LIST}>
+          {BUILT_ON.ships.map((ship) => (
+            <Ship key={ship.id} ship={ship} />
+          ))}
+        </ul>
+      </section>
+      <Legal />
+    </LandingSection>
   );
 }

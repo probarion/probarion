@@ -2554,6 +2554,8 @@ export interface ShipCard {
  */
 export const BUILT_ON = {
   id: "built-on",
+  /** The label over the shared head, as every landing section has one: a plain name, no claim. */
+  eyebrow: "The stack",
   title: "Built on NEAR, with NEAR AI Cloud",
   sub: "Where each payment is made, and the optional model that can advise it. No partnership or endorsement is implied.",
   rows: [

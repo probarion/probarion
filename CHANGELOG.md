@@ -15,6 +15,17 @@ The software is an unaudited beta.
 
 ### Added
 
+- The landing's sections redesigned, from the hero to the footer. Each opens with one shared head (a hairline, a
+  short label, the heading and one sentence, on one left edge), and the space between two of them is the same
+  everywhere. The payment journey splits into the five steps and the record: the demo vault's four invoices are one
+  table with their evidence in fixed columns, followed by a table of the attested decisions on testnet and the
+  result of each check. Outcomes (paid, refused, held) read as a mark and a word, apart from the status pills, and
+  each status pill links its row on the status board. Links that leave the site end in one arrow glued to their last
+  word, every transaction label names its network, and dates, accounts and short hashes do not break across lines.
+  The hero's mainnet record is dated 2026-11-11 and points to the mainnet section for the two Base payouts of
+  2026-11-13. The integrate section is in three parts (the ways in, the code with the accounts and statuses beside
+  it, and the uses with what ran on each network). A test checks that every CSS module class the landing uses is
+  defined, and the colour test reads every module of the site and the docs.
 - A second mainnet payout to Base, decided by an attested model and the code rules, kept as evidence. On
   2026-11-13, from 11:39 to 11:41 UTC, the owner ran S2 on `v0.probarion.near` from their own terminal, with a kit
   copied from S1's and changed for round 2, which runs the SDK at commit `c85f41b`: the owner signed mandate 3

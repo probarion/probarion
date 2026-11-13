@@ -1,4 +1,4 @@
-// The landing's shared section head and its one rhythm. Every section from the problem to the chain opens the same
+// The landing's shared section head and its one rhythm. Every section from the problem to Built on opens the same
 // way, through SectionHead.tsx: a hairline, the eyebrow, the heading and the lede, stacked on one left edge. Each
 // owns G (--space-section) of paper below itself and none above, so the gap between any two sections is G.
 import { readFileSync } from "node:fs";
@@ -11,6 +11,7 @@ import Home from "@/app/page";
 import h from "@/components/site/head.module.css";
 import s from "@/components/site/site.module.css";
 import {
+  BUILT_ON,
   CHAIN,
   COMPARE,
   CONSOLE_SHOTS,
@@ -19,8 +20,12 @@ import {
   JOURNEY,
   LIVE_CHECK,
   PROBLEM,
+  STATUS,
+  STATUS_BOARD,
   TAMPER_COPY,
 } from "@/lib/site/facts";
+import { PAYOUTS } from "@/lib/site/mainnet-payout-data";
+import { sectionHead } from "@/lib/site/mainnet-payout-section";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
 const read = (...parts: string[]) => readFileSync(join(WEB, ...parts), "utf8");
@@ -38,13 +43,21 @@ const text = (html: string) =>
     .trim();
 const plain = (copy: string) => copy.replace(/`/g, "");
 
-/** The in-scope sections, in page order, with the copy their heads read. */
+const MAINNET_HEAD = sectionHead(PAYOUTS);
+
+/** The landing's sections, in page order, with the copy their heads read. */
 const SECTIONS = [
   { id: "problem", eyebrow: PROBLEM.eyebrow, title: PROBLEM.title, lede: PROBLEM.sub },
   { id: "try", eyebrow: LIVE_CHECK.eyebrow, title: LIVE_CHECK.title, lede: LIVE_CHECK.intro },
   { id: "compare", eyebrow: COMPARE.eyebrow, title: COMPARE.title, lede: COMPARE.sub },
   { id: "payment", eyebrow: JOURNEY.eyebrow, title: JOURNEY.title, lede: JOURNEY.intro },
   { id: "integrate", eyebrow: INTEGRATE.eyebrow, title: INTEGRATE.title, lede: INTEGRATE.sub },
+  {
+    id: "mainnet",
+    eyebrow: MAINNET_HEAD.eyebrow,
+    title: `${MAINNET_HEAD.line1} ${MAINNET_HEAD.line2}`,
+    lede: MAINNET_HEAD.lede,
+  },
   {
     id: "console",
     eyebrow: CONSOLE_SHOTS.eyebrow,
@@ -53,23 +66,28 @@ const SECTIONS = [
   },
   { id: "verify", eyebrow: TAMPER_COPY.eyebrow, title: TAMPER_COPY.title, lede: TAMPER_COPY.intro },
   { id: "chain", eyebrow: CHAIN.eyebrow, title: CHAIN.title, lede: CHAIN.intro },
+  { id: "status", eyebrow: STATUS_BOARD.eyebrow, title: STATUS.title, lede: STATUS_BOARD.lede },
+  { id: BUILT_ON.id, eyebrow: BUILT_ON.eyebrow, title: BUILT_ON.title, lede: BUILT_ON.sub },
 ] as const;
 
 const html = renderToStaticMarkup(createElement(Home));
 const start = (id: string) => html.indexOf(`<section class="${h.section}" id="${id}"`);
+/** The closing's <section>, where the last section's part ends. */
+const closing = html.lastIndexOf("<section", html.indexOf(`class="${s.close}"`));
 
 describe("the landing's section heads", () => {
-  it("open every section from the problem to the chain with a hairline, the eyebrow, the heading and the lede", () => {
+  it("open every section from the problem to Built on with a hairline, the eyebrow, the heading and the lede", () => {
     for (const x of SECTIONS) {
       const head = new RegExp(
-        `<section class="${h.section}" id="${x.id}" aria-labelledby="${x.id}-title"><div class="${s.wrap}">` +
+        `<section class="${h.section}" id="${x.id}" aria-labelledby="${x.id}-title"><div class="${s.wrap}(?: [^"]+)?">` +
           `<header class="${h.head}"><hgroup><p class="${s.eyebrow}">([^<]+)</p>` +
-          `<h2 class="${s.h2} ${h.title}" id="${x.id}-title">([^<]+)</h2></hgroup>` +
+          // The mainnet heading's two lines are spans of their own.
+          `<h2 class="${s.h2} ${h.title}" id="${x.id}-title">([\\s\\S]*?)</h2></hgroup>` +
           `<p class="${h.lede}">([\\s\\S]*?)</p>(<dl class="[^"]+">[\\s\\S]*?</dl>)?</header>`,
       ).exec(html);
       expect(head, x.id).not.toBeNull();
       expect(decode(head?.[1] ?? ""), x.id).toBe(x.eyebrow);
-      expect(decode(head?.[2] ?? ""), x.id).toBe(x.title);
+      expect(text(head?.[2] ?? ""), x.id).toBe(x.title);
       expect(text(head?.[3] ?? ""), x.id).toBe(plain(x.lede));
       // Only the console and the chain say one thing for their whole body under the lede: the record their three
       // shots or transactions share.
@@ -81,30 +99,25 @@ describe("the landing's section heads", () => {
     const at = SECTIONS.map((x) => start(x.id));
     for (const [i, x] of SECTIONS.entries()) expect(at[i], x.id).toBeGreaterThan(0);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    // The ink band sits between the integration and the console, and the status list follows the chain.
+    // The ink band sits between the integration and the mainnet payouts, and the closing follows Built on.
     expect(html.indexOf('id="payee"')).toBeGreaterThan(start("integrate"));
-    expect(html.indexOf('id="payee"')).toBeLessThan(start("console"));
-    expect(html.indexOf('id="status"')).toBeGreaterThan(start("chain"));
+    expect(html.indexOf('id="payee"')).toBeLessThan(start("mainnet"));
+    expect(closing).toBeGreaterThan(start(BUILT_ON.id));
     // The comparison table is still named by its heading.
     expect(html).toContain('<table class="');
     expect(html).toMatch(/<table[^>]*aria-labelledby="compare-title"/);
   });
 
-  it("brings back none of the old head or spacing classes in those sections", () => {
-    const old = new Set([s.section, s.flush, s.sectionHead, s.shots]);
-    // Only the console used .shots, so it is gone from the stylesheet.
-    expect(read("src", "components", "site", "site.module.css")).not.toMatch(/\.shots\b/);
+  it("leaves none of the old head or spacing classes, and one head per section", () => {
+    // No section uses them any more, so they are gone from the stylesheet.
+    const css = read("src", "components", "site", "site.module.css");
+    for (const old of [/\.section\b/, /\.flush\b/, /\.sectionHead\b/, /\.shots\b/, /\.boHead\b/])
+      expect(css).not.toMatch(old);
     for (const [i, x] of SECTIONS.entries()) {
       const next = SECTIONS[i + 1];
-      // The chain's part ends where the status list's own <section> opens.
-      const end = next ? start(next.id) : html.lastIndexOf("<section", html.indexOf('id="status"'));
-      const part = html.slice(start(x.id), end);
+      // Built on's part ends where the closing's <section> opens.
+      const part = html.slice(start(x.id), next ? start(next.id) : closing);
       expect(part.length, x.id).toBeGreaterThan(0);
-      const used = [...part.matchAll(/class="([^"]*)"/g)].flatMap((m) => (m[1] ?? "").split(/\s+/));
-      expect(
-        used.filter((c) => old.has(c)),
-        x.id,
-      ).toEqual([]);
       // One head per section: the eyebrow and the heading are not repeated in its body.
       expect(part.split(`class="${h.head}"`).length - 1, x.id).toBe(1);
     }
@@ -119,6 +132,7 @@ describe("the landing's section heads", () => {
     expect(CONSOLE_SHOTS.eyebrow).toBe("The console");
     expect(TAMPER_COPY.eyebrow).toBe("Verify a test ledger");
     expect(CHAIN.eyebrow).toBe("Read it on chain");
+    expect(BUILT_ON.eyebrow).toBe("The stack");
     // The journey's eyebrow is the nav link's label for the same anchor.
     expect(HEADER_ANCHORS.find((a) => a.href === "/#payment")?.label).toBe(JOURNEY.eyebrow);
     // The verifier runs on a test fixture, and its lede says so too.

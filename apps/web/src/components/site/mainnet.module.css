@@ -6,25 +6,9 @@
  * prefers-reduced-motion: no-preference, once each time: no effect starts on scroll, and nothing loops.
  */
 
-/* The ink band above brings the dark; the console screenshots below bring their own top padding. */
-.section {
-  padding-top: clamp(64px, 9vw, 128px);
-}
-/* The h2 keeps its two lines while they fit; the lede takes the rest of the row. */
-.head {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) minmax(18em, 1fr);
-  gap: 18px 48px;
-  align-items: end;
-  margin-bottom: clamp(28px, 3.4vw, 48px);
-}
+/* The shared head (SectionHead.tsx) opens the section; its heading keeps its two lines. */
 .headLine {
   display: block;
-}
-.lede {
-  justify-self: end;
-  max-width: 26em;
-  color: var(--color-mute);
 }
 
 .payouts {
@@ -1016,12 +1000,8 @@
   }
 }
 @media (max-width: 960px) {
-  .head,
   .lower {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .lede {
-    justify-self: start;
   }
   /* A fold's hint goes under its line, at the start, so the heading keeps the width. */
   .foldSummary {

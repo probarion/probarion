@@ -13,6 +13,9 @@ export interface HeadCopy {
   lede: string;
 }
 
+/** A head as SectionHead draws it: a heading in parts (the mainnet section's two lines) is a node. */
+export type HeadProps = Omit<HeadCopy, "title"> & { title: ReactNode };
+
 /**
  * The head every landing section opens with: a hairline, the eyebrow, the heading and the lede, stacked on one left
  * edge. The eyebrow and the heading are one `hgroup`; the heading carries `id`, which names the section. `after` is
@@ -24,7 +27,7 @@ export function SectionHead({
   title,
   lede,
   after,
-}: HeadCopy & { id: string; after?: ReactNode }) {
+}: HeadProps & { id: string; after?: ReactNode }) {
   return (
     <header className={h.head}>
       <hgroup>
@@ -49,10 +52,13 @@ export function LandingSection({
   id,
   head,
   headAfter,
+  wrapClassName,
   children,
 }: {
   id: string;
-  head: HeadCopy;
+  head: HeadProps;
+  /** Added to the wrap's class: what the section's body sets for itself there (the status board's columns). */
+  wrapClassName?: string;
   /** Rendered in the head, under the lede: see SectionHead's `after`. */
   headAfter?: ReactNode;
   children: ReactNode;
@@ -60,7 +66,7 @@ export function LandingSection({
   const titleId = `${id}-title`;
   return (
     <section className={h.section} id={id} aria-labelledby={titleId}>
-      <div className={s.wrap}>
+      <div className={wrapClassName === undefined ? s.wrap : `${s.wrap} ${wrapClassName}`}>
         <SectionHead id={titleId} {...head} after={headAfter} />
         {children}
       </div>
