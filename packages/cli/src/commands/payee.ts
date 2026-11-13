@@ -39,7 +39,7 @@ function checkedPayee(arg: string): PayeeRef {
   return parsed.payee;
 }
 
-/** `--vault`, else PROBARION_VAULT_ID, else none: without a vault, past payments and lookalikes are not checked. */
+/** `--vault`, else PROBARION_VAULT_ID, else none: without a vault, past payments and lookalikes are not checked (a warning). */
 function optionalVault(vault: string | undefined, env: CliIo["env"]): string | undefined {
   const id = vault ?? envValue(env, "PROBARION_VAULT_ID");
   if (id === undefined) return undefined;
@@ -85,7 +85,7 @@ export function registerPayee(program: Command, io: CliIo): void {
     .argument("<payee>", "near:<account> | base:<0x address> | solana:<address>")
     .option(
       "--vault <id>",
-      "the vault whose mandates and spends give past payments and lookalikes (default: PROBARION_VAULT_ID, else none)",
+      "the vault whose mandates and spends give past payments and lookalikes (default: PROBARION_VAULT_ID; without one, the check warns)",
     )
     .option(
       "--archival-rpc <urls>",

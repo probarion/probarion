@@ -62,7 +62,11 @@ export type PayeeVerdict = "allow" | "warn" | "block";
 /**
  * Each check gives exactly one reason. The ids of a finding are the brief's: `not_found`, `blocklisted`,
  * `lookalike`, `contract`, `new_7d`, `code_changed_7d`, `first_payment`, `paid_before`. The others say a check
- * passed (info), could not run (`*_unknown`, warn) or was not asked for (`history_not_checked`, info).
+ * passed (info), could not run (`*_unknown`, warn) or was not asked for (`history_not_checked`, warn: without a
+ * vault, lookalikes and past payments were not checked).
+ *
+ * On Base, `new_7d` and `older_than_7d` come from the nonce only: 0, or above 0. They do not show an address's
+ * age, so a page that labels reasons should show `text` for them, not "older than 7 days".
  */
 export type PayeeReasonId =
   | "invalid_address"
@@ -123,7 +127,10 @@ export interface AssessPayeeOptions {
   blocklist?: readonly PayeeBlocklistEntry[];
 }
 
-/** The seed blocklist (payee-blocklist.json): payees Probarion's own demo texts name, and nothing else. */
+/**
+ * The seed blocklist (payee-blocklist.json): the attacker's accounts in Probarion's own eval cases and test
+ * fixtures, and nothing else. Probarion does not hold them.
+ */
 export const PAYEE_BLOCKLIST: readonly PayeeBlocklistEntry[] = Object.freeze(
   (blocklistFile.entries as PayeeBlocklistEntry[]).map((e) => Object.freeze({ ...e })),
 );
@@ -133,6 +140,7 @@ const ETH_IMPLICIT_RE = /^0x[0-9a-f]{40}$/;
 const LEVEL_RANK: Readonly<Record<PayeeLevel, number>> = { info: 0, warn: 1, block: 2 };
 /** Named NEAR accounts this many edits apart, or fewer, look alike (when both are at least `LOOKALIKE_MIN_LENGTH`). */
 const LOOKALIKE_MAX_EDITS = 2;
+/** Measured on the whole account id, its `.near` or `.testnet` ending included: `a.near` is 6 characters. */
 const LOOKALIKE_MIN_LENGTH = 6;
 /** How many characters of an address's start and end a person compares by eye. */
 const EDGE = 4;
@@ -249,7 +257,7 @@ function foldConfusables(text: string): string {
  * case (an EIP-55 checksum) is the same address. Base and implicit NEAR addresses look alike when their first 4 and
  * last 4 hex digits match, the part a person checks by eye; Solana addresses the same way, in exact case (base58
  * is case-sensitive). Named NEAR accounts look alike when they are equal after folding rn/m, l/1 and o/0, or at
- * most 2 edits apart with both at least 6 characters long.
+ * most 2 edits apart with both ids at least 6 characters long, the ending included (so `a.near` and `b.near` do).
  */
 export function lookalikeOf(payee: PayeeRef, known: PayeeRef): string | null {
   if (samePayee(payee, known)) return null;
@@ -281,8 +289,28 @@ function edgesMatch(a: string, b: string): boolean {
 }
 
 function unknownLine(signals: PayeeSignals, name: PayeeSignalName): string {
-  const why = signals.why_unknown?.[name];
-  return why === undefined || why.trim() === "" ? "" : ` (${why.trim()})`;
+  const why: unknown = signals.why_unknown?.[name];
+  return typeof why !== "string" || why.trim() === "" ? "" : ` (${why.trim()})`;
+}
+
+/**
+ * A list of the vault's payees that this module can read. Signals built by hand (a browser page, say) may hold
+ * anything here; a value that is not such a list reads as unknown, never as an empty history.
+ */
+function isKnownPayeeList(value: unknown): value is readonly KnownPayee[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (k: unknown) =>
+        typeof k === "object" &&
+        k !== null &&
+        typeof (k as KnownPayee).payee === "object" &&
+        (k as KnownPayee).payee !== null &&
+        typeof (k as KnownPayee).payee.chain === "string" &&
+        typeof (k as KnownPayee).payee.address === "string" &&
+        Array.isArray((k as KnownPayee).mandates),
+    )
+  );
 }
 
 function mandateList(known: KnownPayee): string {
@@ -340,17 +368,19 @@ export function assessPayee(signals: PayeeSignals, opts: AssessPayeeOptions = {}
   }
 
   const knownPayees = opts.knownPayees !== undefined ? opts.knownPayees : signals.known_payees;
-  if (knownPayees === "unknown") {
+  if (knownPayees === null) {
+    // Lookalikes are the check against a phished payee, and a first payment cannot be ruled out: a warning.
+    add(
+      "history_not_checked",
+      "warn",
+      "No vault given: lookalikes of its payees and past payments were not checked, so this may be a first payment.",
+    );
+  } else if (!isKnownPayeeList(knownPayees)) {
+    // "unknown", or a value no reader gives (undefined, a malformed list): not an empty history.
     add(
       "history_unknown",
       "warn",
       `Could not read this vault's mandates and spends, so past payments and lookalikes were not checked${unknownLine(signals, "known_payees")}.`,
-    );
-  } else if (knownPayees === null) {
-    add(
-      "history_not_checked",
-      "info",
-      "No vault given: past payments and lookalikes were not checked.",
     );
   } else {
     const others = knownPayees.filter((k) => !samePayee(k.payee, payee));
@@ -386,7 +416,7 @@ export function assessPayee(signals: PayeeSignals, opts: AssessPayeeOptions = {}
       add(
         "first_payment",
         "warn",
-        `This vault has never paid ${shown}. Set approval_above to 0 on its mandate, so an approver signs each payment until you trust this payee.`,
+        `This vault has not paid ${shown} before. Set approval_above to 0 on its mandate, so an approver signs each payment until you trust this payee.`,
       );
     }
   }
@@ -402,7 +432,7 @@ export function assessPayee(signals: PayeeSignals, opts: AssessPayeeOptions = {}
         add(
           "not_found",
           "warn",
-          `Implicit account ${payee.address} is not on ${chainName} yet: it has never been funded. A transfer creates it, so check every character with the payee.`,
+          `Implicit account ${payee.address} is not on ${chainName} yet: it has not been funded. A transfer creates it, so check every character with the payee.`,
         );
       } else {
         add(
@@ -442,14 +472,15 @@ export function assessPayee(signals: PayeeSignals, opts: AssessPayeeOptions = {}
       );
     }
 
-    const block = signals.past_block === null ? "" : ` (block ${signals.past_block})`;
+    const block = typeof signals.past_block === "number" ? ` (block ${signals.past_block})` : "";
+    // Off NEAR the age signal is the nonce, which does not show an age: the text says so.
     if (signals.new_7d === true) {
       add(
         "new_7d",
         "warn",
         payee.chain === "near"
           ? `The account did not exist about 7 days ago${block}: it is new.`
-          : `${shown} has sent no transaction on ${chainName} (nonce 0): it may be new or unused.`,
+          : `${shown} has sent no transaction on ${chainName} (nonce 0): it may be new or unused. A nonce does not show its age.`,
       );
     } else if (signals.new_7d === false) {
       add(
@@ -457,7 +488,7 @@ export function assessPayee(signals: PayeeSignals, opts: AssessPayeeOptions = {}
         "info",
         payee.chain === "near"
           ? `The account existed about 7 days ago${block}.`
-          : `It has sent transactions on ${chainName} (nonce above 0).`,
+          : `Its nonce on ${chainName} is above 0 (it has sent a transaction, or it is a deployed contract). This does not show its age.`,
       );
     } else {
       add(

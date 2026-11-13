@@ -1,11 +1,10 @@
 name: Report a payee
 description: Propose a payee for the seed blocklist that `probarion payee check` reads, with public evidence.
-labels: ["payee-report"]
 body:
   - type: markdown
     attributes:
       value: |
-        The blocklist is a seed list in `packages/core/src/payee-blocklist.json`, not a reputation service. Today it holds two testnet names from Probarion's own demo texts, and neither has a report of wrongdoing.
+        The blocklist is a seed list in `packages/core/src/payee-blocklist.json`, not a reputation service. Today it holds two testnet names that Probarion's own eval cases and test fixtures use as the attacker's account. Probarion does not hold them, and neither has a report of wrongdoing.
         An entry goes in by a pull request that edits that file, with the same evidence you give here. A report without public evidence is not added.
         **Do not paste a private key, a seed phrase or an API key.** Do not name a private person: report an address, not who you think holds it.
   - type: dropdown

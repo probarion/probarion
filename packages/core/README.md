@@ -33,9 +33,9 @@ server and a browser. The network and files live in [`@probarion/sdk`](https://g
   version) and returns a `VerifyReport`; `firstBrokenSeq(report)` names the first entry that fails.
 - **Payee check.** `assessPayee(signals, { knownPayees })` turns what was read about a payee into
   `allow`, `warn` or `block` with one reason per check: exists, seed blocklist, lookalike of a vault's
-  payee, contract, new or code changed in about 7 days, past payments. An unread signal is a warning.
-  `parsePayeeRef` reads `near:`, `base:` and `solana:` payees. It is in this repository, not in release
-  0.1.1 on npm.
+  payee, contract, new or code changed in about 7 days, past payments. An unread signal is a warning,
+  and so is a check with no vault's payees to compare with. `parsePayeeRef` reads `near:`, `base:` and
+  `solana:` payees. It is in this repository, not in release 0.1.1 on npm.
 
 ## Install
 

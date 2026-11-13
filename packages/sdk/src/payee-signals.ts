@@ -162,7 +162,8 @@ async function readAccount(
 
 /**
  * What code an account runs: its code identity (its own code hash, or the hash of the global contract it uses), or
- * the account of the global contract it names by account id (NEP-591), whose own code hash is all ones.
+ * the account of the global contract it names by account id (NEP-591), whose own code hash is all ones. The last is
+ * a name, not code: two equal names do not show that the code is the same.
  */
 function codeOf(account: ViewAccountResult): string {
   const byAccount = account.global_contract_account_id;
@@ -329,10 +330,25 @@ export async function readPayeeSignals(
         const then = past.value.account;
         signals.new_7d = then.kind === "missing";
         if (then.kind === "found") {
-          signals.code_changed_7d =
-            now.ok && now.value.kind === "found"
-              ? codeOf(then.account) !== codeOf(now.value.account)
-              : unknown("code_changed_7d", "the account's code now could not be read");
+          if (!(now.ok && now.value.kind === "found")) {
+            signals.code_changed_7d = unknown(
+              "code_changed_7d",
+              "the account's code now could not be read",
+            );
+          } else if (codeOf(then.account) !== codeOf(now.value.account)) {
+            signals.code_changed_7d = true;
+          } else {
+            // The same global contract named by account id at both blocks: that account can redeploy it, and its
+            // code is not read here, so "unchanged" would be a guess.
+            const byAccount = now.value.account.global_contract_account_id;
+            signals.code_changed_7d =
+              byAccount === undefined
+                ? false
+                : unknown(
+                    "code_changed_7d",
+                    `it uses the global contract of ${byAccount}, which that account can redeploy, so its code was not compared`,
+                  );
+          }
         }
       }
     }

@@ -226,6 +226,20 @@ describe("readPayeeSignals: NEAR", () => {
     expect(malformed.why_unknown.contract).toContain("malformed global_contract_account_id");
   });
 
+  it("does not call the code unchanged when both blocks name the same global contract account", async () => {
+    const byAccount = account(NO_CODE, { global_contract_account_id: "a.globals.testnet" });
+    const { fetch } = scripted(nearChain({ now: byAccount, weekAgo: () => byAccount }));
+    const signals = await readPayeeSignals({ network: "testnet", payee: VENDOR }, opts(fetch));
+    expect(signals.contract).toBe(true);
+    expect(signals.code_changed_7d).toBe("unknown");
+    expect(signals.why_unknown.code_changed_7d).toBe(
+      "it uses the global contract of a.globals.testnet, which that account can redeploy, so its code was not compared",
+    );
+    const ids = assessPayee(signals).reasons.map((r) => `${r.level}:${r.id}`);
+    expect(ids).toContain("warn:code_change_unknown");
+    expect(ids).not.toContain("info:code_unchanged_7d");
+  });
+
   it("reads a missing account in both answer forms, and leaves age and code out", async () => {
     const legacy = {
       result: {

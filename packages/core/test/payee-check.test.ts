@@ -126,7 +126,7 @@ describe("not_found", () => {
       );
       expect(a.verdict, address).toBe("warn");
       expect(a.reasons[0]?.id).toBe("not_found");
-      expect(a.reasons[0]?.text).toContain("has never been funded");
+      expect(a.reasons[0]?.text).toContain("it has not been funded");
     }
   });
 
@@ -157,7 +157,7 @@ describe("blocklisted", () => {
     expect(a.reasons[0]).toEqual({
       id: "blocklisted",
       level: "block",
-      text: "near:attacker-eval.testnet is on Probarion's seed blocklist: named in Probarion's own demo texts; no report of wrongdoing.",
+      text: "near:attacker-eval.testnet is on Probarion's seed blocklist: the attacker's account in Probarion's own eval cases; Probarion does not hold it; no report of wrongdoing.",
       evidence: "https://github.com/probarion/probarion/blob/main/eval/cases.json",
     });
   });
@@ -179,11 +179,14 @@ describe("blocklisted", () => {
     expect(assessPayee(signals(), { blocklist: own }).verdict).toBe("block");
   });
 
-  it("seeds only names from Probarion's own demo texts, never a third party's account", () => {
+  it("seeds only the attacker's accounts from Probarion's own eval cases and fixtures, not a third party's", () => {
     expect(blocklistFile.about).toContain("A seed list, not a reputation service");
+    expect(blocklistFile.about).toContain("Probarion does not hold them");
     expect(PAYEE_BLOCKLIST.length).toBe(blocklistFile.entries.length);
     for (const e of PAYEE_BLOCKLIST) {
-      expect(e.reason).toBe("named in Probarion's own demo texts; no report of wrongdoing");
+      expect(e.reason).toMatch(
+        /^the attacker's account in .*Probarion.*; Probarion does not hold it; no report of wrongdoing$/,
+      );
       expect(e.evidence).toMatch(/^https:\/\/github\.com\/probarion\/probarion\/blob\/main\//);
       expect(e.added).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(["mainnet", "testnet"]).toContain(e.network);
@@ -247,6 +250,14 @@ describe("lookalike", () => {
     const a = assessPayee(signals({ payee: { chain: "near", address: "vendro.testnet" } }));
     expect(a.verdict).toBe("block");
     expect(a.reasons[0]?.id).toBe("lookalike");
+  });
+
+  it("measures the 6 characters on the whole account id, its ending included: a.near and b.near look alike", () => {
+    const a: PayeeRef = { chain: "near", address: "a.near" };
+    expect(lookalikeOf(a, { chain: "near", address: "b.near" })).toBe("one edit apart");
+    expect(
+      lookalikeOf({ chain: "near", address: "shop1.near" }, { ...a, address: "shop2.near" }),
+    ).toBe("one edit apart");
   });
 
   it("blocks a name equal to a known payee after the confusables l/1, o/0 and rn/m", () => {
@@ -322,6 +333,12 @@ describe("new_7d and code_changed_7d", () => {
     expect(a.reasons.find((r) => r.id === "new_7d")?.text).toContain("(nonce 0)");
   });
 
+  it("says that a Base nonce above 0 does not show an age, and that a contract has one too", () => {
+    expect(assessPayee(baseSignals()).reasons.find((r) => r.id === "older_than_7d")?.text).toBe(
+      "Its nonce on Base is above 0 (it has sent a transaction, or it is a deployed contract). This does not show its age.",
+    );
+  });
+
   it("warns when the code changed in about the last 7 days", () => {
     const a = assessPayee(signals({ contract: true, code_changed_7d: true }));
     expect(a.reasons.find((r) => r.id === "code_changed_7d")?.level).toBe("warn");
@@ -345,7 +362,7 @@ describe("first_payment and paid_before", () => {
     expect(a.reasons[0]).toEqual({
       id: "first_payment",
       level: "warn",
-      text: "This vault has never paid near:vendor.testnet. Set approval_above to 0 on its mandate, so an approver signs each payment until you trust this payee.",
+      text: "This vault has not paid near:vendor.testnet before. Set approval_above to 0 on its mandate, so an approver signs each payment until you trust this payee.",
     });
   });
 
@@ -359,10 +376,10 @@ describe("first_payment and paid_before", () => {
 
   it("takes the known payees from the options over the signals", () => {
     expect(assessPayee(signals(), { knownPayees: [] }).verdict).toBe("warn");
-    expect(ids(signals(), { knownPayees: null })).toContain("info:history_not_checked");
+    expect(ids(signals(), { knownPayees: null })).toContain("warn:history_not_checked");
   });
 
-  it("warns when the vault's history is unknown, and says so when no vault was given", () => {
+  it("warns when the vault's history is unknown, and when no vault was given", () => {
     const a = assessPayee(
       signals({ known_payees: "unknown", why_unknown: { known_payees: "list_spends: HTTP 503" } }),
     );
@@ -370,8 +387,14 @@ describe("first_payment and paid_before", () => {
     expect(a.reasons[0]?.text).toBe(
       "Could not read this vault's mandates and spends, so past payments and lookalikes were not checked (list_spends: HTTP 503).",
     );
-    expect(ids(signals({ known_payees: null }))).toContain("info:history_not_checked");
-    expect(assessPayee(signals({ known_payees: null })).verdict).toBe("allow");
+    // Without a vault the lookalike and first-payment checks do not run: an old plain account still warns.
+    const none = assessPayee(signals({ known_payees: null }));
+    expect(none.verdict).toBe("warn");
+    expect(none.reasons[0]).toEqual({
+      id: "history_not_checked",
+      level: "warn",
+      text: "No vault given: lookalikes of its payees and past payments were not checked, so this may be a first payment.",
+    });
   });
 });
 
@@ -388,6 +411,27 @@ describe("never fails open", () => {
   ];
   it.each(unknowns)("an unreadable %s is at least warn", (_name, over) => {
     expect(assessPayee(signals(over)).verdict).not.toBe("allow");
+  });
+
+  it("warns, and does not throw, on signals built by hand with a missing or malformed history", () => {
+    const bad = [
+      undefined,
+      "nope",
+      {},
+      [{ payee: VENDOR, paid: 2 }],
+      [{ payee: null, paid: 2, mandates: [1] }],
+    ] as unknown as PayeeSignals["known_payees"][];
+    for (const known_payees of bad) {
+      const a = assessPayee(signals({ known_payees }));
+      expect(a.verdict, JSON.stringify(known_payees)).toBe("warn");
+      expect(a.reasons[0]?.id).toBe("history_unknown");
+    }
+    const noBlock = assessPayee(
+      signals({ past_block: undefined, why_unknown: undefined } as unknown as PayeeSignals),
+    );
+    expect(noBlock.reasons.find((r) => r.id === "older_than_7d")?.text).toBe(
+      "The account existed about 7 days ago.",
+    );
   });
 
   it("warns for Base reads that are unknown (Base testnet has no RPC) and for Solana, which is not read", () => {

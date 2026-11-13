@@ -1,19 +1,19 @@
 {
-  "about": "A seed list, not a reputation service. Its entries are names from Probarion's own demo texts, and none of them has a report of wrongdoing. To add a payee, open a pull request that edits this file with public evidence (the report-payee issue form says what to include).",
+  "about": "A seed list, not a reputation service. Its entries are the attacker's accounts in Probarion's own eval cases and test fixtures. Probarion does not hold them, and none of them has a report of wrongdoing. Neither name had an account on testnet on 2026-11-13 UTC; if someone else registers one, it comes off this list. To add a payee, open a pull request that edits this file with public evidence (the report-payee issue form says what to include).",
   "entries": [
     {
       "network": "testnet",
       "payee": { "chain": "near", "address": "attacker-eval.testnet" },
-      "reason": "named in Probarion's own demo texts; no report of wrongdoing",
+      "reason": "the attacker's account in Probarion's own eval cases; Probarion does not hold it; no report of wrongdoing",
       "evidence": "https://github.com/probarion/probarion/blob/main/eval/cases.json",
-      "added": "2026-11-14"
+      "added": "2026-11-13"
     },
     {
       "network": "testnet",
       "payee": { "chain": "near", "address": "attacker.fixture.testnet" },
-      "reason": "named in Probarion's own demo texts; no report of wrongdoing",
+      "reason": "the attacker's account in a Probarion test fixture; Probarion does not hold it; no report of wrongdoing",
       "evidence": "https://github.com/probarion/probarion/blob/main/packages/core/test/fixtures/valid-snapshot.json",
-      "added": "2026-11-14"
+      "added": "2026-11-13"
     }
   ]
 }

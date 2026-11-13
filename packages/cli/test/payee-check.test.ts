@@ -90,7 +90,7 @@ describe("probarion payee check", () => {
     expect(out).toMatchInlineSnapshot(`
       "BLOCK: near:vend0r.testnet on testnet
         block lookalike           near:vend0r.testnet looks like near:vendor.testnet, the payee of mandate 1 (the same after reading rn as m, l as 1 and o as 0). Check every character with the payee through another channel before you sign.
-        warn  first_payment       This vault has never paid near:vend0r.testnet. Set approval_above to 0 on its mandate, so an approver signs each payment until you trust this payee.
+        warn  first_payment       This vault has not paid near:vend0r.testnet before. Set approval_above to 0 on its mandate, so an approver signs each payment until you trust this payee.
         info  not_blocklisted     Not on Probarion's seed blocklist for testnet (2 entries; a seed list, not a reputation service).
         info  found               The account exists on NEAR testnet.
         info  no_contract         No contract code on NEAR testnet: a plain account.
@@ -112,7 +112,7 @@ describe("probarion payee check", () => {
     const { code, out } = await run(["near:fresh.testnet", "--vault", VAULT]);
     expect(code).toBe(2);
     expect(out).toContain(
-      "  warn  first_payment       This vault has never paid near:fresh.testnet.",
+      "  warn  first_payment       This vault has not paid near:fresh.testnet before.",
     );
     expect(out).toContain("  warn  new_7d              The account did not exist about 7 days ago");
   });
@@ -159,6 +159,55 @@ describe("probarion payee check", () => {
     expect(state.out).toContain(
       "  warn  exists_unknown      Could not read whether vendor.testnet exists",
     );
+  });
+
+  it("warns without a vault, since lookalikes and past payments were not checked (exit 2)", async () => {
+    const { code, out } = await run(["near:vendor.testnet"]);
+    expect(code).toBe(2);
+    expect(out.split("\n").slice(0, 2)).toEqual([
+      "WARN: near:vendor.testnet on testnet",
+      "  warn  history_not_checked No vault given: lookalikes of its payees and past payments were not checked, so this may be a first payment.",
+    ]);
+  });
+
+  it("takes the vault from PROBARION_VAULT_ID when --vault is not given", async () => {
+    const { io, state } = testIo(process.cwd(), { PROBARION_VAULT_ID: VAULT });
+    const code = await runCli(
+      [
+        "--network",
+        "testnet",
+        "--rpc",
+        RPC,
+        "payee",
+        "check",
+        "near:vendor.testnet",
+        "--archival-rpc",
+        ARCHIVAL,
+      ],
+      { ...io, payeeDeps: { fetch: chain(VENDOR_VAULT) } },
+    );
+    expect(code).toBe(0);
+    expect(state.out).toContain(
+      "  info  paid_before         This vault paid near:vendor.testnet 2 times before.",
+    );
+  });
+
+  it("exits 1 with an error, never a verdict, when the check itself cannot run", async () => {
+    const { io, state } = testIo(process.cwd());
+    const broken: CliIo = {
+      ...io,
+      now: () => {
+        throw new Error("no clock");
+      },
+      payeeDeps: { fetch: chain(VENDOR_VAULT) },
+    };
+    const code = await runCli(
+      ["--rpc", RPC, "payee", "check", "near:vendor.testnet", "--archival-rpc", ARCHIVAL],
+      broken,
+    );
+    expect(code).toBe(1);
+    expect(state.out).toBe("");
+    expect(state.err).toBe("error: payee check could not run: no clock\n");
   });
 
   it("exits 64 on a malformed payee, vault or URL list, before any read", async () => {
