@@ -290,7 +290,7 @@ token, with the reach of a stolen token above.
 
 | Failure | Behaviour |
 |---|---|
-| NEAR AI Cloud down | Decisions fall back to the rules alone, and the ledger records `decided_by: "rules-only"` (`packages/core/src/policy.ts:532`). `verify` check e applies only to decisions with model evidence |
+| NEAR AI Cloud down | Decisions fall back to the rules alone, and the ledger records `decided_by: "rules-only"` (`packages/core/src/policy.ts:534`). `verify` check e applies only to decisions with model evidence |
 | 1Click down | Only mainnet top-ups wait; payouts from existing Intents balances continue |
 | POA bridge slow or down (mainnet) | The spend stays "burned, awaiting bridge", and nobody pays it again ([RUNBOOK](RUNBOOK.md#burned-awaiting-bridge)). Testnet has no bridge |
 | Intents balance low | The rule `intents.balance_low` holds the spend (`packages/core/src/policy.ts:373-383`) |
