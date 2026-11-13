@@ -1,18 +1,20 @@
 import Link from "next/link";
 import { RouteLink } from "@/components/RouteLink";
 import { HERO, NUMBERS, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
+import { type HeroMainnetView, heroMainnet } from "@/lib/site/hero-mainnet";
 import { KeepLast, KeepRich, LIST, Outcome, type OutcomeTone } from "./bits";
 import h from "./hero.module.css";
 import { Away, Parts } from "./parts";
 import p from "./parts.module.css";
+import { ReadChainLink } from "./ReadChainLink";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
-/** A card's transaction: the page's evidence label, then the short hash in mono and its arrow. */
-function TxRow({ tx }: { tx: TxFact }) {
+/** A card's transaction: the page's evidence label for its network, then the short hash in mono and its arrow. */
+function TxRow({ tx, label = HERO.txLabel }: { tx: TxFact; label?: string }) {
   return (
     <div>
-      <dt>{HERO.txLabel}</dt>
+      <dt>{label}</dt>
       <dd>
         <Away className={`${s.link} ${s.cardHash}`} href={tx.url} tx={tx.label} />
       </dd>
@@ -78,8 +80,12 @@ function MainnetRecord() {
  * cards share those four rows of the pair's grid, so that their labels, amounts, rows and links line up.
  */
 
-function PaidCard() {
-  const c = HERO.paid;
+/**
+ * The mainnet payout an attested model proposed (HERO.s2), from the recorded payouts. Its link scrolls to #mainnet and,
+ * with JavaScript, reads that payout's chain there.
+ */
+function MainnetCard({ c }: { c: HeroMainnetView }) {
+  const R = HERO.s2.rows;
   return (
     <article className={`${s.card} ${s.metal} ${h.paid}`} aria-label={c.aria}>
       <div className={s.cardTop}>
@@ -89,25 +95,47 @@ function PaidCard() {
       <div className={s.cardBig}>{c.big}</div>
       <dl className={`${s.rows} ${h.cardRows}`}>
         <div>
-          <dt>Vault</dt>
+          <dt>{R.vault}</dt>
           <dd>{c.vault}</dd>
         </div>
         <div>
-          <dt>Payee</dt>
+          <dt>{R.payee}</dt>
           <dd>{c.payee}</dd>
         </div>
         <div>
-          <dt>Event</dt>
-          <dd>
-            <code>{c.event}</code>
-          </dd>
+          <dt>{R.arrived}</dt>
+          <dd>{c.arrived}</dd>
         </div>
-        <TxRow tx={c.tx} />
+        <div>
+          <dt>{R.model}</dt>
+          <dd>{c.model}</dd>
+        </div>
+        <TxRow tx={c.tx} label={R.tx} />
       </dl>
-      <Link className={`${s.link} ${s.cardLink} ${h.cardEnd}`} href={c.proof.href}>
-        {c.proof.label} <span aria-hidden="true">→</span>
-      </Link>
+      <ReadChainLink
+        payoutId={c.payoutId}
+        href={c.read.href}
+        className={`${s.link} ${s.cardLink} ${h.cardEnd}`}
+      >
+        {c.read.label} <span aria-hidden="true">→</span>
+      </ReadChainLink>
     </article>
+  );
+}
+
+/** Under the mainnet card: how the payout was decided and paid, then the online check of the model's TEE evidence. */
+function MainnetSteps({ c }: { c: HeroMainnetView }) {
+  return (
+    <div className={h.s2Steps}>
+      <ol className={h.steps} aria-label={c.stepsLabel} {...LIST}>
+        {c.steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+      <p className={h.tee}>
+        <Parts parts={c.tee} />
+      </p>
+    </div>
   );
 }
 
@@ -149,6 +177,7 @@ function RefusedCard() {
 }
 
 export function Hero() {
+  const s2 = heroMainnet();
   return (
     <section className={h.hero}>
       <div className={s.wrap}>
@@ -170,18 +199,22 @@ export function Hero() {
                 {HERO.verify} <span aria-hidden="true">→</span>
               </Link>
             </div>
+            <p className={h.demo}>
+              <Away href={HERO.demo.href} label={HERO.demo.label} />
+            </p>
             <MainnetRecord />
             <p className={s.fineprint}>
               <Parts parts={HERO.fineprint} />
             </p>
           </div>
-          {/* The caption is first in the source, so that a phone reads it above both cards; from 621px it sits under the paid card. */}
+          {/* The caption is first in the source and above both cards at every width; each card's steps sit under it. */}
           <div className={h.duel}>
             <p className={h.cap}>
               <span className={h.capLead}>{HERO.both.lead}</span>
               {HERO.both.rest}
             </p>
-            <PaidCard />
+            {s2 === null ? null : <MainnetCard c={s2} />}
+            {s2 === null ? null : <MainnetSteps c={s2} />}
             <RefusedCard />
             <ol className={h.steps} aria-label={HERO.canarySteps.label} {...LIST}>
               {HERO.canarySteps.items.map((step) => (

@@ -17,6 +17,7 @@ import {
   rawPieces,
   type Shown,
   sentenceText,
+  utcTime,
   verdictText,
   verdictTone,
   verdictWord,
@@ -30,17 +31,29 @@ const injectedIds = new Set(
 
 describe("answerFromRecorded", () => {
   it("is the recorded verdict and mandate of the scenario, marked as recorded", () => {
-    const a = answerFromRecorded(recorded, "hijack");
+    const a = answerFromRecorded(recorded, "inflated");
     expect(a.verdict).toEqual({ ok: false, code: "OverPerPayment", wouldHold: false });
+    // The hijack asks for 2 USDC: the contract allows it, to the mandate's own payee.
+    expect(answerFromRecorded(recorded, "hijack").verdict).toEqual({
+      ok: true,
+      code: null,
+      wouldHold: false,
+    });
     expect(a.mandate?.id).toBe(1);
     expect(a.recorded).toBe(true);
     expect(answerFromRecorded(recorded, "nomandate").mandate).toBeNull();
   });
 
   it("carries the request it answers", () => {
-    expect(answerFromRecorded(recorded, "hijack").request).toEqual({
+    expect(answerFromRecorded(recorded, "inflated").request).toEqual({
       mandateId: 1,
       units: 50_000_000n,
+      key: "agent",
+      scenario: "inflated",
+    });
+    expect(answerFromRecorded(recorded, "hijack").request).toEqual({
+      mandateId: 1,
+      units: 2_000_000n,
       key: "agent",
       scenario: "hijack",
     });
@@ -52,6 +65,9 @@ describe("answerFromRecorded", () => {
 describe("explain", () => {
   const normal = answerFromRecorded(recorded, "normal");
   const hijack = answerFromRecorded(recorded, "hijack");
+  const inflated = answerFromRecorded(recorded, "inflated");
+  // A hijacked prompt that asked for more than the limit: the tail says where the money would still go.
+  const overHijack: Answer = { ...inflated, request: { ...inflated.request, scenario: "hijack" } };
 
   it("names the amount of its own request and the mandate's payee when the contract would pay", () => {
     expect(explain(normal, false, copy, codes)).toBe(
@@ -59,8 +75,16 @@ describe("explain", () => {
     );
   });
 
-  it("adds, for a hijacked prompt, where the money would still go", () => {
-    const s = explain(hijack, true, copy, codes);
+  it("says, for a hijacked prompt the contract allows, that only the mandate's payee is paid and the attacker gets 0", () => {
+    expect(explain(hijack, true, copy, codes)).toBe(
+      "2 USDC would go only to probarion-payee.testnet, the mandate's payee. The attacker's address had no field to go in, so the attacker gets 0.",
+    );
+    // The same request without the hijack's invoice text is the normal invoice.
+    expect(explain(hijack, false, copy, codes)).toBe(explain(normal, false, copy, codes));
+  });
+
+  it("adds, for a hijacked prompt over the limit, where the money would still go", () => {
+    const s = explain(overHijack, true, copy, codes);
     expect(s).toContain(codes.OverPerPayment);
     expect(s).toContain("At 5 USDC or less it would still go to probarion-payee.testnet");
     expect(s).not.toContain("{");
@@ -68,12 +92,13 @@ describe("explain", () => {
 
   it("adds the tail only when the contract refused the hijack for being over the limit", () => {
     for (const code of ["MandateExpired", "Frozen", "NotAgent", "NoMandate", "MandateInactive"]) {
-      const a = { ...hijack, verdict: { ok: false, code, wouldHold: false } };
+      const a = { ...overHijack, verdict: { ok: false, code, wouldHold: false } };
       const s = explain(a, true, copy, codes);
       expect(s, code).toBe(codes[code]);
       expect(s, code).not.toContain("At 5 USDC");
     }
-    expect(explain(hijack, true, copy, codes)).toContain("At 5 USDC or less");
+    expect(explain(overHijack, true, copy, codes)).toContain("At 5 USDC or less");
+    expect(explain(inflated, false, copy, codes)).toBe(codes.OverPerPayment);
   });
 
   it("looks a code up as its own key, never as something every object has", () => {
@@ -99,14 +124,18 @@ describe("explain", () => {
     expect(s).toBe(
       "Inside the mandate. 2 USDC would be paid to the payee the owner signed, whatever the prompt said.",
     );
-    const refused = { ...hijack, mandate: undefined };
+    const refused = { ...overHijack, mandate: undefined };
     expect(explain(refused, true, copy, codes)).toBe(codes.OverPerPayment);
+    expect(explain({ ...hijack, mandate: undefined }, true, copy, codes)).toBe(
+      "2 USDC would go only to the payee the owner signed. The attacker's address had no field to go in, so the attacker gets 0.",
+    );
   });
 });
 
 describe("what the answer panel shows, by kind of state", () => {
   const normal = answerFromRecorded(recorded, "normal");
-  const hijack = answerFromRecorded(recorded, "hijack");
+  const hijack = answerFromRecorded(recorded, "inflated");
+  const injected = answerFromRecorded(recorded, "hijack");
   const nomandate = answerFromRecorded(recorded, "nomandate");
   const held: Answer = { ...normal, verdict: { ok: true, code: null, wouldHold: true } };
   const live: Answer = { ...normal, recorded: false, rpcHost: "rpc.testnet.fastnear.com" };
@@ -115,29 +144,40 @@ describe("what the answer panel shows, by kind of state", () => {
   const loading = (a: Answer): Shown => ({ kind: "loading", previous: a });
   const sentence = (s: Shown) => sentenceText(s, copy, codes, injectedIds);
 
-  it("a live answer: the verdict word, its sentence, and where it came from", () => {
-    expect(verdictText(answer(live), copy)).toBe("Would pay");
+  it("a live answer: the verdict word, its sentence, and where it came from, in UTC", () => {
+    expect(verdictText(answer(live), copy)).toBe("Allow");
     expect(verdictTone(answer(live))).toBe("pay");
     expect(sentence(answer(live))).toBe(explain(live, false, copy, codes));
     expect(hintText(answer(live), copy, "v0.x", time)).toBe(
-      `Answer from v0.x at block ${live.blockHeight}, 12:00:00. Raw: ${JSON.stringify(live.raw)}`,
+      `Answer from v0.x at block ${live.blockHeight}, 12:00:00 UTC. Raw: ${JSON.stringify(live.raw)}`,
     );
   });
 
-  it("says held, with its own tone, when the contract would hold", () => {
-    expect(verdictText(answer(held), copy)).toBe("Held for a person");
+  it("says warn, with its own tone, when the contract would hold for an approver", () => {
+    expect(verdictText(answer(held), copy)).toBe("Warn: an approver decides");
     expect(verdictTone(answer(held))).toBe("hold");
     expect(verdictWord(held, copy)).toBe(copy.verdictHold);
   });
 
-  it("a refusal shows the contract's code word for word, in the refuse tone", () => {
-    expect(verdictText(answer(hijack), copy)).toBe("OverPerPayment");
+  it("a refusal is block, with the contract's code word for word, in the refuse tone", () => {
+    expect(verdictText(answer(hijack), copy)).toBe("Block: OverPerPayment");
     expect(verdictTone(answer(hijack))).toBe("refuse");
-    expect(verdictWord(nomandate, copy)).toBe("NoMandate");
+    expect(verdictWord(nomandate, copy)).toBe("Block: NoMandate");
   });
 
-  it("a hijacked request gets the tail, because its own request is the hijack scenario", () => {
-    expect(sentence(answer(hijack))).toContain("At 5 USDC or less");
+  it("never shows a bare allow for the hijacked prompt: its headline says the attacker gets 0", () => {
+    expect(verdictText(answer(injected), copy, injectedIds)).toBe("Allow. The attacker gets 0.");
+    expect(verdictWord(injected, copy, true)).toBe(copy.verdictInjected);
+    expect(sentence(answer(injected))).toContain("so the attacker gets 0");
+    // The normal invoice, the same request, is a plain allow.
+    expect(verdictText(answer(normal), copy, injectedIds)).toBe("Allow");
+    // A recorded fallback for the hijack says it too.
+    const s: Shown = { kind: "failed", fallback: injected, reason: "transport" };
+    expect(verdictText(s, copy, injectedIds)).toBe("Allow. The attacker gets 0.");
+  });
+
+  it("an inflated invoice is no hijack: its refusal has no tail", () => {
+    expect(sentence(answer(hijack))).toBe(codes.OverPerPayment);
     expect(sentence(answer(normal))).not.toContain("At 5 USDC");
   });
 
@@ -161,17 +201,17 @@ describe("what the answer panel shows, by kind of state", () => {
 
   it("a recorded fallback says so and keeps the recorded request", () => {
     const s: Shown = { kind: "failed", fallback: hijack, reason: "transport" };
-    expect(verdictText(s, copy)).toBe("OverPerPayment");
+    expect(verdictText(s, copy)).toBe("Block: OverPerPayment");
     expect(verdictTone(s)).toBe("refuse");
-    expect(sentence(s)).toBe(`${copy.failed} ${explain(hijack, true, copy, codes)}`);
+    expect(sentence(s)).toBe(`${copy.failed} ${explain(hijack, false, copy, codes)}`);
     expect(hintText(s, copy, "v0.x", time)).toContain("Recorded answer from ");
   });
 
   it("a host that answered with something unreadable says so, not that no host answered", () => {
     const s: Shown = { kind: "failed", fallback: hijack, reason: "answer" };
-    expect(sentence(s)).toBe(`${copy.failedAnswer} ${explain(hijack, true, copy, codes)}`);
+    expect(sentence(s)).toBe(`${copy.failedAnswer} ${explain(hijack, false, copy, codes)}`);
     expect(sentence(s)).not.toContain("No RPC host answered");
-    expect(verdictText(s, copy)).toBe("OverPerPayment");
+    expect(verdictText(s, copy)).toBe("Block: OverPerPayment");
     expect(hintText(s, copy, "v0.x", time)).toContain("Recorded answer from ");
     const bare: Shown = { kind: "failed", fallback: null, reason: "answer" };
     expect(sentence(bare)).toBe(copy.failedAnswerNoRecord);
@@ -210,7 +250,7 @@ describe("hintParts: the line under the verdict, with its raw answer apart", () 
   const normal = answerFromRecorded(recorded, "normal");
   const hijack = answerFromRecorded(recorded, "hijack");
   const live: Answer = { ...hijack, recorded: false, rpcHost: "rpc.testnet.fastnear.com" };
-  const time = () => "7:01:00 PM";
+  const time = () => "19:01:00";
   const states: Shown[] = [
     { kind: "answer", answer: live },
     { kind: "answer", answer: normal },
@@ -231,7 +271,7 @@ describe("hintParts: the line under the verdict, with its raw answer apart", () 
 
   it("gives a live answer's words, then its raw answer as the contract sent it", () => {
     expect(hintParts({ kind: "answer", answer: live }, copy, "v0.x", time)).toEqual({
-      lead: `Answer from v0.x at block ${live.blockHeight}, 7:01:00 PM. Raw: `,
+      lead: `Answer from v0.x at block ${live.blockHeight}, 19:01:00 UTC. Raw: `,
       raw: JSON.stringify(live.raw),
       tail: "",
     });
@@ -396,5 +436,13 @@ describe("amountLine", () => {
   it("quotes a text that is not an amount as it was typed, and says so", () => {
     expect(amountLine("1,5", copy)).toBe('amount: "1,5",  // not an amount');
     expect(amountLine('a"b', copy)).toBe('amount: "a\\"b",  // not an amount');
+  });
+});
+
+describe("utcTime", () => {
+  it("gives an ISO time in UTC, to the second, whatever the browser's zone", () => {
+    expect(utcTime("2026-11-13T19:00:20.123Z")).toBe("19:00:20");
+    expect(utcTime("2026-11-14T02:30:00+07:00")).toBe("19:30:00");
+    expect(utcTime("not a time")).toBe("not a time");
   });
 });

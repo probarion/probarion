@@ -19,6 +19,7 @@ import {
   verifyView,
 } from "@/lib/site/mainnet-payout-section";
 import { CHECK_ORDER, liveCopy, type Tone } from "@/lib/site/mainnet-payout-view";
+import { MainnetAsk } from "./MainnetAsk";
 import { MainnetPayoutClient } from "./MainnetPayoutClient";
 import m from "./mainnet.module.css";
 import { Rich } from "./Rich";
@@ -229,6 +230,11 @@ function Verify({ view }: { view: VerifyView }) {
         <span className={m.verifyCounts}>{view.counts}</span>
         {view.attested === null ? null : <span className={m.verifyAttested}>{view.attested}</span>}
       </div>
+      {view.later === null ? null : (
+        <p className={m.verifyLater}>
+          <Parts parts={view.later} />
+        </p>
+      )}
       <p className={m.verifyFoot}>{view.foot}</p>
       <ul className={m.verifyLinks} {...LIST}>
         <li>
@@ -370,10 +376,10 @@ function FoldedPayout({ run }: { run: RecordedRun }) {
 }
 
 /**
- * The payouts to Base on NEAR mainnet (#mainnet), between the ink band, which says the agent cannot name a payee, and
- * the console screenshots. The newest payout shows first and open; each earlier one follows, folded. Each count and
- * amount comes from the data, so another payout adds a fold and changes no copy. The page is complete with no
- * JavaScript and no network; each stone's button re-reads its payout from the visitor's browser.
+ * The payouts to Base on NEAR mainnet (#mainnet), right under the live check (#try). The newest payout shows first and
+ * open, then the visitor's own question to the mainnet vault, then each earlier payout, folded. Each count and amount
+ * comes from the data, so another payout adds a fold and changes no copy. The page is complete with no JavaScript and
+ * no network; each stone's button re-reads its payout from the visitor's browser, and the question asks the vault.
  */
 export function MainnetPayout() {
   if (RECORDED_RUNS.length === 0) return null;
@@ -396,6 +402,7 @@ export function MainnetPayout() {
     >
       <div className={m.payouts}>
         <PayoutBlock run={newest} many={earlier.length > 0} />
+        <MainnetAsk />
         {earlier.length > 0 ? (
           <>
             <div className={m.folds}>

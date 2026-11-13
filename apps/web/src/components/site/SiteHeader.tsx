@@ -12,8 +12,11 @@ import s from "./site.module.css";
 // The console and the proof page are pills in the bar. A page that is still planned (src/lib/routes.ts) is left out of
 // every menu until it is built, and then it shows up here by itself. On /login the console is left out: it would lead
 // to /console and straight back, and the bar's pill would outweigh the page's own sign-in button.
+// A SITE_NAV item that is a landing section (the mainnet payouts) shows once, among the section links, in the page's order.
 const PILLS = [CONSOLE_ROUTE, PROOF_ROUTE];
-const otherPages = SITE_NAV.filter(({ route }) => !PILLS.includes(route));
+const otherPages = SITE_NAV.filter(
+  ({ route }) => !PILLS.includes(route) && !HEADER_ANCHORS.some((a) => a.href === route),
+);
 
 function SectionLinks() {
   return HEADER_ANCHORS.map(({ href, label }) => (

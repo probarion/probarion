@@ -20,6 +20,7 @@ import {
   type ValuesFrom,
   type VerdictView,
 } from "@/lib/site/mainnet-payout-view";
+import { onMainnetRead } from "@/lib/site/mainnet-read";
 import m from "./mainnet.module.css";
 
 /**
@@ -179,6 +180,14 @@ export function MainnetPayoutClient({
       }
     }
   };
+
+  // The hero's "Read the chain now" asks this payout's stone to run, as its own button does. The listener calls the
+  // latest `run`, so it is attached once.
+  const runRef = useRef(run);
+  useEffect(() => {
+    runRef.current = run;
+  });
+  useEffect(() => onMainnetRead(payout.id, () => void runRef.current()), [payout.id]);
 
   // The coin stands at the last tick of the unbroken run of passes from NEAR: at rest, the recorded run's.
   let coin = 0;

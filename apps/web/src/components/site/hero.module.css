@@ -1,8 +1,8 @@
 /*
- * The hero (Hero.tsx): the headline, the lede and its buttons, then the mainnet record and the audience line; beside
- * them the two cards, a caption under each. The cards' own look (.card, .metal, .obsidian, .rows, .state) stays in
- * site.module.css; this module lays the section out and lines the two cards up. Every colour is a token from
- * app/globals.css, and nothing moves on scroll.
+ * The hero (Hero.tsx): the headline, the lede and its buttons, the demo video's link, then the mainnet record and the
+ * audience line; beside them the caption and the two cards, the steps of each under it. The cards' own look (.card,
+ * .metal, .obsidian, .rows, .state) stays in site.module.css; this module lays the section out and lines the two cards
+ * up. Every colour is a token from app/globals.css, and nothing moves on scroll.
  */
 
 /*
@@ -84,6 +84,11 @@
     flex-basis: 100%;
   }
 }
+/* The demo video, a light link on its own line under the buttons. */
+.demo {
+  margin-top: 14px;
+  font-size: 15px;
+}
 .evAfter {
   margin-top: 10px;
   font-size: 14px;
@@ -109,9 +114,9 @@
 }
 
 /*
- * The pair. The shared caption is first in the source, so that a phone reads it above both cards. From 621px the two
+ * The pair. The shared caption is first in the source and sits above both cards at every width. From 621px the two
  * cards sit side by side on one grid: each card's four parts (label and state, amount, rows, link) take the same four
- * rows (subgrid), so the labels, the amounts, the rows and the links line up, and each caption sits under its own card.
+ * rows (subgrid), so the labels, the amounts, the rows and the links line up, and each card's steps sit under it.
  */
 .duel {
   display: grid;
@@ -156,6 +161,16 @@
   font-weight: 500;
   color: var(--color-gold-ink);
 }
+/* The mainnet card's steps, then the online check of the model's TEE evidence and its limit, on the steps' measure. */
+.tee {
+  max-width: var(--container-measure);
+  margin-top: 14px;
+  padding-left: 1.5em;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-mute);
+  text-wrap: pretty;
+}
 
 /*
  * Two classes in each selector that overrides a card rule of site.module.css (.card's flex column, .cardLink's
@@ -164,8 +179,8 @@
 @media (min-width: 621px) {
   .duel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: repeat(4, auto) auto;
-    grid-template-areas: "paid canary" "paid canary" "paid canary" "paid canary" "both steps";
+    grid-template-rows: auto repeat(4, auto) auto;
+    grid-template-areas: "both both" "paid canary" "paid canary" "paid canary" "paid canary" "s2steps steps";
     column-gap: 14px;
     row-gap: 0;
   }
@@ -186,6 +201,11 @@
   }
   .duel > .cap {
     grid-area: both;
+    margin-bottom: 14px;
+    padding-inline: 4px;
+  }
+  .duel > .s2Steps {
+    grid-area: s2steps;
     margin-top: 18px;
     padding-inline: 4px;
   }
@@ -221,7 +241,8 @@
   .duel {
     gap: 12px;
   }
-  .duel > .steps {
+  .duel > .steps,
+  .duel > .s2Steps {
     margin-top: 6px;
   }
 }

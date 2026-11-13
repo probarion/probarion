@@ -17,7 +17,7 @@ export const LIVE_RPC_URLS: readonly string[] = [
 /** A well-formed ed25519 key that is no key of the vault. The recorded-file test checks it is not on the vault. */
 export const OTHER_PK = "ed25519:22222222222222222222222222222222222222222222";
 
-export type ScenarioId = "normal" | "hijack" | "nomandate" | "otherkey";
+export type ScenarioId = "normal" | "hijack" | "inflated" | "nomandate" | "otherkey";
 export type KeyChoice = "agent" | "other";
 
 export interface ScenarioInput {
@@ -27,9 +27,14 @@ export interface ScenarioInput {
   key: KeyChoice;
 }
 
+/**
+ * The hijacked prompt sends what the normal invoice sends: the agent can pass on the amount and nothing else, so its
+ * request is the same, and only its invoice text differs. The inflated invoice is the one above the limit.
+ */
 export const SCENARIO_INPUTS: readonly ScenarioInput[] = [
   { id: "normal", mandateId: 1, amount: "2", key: "agent" },
-  { id: "hijack", mandateId: 1, amount: "50", key: "agent" },
+  { id: "hijack", mandateId: 1, amount: "2", key: "agent" },
+  { id: "inflated", mandateId: 1, amount: "50", key: "agent" },
   { id: "nomandate", mandateId: 999, amount: "1", key: "agent" },
   { id: "otherkey", mandateId: 1, amount: "1", key: "other" },
 ];
@@ -343,7 +348,11 @@ export function fill(template: string, vars: Readonly<Record<string, string | nu
   );
 }
 
-/** The scenario whose controls these are, or null. Amounts compare as base units, so "50.0" is "50". */
+/**
+ * The scenario whose controls these are, or null. Amounts compare as base units, so "50.0" is "50". The first match
+ * wins: fields typed by hand that send the hijack's request are the normal invoice, since no field holds the hijack's
+ * invoice text. Its button picks the hijack itself.
+ */
 export function matchScenario(c: {
   mandateId: number;
   amount: string;

@@ -1180,6 +1180,20 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing leads with mainnet. The hero's first card is S2 of 2026-11-13, filled from the recorded payouts
+  alone: 0.25 USDC burned on NEAR and 0.2476 USDC arrived at the owner's own Base address, on a proposal by the
+  attested `z-ai/glm-5.3-flash`. Its TEE line links the online run of 17:52 UTC (image not pinned), and its "Read
+  the chain now" link scrolls to `#mainnet` and starts that payout's check. `#mainnet` moves up under the live
+  check, adds a dated line on that later run under S2's verify, and adds "Ask the mainnet contract": 1 or 2 USDC,
+  one `check_spend` view of mandate 1 a click, sent from the browser (allow, or block `OverPerPayment`, as the
+  chain answered at 19:35 UTC on 2026-11-13), and "Could not read the chain, try again." on any failure, with no
+  verdict. The live check names each verdict allow, warn or block, with times in UTC. Its hijacked prompt asks 2
+  USDC for `attacker.testnet` and says the attacker gets 0, and "An inflated invoice" asks 50 USDC (answers
+  re-recorded at 19:08 UTC, block 277550985). The nav puts Mainnet second and calls the status board What works;
+  `/status` is System status in the footer, next to Run a pilot. The testnet beta strip links the mainnet vault,
+  the hero links the 2-min demo, and the live attested model row reads "Checked online on testnet and mainnet,
+  image not pinned". Check: `pnpm exec vitest run test/site-facts.test.ts test/mainnet-ask.test.ts` in `apps/web`.
+
 - The landing's "What works today, and what does not" is a status board. A summary computed from
   the rows comes first: how many are Verified, and what each row marked In part or Not tried yet
   misses. A key then defines the two marks every row can carry: Proof (Verified, In part, Not tried

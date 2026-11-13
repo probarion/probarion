@@ -921,6 +921,17 @@
   line-height: 1.5;
   color: var(--color-mute);
 }
+/* A later run of the same ledger with --online: dated, set apart by a gold rule, its output linked. */
+.verifyLater {
+  max-width: var(--container-measure);
+  margin-top: 12px;
+  padding-left: 12px;
+  border-left: 2px solid var(--color-gold-mid);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-ink);
+  text-wrap: pretty;
+}
 .verifyFoot {
   max-width: var(--container-measure);
   margin-top: 14px;
@@ -957,6 +968,208 @@
 /* Each earlier transaction: its line, then its hash on the same line while it fits. */
 .earlierText {
   margin-right: 4px;
+}
+
+/*
+ * The visitor's own question to the mainnet vault (MainnetAsk.tsx), after the newest payout: what it asks beside two
+ * amounts and the contract's answer, on the stone's ink ground. The no-clone verify block, once it has lines, spans both
+ * columns under them.
+ */
+.ask {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 20px clamp(28px, 4vw, 56px);
+  align-items: start;
+  padding-top: clamp(28px, 3vw, 40px);
+  border-top: 1px solid var(--color-line);
+}
+.askHead {
+  min-width: 0;
+}
+.askLede {
+  max-width: var(--container-measure);
+  margin-top: 12px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--color-mute);
+  text-wrap: pretty;
+}
+.ask .askLede code {
+  color: var(--color-ink);
+}
+.askNote {
+  max-width: var(--container-measure);
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-mute);
+}
+.askPanel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.askPanel[hidden] {
+  display: none;
+}
+.askAmounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.askAmount,
+.askRetry {
+  appearance: none;
+  min-height: 44px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.askAmount {
+  border: 1px solid var(--color-ink);
+  color: var(--color-ink);
+  background: var(--color-paper);
+}
+.askAmount[aria-pressed="true"] {
+  color: var(--color-paper);
+  background: var(--color-ink);
+}
+.askAmount[aria-disabled="true"] {
+  cursor: progress;
+}
+/* The answer, on the stone's ink ground: a verdict only for an answer read from the chain. */
+.askAnswer {
+  min-width: 0;
+  min-height: 9.5em;
+  padding: clamp(18px, 2.4vw, 28px);
+  border: 1px solid var(--color-band-line);
+  border-radius: 20px;
+  background: var(--color-band);
+  color: var(--color-band-fg);
+}
+.askVerdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3em;
+  font-weight: 300;
+  font-size: clamp(26px, 2.6vw, 34px);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.askAnswer[data-tone="refuse"] .askVerdict {
+  color: var(--color-band-bad);
+}
+.askAnswer[data-tone="hold"] .askVerdict {
+  color: var(--color-gold-light);
+}
+.askAnswer[data-tone="none"] .askVerdict {
+  color: var(--color-band-mute);
+}
+.askMark {
+  flex: none;
+  width: 0.38em;
+  height: 0.38em;
+  margin-top: 0.42em;
+}
+.askWhy {
+  max-width: var(--container-measure);
+  margin-top: 10px;
+  font-size: 16px;
+  line-height: 1.55;
+}
+.askSource {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-band-mute);
+  overflow-wrap: anywhere;
+}
+.ask .askSource code {
+  color: var(--color-band-fg);
+}
+.askRetry {
+  margin-top: 14px;
+  border: 1px solid var(--color-band-fg);
+  color: var(--color-band-fg);
+  background: transparent;
+}
+.askFacts {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-mute);
+}
+.askFacts div {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 8px;
+}
+.askFacts dt {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.askFactValue {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* The no-clone verify: one command a line, each with its copy button. */
+.askVerify {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.askVerifyTitle {
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.3;
+}
+.askLines {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.askLine {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--color-band);
+  color: var(--color-band-fg);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.ask .askLine code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.askCopy {
+  appearance: none;
+  flex: none;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--color-band-fg);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-band-fg);
+  background: transparent;
+  cursor: pointer;
+}
+.askCopy[hidden] {
+  display: none;
 }
 
 /* --- Widths: the site's breakpoints --- */
@@ -1000,6 +1213,9 @@
   }
 }
 @media (max-width: 960px) {
+  .ask {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .lower {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1169,6 +1385,8 @@
 /* --- Forced colours: the fills go, so pills, panels and the stone get an edge; the metal keeps its own colours. --- */
 @media (forced-colors: active) {
   .stone,
+  .askAnswer,
+  .askLine,
   .verify,
   .pill,
   .problem,

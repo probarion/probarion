@@ -49,6 +49,15 @@ import {
 import { linkProblem } from "./docs-helpers";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
+/** INV-2001 on the testnet demo vault, the transaction the invoice story and the Payables row link. */
+const DEMO_PAID_TX: TxFact = (() => {
+  const [link] = STORY.invoices[0].evidence.tx as readonly { label: string; url: string }[];
+  return {
+    hash: link?.url.split("/").pop() ?? "?",
+    label: link?.label ?? "?",
+    url: link?.url ?? "?",
+  };
+})();
 const ROOT = join(WEB, "..", "..");
 const text = (...p: string[]) => readFileSync(join(...p), "utf8");
 /** Whitespace folded, so a sentence a Markdown file wraps reads as one line. */
@@ -786,7 +795,7 @@ describe("the status board's evidence", () => {
       ...Object.values(MAINNET_TX),
       ...Object.values(BOARD_TX),
       ...Object.values(BASE_TX),
-      HERO.paid.tx,
+      DEMO_PAID_TX,
       HERO.refused.tx,
     ];
     const onBoard = evidence.filter((e) => facts.some((f) => f.url === e.href));
@@ -938,7 +947,7 @@ describe("the status board's evidence", () => {
       ...Object.values(MAINNET_TX),
       ...Object.values(BOARD_TX),
       ...Object.values(BASE_TX),
-      HERO.paid.tx,
+      DEMO_PAID_TX,
       HERO.refused.tx,
     ];
     let named = 0;

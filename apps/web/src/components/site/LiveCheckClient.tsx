@@ -39,6 +39,7 @@ import {
   type Shown,
   sentenceText,
   type Tone,
+  utcTime,
   verdictText,
   verdictTone,
 } from "@/lib/site/live-check-view";
@@ -57,17 +58,37 @@ export interface LiveCheckProps {
   explorer: ReactNode;
 }
 
-interface Controls {
+interface Fields {
   mandateId: number;
   amount: string;
   key: KeyChoice;
 }
 
+interface Controls extends Fields {
+  /**
+   * The scenario these fields are: its button sets it, and an edit matches the fields again. The hijack sends the normal
+   * invoice's request, so only its button picks it.
+   */
+  scenario: ScenarioId | null;
+}
+
 const DEFAULT: ScenarioId = "normal";
 const asControls = (id: ScenarioId): Controls => {
   const s = SCENARIO_INPUTS.find((x) => x.id === id) ?? SCENARIO_INPUTS[0];
-  return { mandateId: s?.mandateId ?? 1, amount: s?.amount ?? "2", key: s?.key ?? "agent" };
+  return {
+    mandateId: s?.mandateId ?? 1,
+    amount: s?.amount ?? "2",
+    key: s?.key ?? "agent",
+    scenario: s?.id ?? null,
+  };
 };
+/** Fields changed by hand, with the scenario they now match, if any. */
+const edited = ({ mandateId, amount, key }: Fields): Controls => ({
+  mandateId,
+  amount,
+  key,
+  scenario: matchScenario({ mandateId, amount, key }),
+});
 
 const TONE_CLASS: Readonly<Record<Tone, string | undefined>> = {
   pay: lc.pay,
@@ -181,7 +202,7 @@ export function LiveCheckClient({
         if (checked.status === "rejected") throw checked.reason;
         const check = checked.value;
         const answer: Answer = {
-          request: { mandateId: c.mandateId, units, key: c.key, scenario: matchScenario(c) },
+          request: { mandateId: c.mandateId, units, key: c.key, scenario: c.scenario },
           verdict: parseVerdict(check.value),
           raw: check.value,
           // A mandate that could not be read does not take the verdict down with it: it is shown as unread.
@@ -196,8 +217,7 @@ export function LiveCheckClient({
         );
       } catch (e) {
         if (ctl.signal.aborted || (e instanceof DOMException && e.name === "AbortError")) return;
-        const id = matchScenario(c);
-        const fallback = id === null ? null : answerFromRecorded(recorded, id);
+        const fallback = c.scenario === null ? null : answerFromRecorded(recorded, c.scenario);
         setShown((cur) =>
           nextAnswer(cur, seq.current, {
             seq: mine,
@@ -229,7 +249,7 @@ export function LiveCheckClient({
     else void ask(next);
   };
 
-  const active = matchScenario(controls);
+  const active = controls.scenario;
   const injected = scenarios.find((x) => x.id === active)?.injected;
   const answer = lastAnswer(shown);
   // The panel describes the answer with the request it answers; the controls only drive the request preview.
@@ -239,7 +259,7 @@ export function LiveCheckClient({
   const injectedIds = new Set(scenarios.filter((x) => x.injected !== undefined).map((x) => x.id));
   const badAmount = shown.kind === "failed" && shown.reason === "badAmount";
   const tone = verdictTone(shown);
-  const source = hintParts(shown, copy, LIVE_VAULT, (iso) => new Date(iso).toLocaleTimeString());
+  const source = hintParts(shown, copy, LIVE_VAULT, utcTime);
   const method = labelled(copy.method);
   const rpc = answer?.rpcHost ? labelled(fill(copy.rpc, { host: answer.rpcHost })) : null;
 
@@ -268,7 +288,9 @@ export function LiveCheckClient({
             <span className={lc.control}>
               <select
                 value={controls.mandateId}
-                onChange={(e) => change({ ...controls, mandateId: Number(e.target.value) }, false)}
+                onChange={(e) =>
+                  change(edited({ ...controls, mandateId: Number(e.target.value) }), false)
+                }
               >
                 {mandates.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -290,7 +312,7 @@ export function LiveCheckClient({
                 step="0.5"
                 aria-label={copy.amountSlider}
                 value={parseUsdc(controls.amount) === null ? 0 : Number(controls.amount)}
-                onChange={(e) => change({ ...controls, amount: e.target.value }, true)}
+                onChange={(e) => change(edited({ ...controls, amount: e.target.value }), true)}
               />
               <input
                 id="live-amount"
@@ -298,7 +320,7 @@ export function LiveCheckClient({
                 aria-invalid={badAmount}
                 aria-describedby={badAmount ? "live-why" : undefined}
                 value={controls.amount}
-                onChange={(e) => change({ ...controls, amount: e.target.value }, true)}
+                onChange={(e) => change(edited({ ...controls, amount: e.target.value }), true)}
               />
               <span>{copy.unit}</span>
             </div>
@@ -321,7 +343,9 @@ export function LiveCheckClient({
             <span className={lc.control}>
               <select
                 value={controls.key}
-                onChange={(e) => change({ ...controls, key: e.target.value as KeyChoice }, false)}
+                onChange={(e) =>
+                  change(edited({ ...controls, key: e.target.value as KeyChoice }), false)
+                }
               >
                 <option value="agent">{copy.keyAgent}</option>
                 <option value="other">{copy.keyOther}</option>
@@ -359,7 +383,7 @@ export function LiveCheckClient({
         >
           <p className={`${lc.verdict} ${TONE_CLASS[tone]}`}>
             <VerdictMark tone={tone} />
-            <span className={lc.word}>{verdictText(shown, copy)}</span>
+            <span className={lc.word}>{verdictText(shown, copy, injectedIds)}</span>
           </p>
           <p id="live-why" className={lc.why}>
             <Keep text={sentenceText(shown, copy, codes, injectedIds)} />

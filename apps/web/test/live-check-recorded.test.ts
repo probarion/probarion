@@ -30,9 +30,11 @@ describe("the recorded live-check answers", () => {
   });
 
   it("give each scenario the answer the spec expects", () => {
+    // The hijack asks for an amount inside the mandate: the contract allows it, and the payee stays the mandate's.
     const want = {
       normal: { ok: true, code: null },
-      hijack: { ok: false, code: "OverPerPayment" },
+      hijack: { ok: true, code: null },
+      inflated: { ok: false, code: "OverPerPayment" },
       nomandate: { ok: false, code: "NoMandate" },
       otherkey: { ok: false, code: "NotAgent" },
     } as const;
