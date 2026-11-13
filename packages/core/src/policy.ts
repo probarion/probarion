@@ -101,8 +101,17 @@ function sameAddress(chain: "base" | "solana", a: string, b: string): boolean {
   return chain === "base" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
-/** Returns why the hint contradicts the mandate payee, or null. A payee name never contradicts. */
-export function payeeHintContradiction(hint: PayeeHint | null, payee: Payee): string | null {
+/**
+ * Returns why the hint contradicts the mandate payee, or null. A payee name never contradicts.
+ * `ownAssetNamesNoPayee`: the hint is the trusted model proposal's, so for a Base or Solana payee
+ * the mandate's own asset account in near_account names no other payee (see below). Leave it off
+ * for the invoice's hint.
+ */
+export function payeeHintContradiction(
+  hint: PayeeHint | null,
+  payee: Payee,
+  opts: { ownAssetNamesNoPayee?: boolean } = {},
+): string | null {
   if (hint === null) return null;
   const near = hint.near_account?.trim() ?? "";
   const address = hint.address?.trim() ?? "";
@@ -114,6 +123,18 @@ export function payeeHintContradiction(hint: PayeeHint | null, payee: Payee): st
   // also a valid Base or Solana address (an ETH-implicit 0x and 40 hex account, for example) names
   // that address too, so given as an address it still contradicts. A chain alone, with no account
   // or address, still contradicts.
+  //
+  // For a Base or Solana payee, the model is shown the mandate's payee, its asset account
+  // (payee.asset, the token's NEAR Intents id) included, and may copy that account into
+  // near_account next to the right address: two attested models did on NEAR mainnet on 2026-11-13
+  // (ledger entries 0 and 1 of v0.probarion.near). So in the trusted proposal's hint
+  // (ownAssetNamesNoPayee) that account names no other payee: it is the token the mandate pays in.
+  // The untrimmed value must equal payee.asset in every character; any other near_account, the
+  // asset in another case or with spaces included, still contradicts, and when only spaces differ
+  // the detail quotes the value as given. In the invoice's hint, read from text anyone can write,
+  // any near_account still contradicts, the asset included: the console reads only the first NEAR
+  // account in an invoice's text, so the asset written first could hide another payee. The chain
+  // and address checks are unchanged, so the asset given as the address contradicts too.
   if (payee.type === "near") {
     if (near !== "" && near !== payee.account_id) {
       return `invoice names NEAR account ${near}; the mandate pays ${payee.account_id}`;
@@ -128,8 +149,13 @@ export function payeeHintContradiction(hint: PayeeHint | null, payee: Payee): st
     }
     return null;
   }
-  if (near !== "")
-    return `invoice names NEAR account ${near}; the mandate pays ${payee.chain}:${payee.address}`;
+  const ownAsset = opts.ownAssetNamesNoPayee === true;
+  if (near !== "" && !(ownAsset && hint.near_account === payee.asset)) {
+    const given =
+      ownAsset && near === payee.asset ? ` (given as ${JSON.stringify(hint.near_account)})` : "";
+    const pays = `${payee.chain}:${payee.address}`;
+    return `invoice names NEAR account ${near}${given}; the mandate pays ${pays}`;
+  }
   if (chain !== undefined && chain !== payee.chain) {
     return `invoice names chain ${chain}; the mandate pays on ${payee.chain}`;
   }
@@ -213,7 +239,7 @@ function bindingRules(
 
   const reason =
     payeeHintContradiction(input.invoice.payee_hint, m.payee) ??
-    payeeHintContradiction(trusted?.payee_hint ?? null, m.payee);
+    payeeHintContradiction(trusted?.payee_hint ?? null, m.payee, { ownAssetNamesNoPayee: true });
   push(
     "mandate.payee_mismatch",
     reason === null ? "pass" : "refuse",

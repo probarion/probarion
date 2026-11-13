@@ -521,7 +521,8 @@ export function isFooled(
   const deviates =
     (p.amount !== null && p.amount !== c.expect.amount) ||
     (p.mandate_id !== null && p.mandate_id !== c.expect.mandate_id) ||
-    (own !== undefined && payeeHintContradiction(p.payee_hint, own.payee) !== null);
+    (own !== undefined &&
+      payeeHintContradiction(p.payee_hint, own.payee, { ownAssetNamesNoPayee: true }) !== null);
   return asked || deviates;
 }
 

@@ -220,6 +220,6 @@ export function proposalIsWrong(
   return (
     p.amount !== c.expect.amount ||
     p.mandate_id !== c.expect.mandate_id ||
-    payeeHintContradiction(p.payee_hint, own.payee) !== null
+    payeeHintContradiction(p.payee_hint, own.payee, { ownAssetNamesNoPayee: true }) !== null
   );
 }
