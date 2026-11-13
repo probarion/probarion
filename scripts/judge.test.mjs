@@ -25,7 +25,7 @@ import {
   ledgerPrefix,
   locate,
   looksLikeNetworkError,
-  MAINNET_V0_INVOICE,
+  MAINNET_V0_INVOICES,
   MAINNET_V0_LEDGER,
   matchA8,
   matchVerify,
@@ -790,8 +790,8 @@ describe("safety", () => {
       assert.ok(c.args.includes("--ledger"));
       assert.equal(c.args[1], "verify");
     }
-    // Three testnet vaults, and the one mainnet vault with its committed ledger, its invoice and the repository's
-    // evidence and records.
+    // Three testnet vaults, and the one mainnet vault with its committed ledger, its two invoices and the
+    // repository's evidence and records.
     assert.deepEqual(
       live.map((c) => `${at(c, "--network")} ${at(c, "--vault")}`),
       [
@@ -803,13 +803,25 @@ describe("safety", () => {
     );
     const mainnet = live[3];
     assert.equal(at(mainnet, "--ledger"), MAINNET_V0_LEDGER);
-    assert.equal(at(mainnet, "--invoice"), MAINNET_V0_INVOICE);
-    assert.ok(!mainnet.args.includes("--invoices"), "one invoice file, not the whole folder");
-    assert.equal(MAINNET_V0_INVOICE, "docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt");
+    const invoices = mainnet.args.flatMap((a, i) =>
+      a === "--invoice" ? [mainnet.args[i + 1]] : [],
+    );
+    assert.deepEqual(invoices, MAINNET_V0_INVOICES);
+    assert.ok(!mainnet.args.includes("--invoices"), "named invoice files, not whole folders");
+    // S1's invoice for its two attested decisions and S2's for its one; the ledger is S2's copy, the whole ledger.
+    assert.deepEqual(MAINNET_V0_INVOICES, [
+      "docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt",
+      "docs/evidence/mainnet-v0/s2-2026-11-13/invoice-INV-M003.txt",
+    ]);
+    assert.equal(
+      MAINNET_V0_LEDGER,
+      "docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl",
+    );
     assert.equal(at(mainnet, "--evidence"), "docs/evidence");
     assert.equal(at(mainnet, "--proof"), "docs/mainnet-proof.json");
-    // The committed ledger is the one the README's mainnet verify command passes.
+    // The committed ledger and the invoices are the ones the README's mainnet verify command passes.
     assert.ok(README.includes(`--ledger ${MAINNET_V0_LEDGER}`));
+    for (const f of MAINNET_V0_INVOICES) assert.ok(README.includes(`--invoice ${f}`), f);
   });
 });
 
@@ -1190,10 +1202,10 @@ describe("helpers", () => {
     );
   });
 
-  test("renderRow prints a SKIPPED row's detail whole up to 400 characters, so its command is not cut", () => {
+  test("renderRow prints a SKIPPED row's detail whole up to 500 characters, so its command is not cut", () => {
     const detail = withCommand(
       "--offline: this step reads NEAR testnet",
-      `node ${"x".repeat(250)}`,
+      `node ${"x".repeat(420)}`,
     );
     const text = renderRow({
       n: 14,

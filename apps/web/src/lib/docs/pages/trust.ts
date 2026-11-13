@@ -153,6 +153,7 @@ export const TRUST: readonly DocPage[] = [
       "docs/evidence/demo-vault/README.md",
       "docs/evidence/demo-vault/verify-online-2026-11-12.txt",
       "docs/evidence/mainnet-v0/s1-2026-11-13/README.md",
+      "docs/evidence/mainnet-v0/s2-2026-11-13/README.md",
     ],
     reviewed: "2026-11-13",
     phase: 1,

@@ -618,6 +618,22 @@ export const SNAPSHOTS = [
       why: { h: "1 burned spend has a matched burn pair" },
     },
   },
+  {
+    id: "verify-mainnet-v0-snapshot-1113-s2",
+    file: "docs/evidence/mainnet-v0/s2-2026-11-13/snapshot-2026-11-13.json",
+    committed: "docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt",
+    title:
+      "verify --offline: mainnet v0 snapshot after the attested Base payout (S2) passes a to h, i skips (no factory)",
+    ref: {
+      file: "docs/evidence/mainnet-v0/s2-2026-11-13/README.md",
+      quote: "Checks a to h pass, and check i skips, because no factory made this vault",
+    },
+    expect: {
+      exit: 0,
+      checks: { ...ALL_PASS, i: "skip" },
+      why: { h: "2 burned spends have a matched burn pair" },
+    },
+  },
 ];
 
 /** The vaults read live, read-only, each with its verdict. */
@@ -637,32 +653,39 @@ export const LIVE_VAULTS = {
       "run without the ledger: c fails on an empty ledger, and d passing shows no spend was ever created",
   },
   demo: { exit: 0, checks: ALL_PASS },
-  // The mainnet vault, with its committed ledger: spend 1's decision is pre-ledger, so d exempts it on the
-  // documented hash, and spend 2's is entry 2 of the ledger; with the invoice text, A8 runs on the two attested
-  // decisions; h finds spend 2's burn pair; and i skips because no factory made the vault.
+  // The mainnet vault, with its committed ledger after S2: spend 1's decision is pre-ledger, so d exempts it on the
+  // documented hash, and spends 2 and 3 have theirs at entries 2 and 4 of the ledger; with the two invoice texts, A8
+  // runs on the three attested decisions; h finds the burn pairs of spends 2 and 3; and i skips because no factory
+  // made the vault.
   mainnetV0: {
     exit: 0,
     checks: { ...ALL_PASS, i: "skip" },
     why: {
-      c: "3 anchors match the ledger",
+      c: "4 anchors match the ledger",
       d: "1 spend has a decision_hash listed as pre-ledger",
-      e: "A8 (request binding and mandate match) passes for 2 of 2 attested decisions (seq 0, 1)",
-      h: "1 burned spend has a matched burn pair",
+      e: "A8 (request binding and mandate match) passes for 3 of 3 attested decisions (seq 0, 1, 4)",
+      h: "2 burned spends have a matched burn pair",
     },
   },
 };
 
-/** The mainnet vault's signed ledger, committed after S1 (2026-11-13), and the invoice its attested decisions read. */
-export const MAINNET_V0_LEDGER = "docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl";
-export const MAINNET_V0_INVOICE = "docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt";
+/**
+ * The mainnet vault's signed ledger, committed after S2 (2026-11-13; S1's copy of 4 entries no longer matches the
+ * chain's anchors), and the invoices its attested decisions read: INV-M002 (S1, entries 0 and 1) and INV-M003
+ * (S2, entry 4).
+ */
+export const MAINNET_V0_LEDGER = "docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl";
+export const MAINNET_V0_INVOICES = [
+  "docs/evidence/mainnet-v0/s1-2026-11-13/invoice-INV-M002.txt",
+  "docs/evidence/mainnet-v0/s2-2026-11-13/invoice-INV-M003.txt",
+];
 
 /**
- * The repository's evidence for the mainnet vault: the invoice text for A8 (one file, so no other `.txt` of the
- * folder is read and warned about), the pre-ledger decisions and the recorded transactions.
+ * The repository's evidence for the mainnet vault: the invoice texts for A8 (named files, so no other `.txt` of the
+ * folders is read and warned about), the pre-ledger decisions and the recorded transactions.
  */
 const MAINNET_V0_EVIDENCE = [
-  "--invoice",
-  MAINNET_V0_INVOICE,
+  ...MAINNET_V0_INVOICES.flatMap((f) => ["--invoice", f]),
   "--evidence",
   "docs/evidence",
   "--proof",
@@ -1563,7 +1586,8 @@ const TABLE_HEAD = `${columns("#", "RESULT", "TIME", "CLAIM  [the README line it
 
 /**
  * One row of the table: number, result, time and claim with its README line; the detail on the next line, cut
- * at 200 characters, or at 400 for a SKIPPED row so that its command prints whole.
+ * at 200 characters, or at 500 for a SKIPPED row so that its command prints whole (the mainnet verify, with its two
+ * invoices, needs about 400).
  */
 export function renderRow(row) {
   const head = columns(
@@ -1572,7 +1596,7 @@ export function renderRow(row) {
     `${row.ms} ms`,
     `${row.claim}  [${refText(row.readme_ref)}]`,
   );
-  return `${head}\n${" ".repeat(7)}${oneLine(row.detail, row.result === "SKIPPED" ? 400 : 200)}\n`;
+  return `${head}\n${" ".repeat(7)}${oneLine(row.detail, row.result === "SKIPPED" ? 500 : 200)}\n`;
 }
 
 export function renderMarkdown(report) {

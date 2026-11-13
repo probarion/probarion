@@ -96,7 +96,7 @@ This adds `cargo near build` for every contract and the near-workspaces sandbox 
 | testnet | `intents-stub.probarion.testnet` | intents-stub (Intents has no testnet) |
 | testnet | `v0.probarion.testnet` | vault v0, locked (no full-access key) |
 | mainnet | `probarion.near` | owner of vault v0, which it created |
-| mainnet | `v0.probarion.near` | vault v0 (2026-11-11), standalone (no factory), locked (no full-access key); keys: agent `spend`, and since 2026-11-13 ledger `anchor`. Its signed ledger is `docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl` |
+| mainnet | `v0.probarion.near` | vault v0 (2026-11-11), standalone (no factory), locked (no full-access key); keys: agent `spend`, and since 2026-11-13 ledger `anchor`. Its signed ledger, 6 entries after S2 of 2026-11-13, is `docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl`; S1's copy of 4 entries stays in `docs/evidence/mainnet-v0/s1-2026-11-13/` |
 
 Deployments and transaction hashes: `contracts/deployments/`. Code hashes: `contracts/code-hashes.json`.
 

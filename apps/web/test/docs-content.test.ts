@@ -257,18 +257,45 @@ describe("copy rules", () => {
     expect(found).toEqual([]);
   });
 
-  it("label the mainnet Base payout wherever a page or an agent rule tells it", () => {
-    // The S1 gate of docs/runbooks/mainnet-v0.md: the one Base payout of 2026-11-13 was a test to the owner's own
-    // Base address, decided by code rules alone, and each paragraph that tells it says both.
+  it("call no mainnet payment unmade on a model's proposal once contracts/deployments/mainnet.json records S2", () => {
+    const record = JSON.parse(
+      readFileSync(join(ROOT, "contracts", "deployments", "mainnet.json"), "utf8"),
+    ) as { proof?: { attested_base_payout_tx?: string | null } };
+    // Before S2 ran on 2026-11-13 these words were true: one Base payout, decided by code rules alone.
+    if (!record.proof?.attested_base_payout_tx) return;
+    const stale =
+      /one Base payout|One Base payout|One such payout has run|one payout has run|one has run on mainnet|No mainnet payment has been made on a model's proposal|no payment on mainnet has been made on a model's proposal/i;
+    const found: string[] = [];
+    for (const p of PAGES) {
+      const fields = [p.title, p.nav, p.description, p.lede, readMdx(p.path)];
+      for (const field of fields) {
+        const m = field ? stale.exec(field) : null;
+        if (m) found.push(`${fileOf(p.path)}: ${m[0]}`);
+      }
+    }
+    for (const rule of AGENT_RULES) {
+      const m = stale.exec(rule);
+      if (m) found.push(`apps/web/src/lib/docs/agents.ts: ${m[0]}`);
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("label the mainnet Base payouts wherever a page or an agent rule tells them", () => {
+    // The S2 gate of docs/runbooks/mainnet-v0.md: the two Base payouts of 2026-11-13 were tests to the owner's own
+    // Base address, 1.00 USDC decided by code rules alone and 0.25 USDC by an attested model and the code rules.
+    // Each paragraph that tells them says whose address it was, how the 1.00 USDC one was decided and, once it
+    // tells the 0.25 USDC payout too, that an attested model decided that one.
     const tells =
-      /one Base payout|Base payout of|One such payout has run|One Base payout has run|paid 1\.00 USDC|burned 1\.00 USDC|payout through NEAR Intents has run/;
+      /one Base payout|two Base payouts|Two Base payouts|Base payouts? of|such payouts? ha(?:s|ve) run|(?:paid|burned) (?:1\.00|0\.25) USDC|payouts? through NEAR Intents ha(?:s|ve) run|two have run/;
     const labels = [/owner's own/, /rules alone|rules-only/];
+    const tellsS2 = /0\.25 USDC|two Base payouts|Two Base payouts|Two such payouts|two have run/;
     const found: string[] = [];
     const check = (where: string, text: string | undefined) => {
       for (const para of (text ?? "").split("\n")) {
-        if (tells.test(para) && !labels.every((re) => re.test(para))) {
-          found.push(`${where}: ${para.slice(0, 100)}`);
-        }
+        if (!tells.test(para)) continue;
+        const missing = labels.filter((re) => !re.test(para));
+        if (tellsS2.test(para) && !/attested model/.test(para)) missing.push(/attested model/);
+        if (missing.length) found.push(`${where}: ${para.slice(0, 100)}`);
       }
     };
     for (const p of PAGES) {

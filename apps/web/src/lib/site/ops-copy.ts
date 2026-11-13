@@ -166,7 +166,7 @@ export const TERMS_PAGE = {
     { title: "Unaudited beta.", body: "No third party has audited this code. Use small amounts." },
     {
       title: "Testnet today.",
-      body: "The vault runs on NEAR testnet with test tokens. One small mainnet vault, made by no factory, has run since 2026-11-11, and on 2026-11-13 it paid a test of 1.00 USDC to the owner's own Base address, decided by code rules alone.",
+      body: "The vault runs on NEAR testnet with test tokens. One small mainnet vault, made by no factory, has run since 2026-11-11, and on 2026-11-13 it paid two tests to the owner's own Base address: 1.00 USDC decided by code rules alone, then 0.25 USDC decided by an attested model and the code rules.",
     },
     {
       title: "At your own risk.",
