@@ -13,14 +13,16 @@
 
 **[For judges](JUDGES.md)** · **[Check it in 60 seconds](#check-it-in-60-seconds)** · **[By track](docs/TRACKS.md)** · **[Live site](https://probarion.xyz)** · **[Demo video](https://x.com/probarionhq/status/2120882499689836651)** · **[Docs](https://probarion.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[Mainnet runs](#near-mainnet-2026-11-13-s2-an-attested-base-payout)** · **[NEAR tech](#near-technology-used-and-how)** · **[Privacy](#privacy--private-ai)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
 
+<sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) with function-call keys · NEAR Intents payouts through the POA bridge · NEAR AI Cloud private models with TEE attestation · TypeScript SDK, CLI and MCP server 0.1.1 on npm</sub>
+
 </div>
 
 ## In 30 seconds
 
 Giving an AI agent a wallet means trusting a prompt with money. With Probarion an agent can pay invoices but
-cannot choose who gets paid. An owner puts USDC in a vault, a NEAR contract, and signs mandates: who gets paid,
-how much per payment and in total, how many times, until when, and above what amount a person must approve. The
-agent gets one function-call key that can call `spend` and nothing else, and `spend` has no address field, so the
+cannot name the payee: it can pay only the payees its owner signed into mandates. An owner puts USDC in a vault, a
+NEAR contract, and signs mandates: who gets paid, how much per payment and in total, how many times, until when,
+and above what amount a person must approve. The agent gets one function-call key that can call `spend` and nothing else, and `spend` has no address field, so the
 payee always comes from the mandate. Before anything is sent, deterministic code decides, with a private model on
 NEAR AI Cloud as an attested adviser, and then the contract checks again. Every decision, refusals included, is
 signed into a hash-chained Ed25519 ledger whose root is anchored on the vault once it has a ledger key, and anyone
@@ -37,29 +39,60 @@ payment.
 
 ## The worst case today
 
-Read live at 19:01 UTC on 2026-11-13, at mainnet block 224404547, with the view calls `list_mandates`,
-`get_config` and `view_access_key_list` ([the read](docs/evidence/mainnet-v0/worst-case-2026-11-13.json)): if the
-agent's key leaked now, the most it could move is **1 USDC, to `probarion-duong.near`**, mandate 1's payee and the
-owner's own wallet, **plus at most about 0.2462 NEAR of the vault's NEAR, burned as gas** (the key's allowance).
-Mandate 1 has 1 USDC and 1 payment left, until 2027-01-31; mandates 2 and 3 are used up, and there is no
-mandate 4. The vault holds 2 USDC on NEAR and 0.249823 Base USDC inside NEAR Intents, which no active mandate can
-pay out. It has no full-access key and is not frozen. Its ledger key can call `anchor` only and moves no USDC.
-[JUDGES.md](JUDGES.md#the-worst-case-today) gives a command that reads it again, with no clone.
+Read live on 2026-11-13 at 19:01 UTC, at mainnet block 224404547, with view calls only, and the Intents balance at
+19:08 UTC ([the read](docs/evidence/mainnet-v0/worst-case-2026-11-13.json) names each call): if the agent's key
+leaked now, the most it could move is **1 USDC, to `probarion-duong.near`**, mandate 1's payee and the owner's own
+wallet, **plus at most about 0.2462 NEAR of the vault's NEAR, burned as gas** (the key's allowance). Mandate 1 has
+1 USDC and 1 payment left, until 2027-01-31; mandates 2 and 3 are used up, and there is no mandate 4. The vault
+holds 2 USDC on NEAR and 0.249823 Base USDC inside NEAR Intents, which no active mandate can pay out. It has no
+full-access key and is not frozen.
+
+In general, a leaked agent key can move at most what the mandates naming that key have left, each to its own
+mandate's payee, plus gas up to the key's allowance. If the ledger key leaked, a forger could sign ledger entries,
+anchor their root and burn up to that key's 0.2492 NEAR allowance as gas; it moves no USDC. The owner's account
+`probarion.near` is outside this bound: it can sign a new mandate to any payee, so its keys guard all of the vault's
+USDC. [JUDGES.md](JUDGES.md#the-worst-case-today) gives a command that reads it again, with no clone.
 
 ## Re-check every decision
 
-Every decision Probarion's code makes, refusals included, is signed and hash-chained, a vault with a ledger key
-anchors the ledger's root on chain, and the verifier re-checks it all without Probarion's servers. On the mainnet
-vault, `verify` with the committed ledger of 6 entries passes checks a to h; check i skips, because no factory made
-this vault. On 2026-11-13 at 17:52 UTC a read-only `verify --online` also passed O1 (the Intel TDX quote) and O2
-(the GPU evidence, verified by NVIDIA NRAS) on the vault's 3 attested decisions
+Every decision Probarion's code makes, refusals included, is signed into a hash-chained ledger, and a vault with a
+ledger key anchors the ledger's root on chain. Without Probarion's servers, the verifier checks the signatures, the
+hash links and the anchors, a decision for every spend on chain, the attestations, the vault's keys and code, and
+the burn memos: checks a to i. It does not run the policy again, so a host that holds the ledger key could sign an
+allowing decision ([SECURITY.md](SECURITY.md#what-is-not-proven-yet)).
+
+For the mainnet vault, with Node.js 24 and no clone, this fetches its ledger of 6 entries, the recorded
+transactions and spend 1's pre-ledger decision from probarion.xyz and runs release 0.1.1 from npm:
+
+```bash
+mkdir -p probarion-mainnet && cd probarion-mainnet
+B=https://probarion.xyz/samples/mainnet
+curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \
+  -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
+npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
+  --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
+```
+
+In Windows PowerShell 5.1:
+
+```powershell
+mkdir -Force probarion-mainnet | Out-Null
+cd probarion-mainnet
+$B = "https://probarion.xyz/samples/mainnet"
+curl.exe -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
+npx.cmd -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
+```
+
+On 2026-11-13, with Node.js 24.12.0 in Git Bash and in PowerShell 5.1, both printed checks a to h PASS, i SKIP (no
+factory made this vault) and `RESULT: PASS`, with read-only RPC requests and nothing signed
+([transcripts](docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt); the site did not serve the files yet, so
+those runs fetched the same bytes from a local copy and from GitHub). Release 0.1.1 has no `--invoice`, so A8 does
+not run; in a clone, [one command](#near-mainnet-2026-11-11) adds it. Without `--online`, check e does not verify
+the TEE quotes. At 17:52 UTC on 2026-11-13 a read-only `verify --online` in a clone passed O1 (the Intel TDX quote)
+and O2 (the GPU evidence, verified by NVIDIA NRAS) on the vault's 3 attested decisions
 ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)). The TEE measurement is not
-pinned, so this does not show which model image ran. Spend 1 of 2026-11-11 came before the ledger: its decision is
-a file in this repository, and no attestation covers it.
-
-<!-- F02 verify block -->
-
-In a clone, the same check is [one command](#near-mainnet-2026-11-11).
+pinned, so this does not show which model image ran. Spend 1 of 2026-11-11 came before the ledger, and no
+attestation covers its decision.
 
 ## Install
 
@@ -72,7 +105,6 @@ In a clone, the same check is [one command](#near-mainnet-2026-11-11).
 | The browser extension | [Chrome Web Store](https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn) |
 
 Release 0.1.1 is ESM only and declares Node.js 24 or newer.
-<!-- F02 node line -->
 
 ## Check it in 60 seconds
 
@@ -81,7 +113,8 @@ No wallet, no key and no clone:
 1. Open [probarion.xyz/#mainnet](https://probarion.xyz/#mainnet) and press **Read the chain now** on spend 3. Your
    browser reads the payout's 4 transactions and 3 views from public RPC and runs seven checks, from "the owner
    signed the payee" to "0.2476 USDC arrived on Base".
-2. Verify the mainnet vault's ledger with the commands [above](#re-check-every-decision).
+2. With Node.js 24, verify the mainnet vault's ledger with the [block above](#re-check-every-decision). It prints
+   `RESULT: PASS`.
 3. Run `npx -y @probarion/mcp@0.1.1 demo`. It lists the five MCP tools, none of which takes an address, shows an
    injected recipient refused by the schema and asks the testnet demo vault's contract about three amounts. That
    vault's one mandate made the last of its 5 payments on 2026-11-12, so the contract now answers `UsesExhausted`
@@ -101,10 +134,10 @@ Probarion does, the evidence and what is not built.
 
 | Track | The brief asks | Probarion |
 | --- | --- | --- |
-| [06 AI Security & Defense](docs/TRACKS.md#06-ai-security--defense) | allow, warn or block before an agent pays | The contract's `check_spend` answers `ok` (allow), `would_hold` (warn: the vault holds the spend for a human approver) or a code such as `OverPerPayment` (block: the SDK sends no transaction, and `spend` would fail with `PROBARION:<Code>`). The agent's function-call key is scoped to one contract and one method |
-| [08 Real-World Money](docs/TRACKS.md#08-real-world-money) | a payee who never buys NEAR for gas | The payee signs nothing and needs no NEAR: the owner's deposit pays a NEAR payee's USDC storage ([`mandates.rs`](contracts/vault/src/mandates.rs#L42-L55)), and a Base payee receives USDC on Base |
+| [06 AI Security & Defense](docs/TRACKS.md#06-ai-security--defense) | a counterparty check: allow, warn or block about the receiver before an agent pays | The receiver is not scored (**not built**): the owner fixes the payee when signing the mandate, and `spend` has no address field. Before each spend, the contract's `check_spend` answers `ok` (allow), `would_hold` (warn: the vault holds the spend for a human approver) or a code such as `OverPerPayment` (block: the SDK sends no transaction, and `spend` would fail with `PROBARION:<Code>`). The agent's function-call key is scoped to one contract and one method |
+| [08 Real-World Money](docs/TRACKS.md#08-real-world-money) | a payee who never buys NEAR for gas | The payee signs nothing and needs no NEAR to be paid: the owner's deposit pays a NEAR payee's USDC storage ([`mandates.rs`](contracts/vault/src/mandates.rs#L42-L55)), and a Base payee receives USDC on Base |
 | [07 Agent Economy](docs/TRACKS.md#07-agent-economy) | counter once, then accept or walk away; a receipt for every task | The 402 example on testnet, 2026-11-11: a 0.012 quote countered at 0.01, paid as spend 21, one receipt line ([evidence](docs/evidence/402-vault/README.md#the-negotiation-demo-2026-11-11)) |
-| [04 Autonomous Business](docs/TRACKS.md#04-autonomous-business) | humans only set the constraints, with a kill switch | The owner signs the mandates, can `freeze` the vault with no deposit and can publish the ledger on `/proof`; Payables paid two invoices on its own on testnet |
+| [04 Autonomous Business](docs/TRACKS.md#04-autonomous-business) | humans only set the constraints, with a kill switch | The owner signs the mandates, can `freeze` the vault with no deposit and can publish the ledger on `/proof`; Probarion Payables, the console's reference agent, paid two invoices on its own on testnet |
 | [03 Privacy & Private AI](docs/TRACKS.md#03-privacy--private-ai) | prove the analysis ran in a TEE | A1 to A8, O1 and O2 on recorded decisions, mainnet among them; the TEE measurement is not pinned, so no check shows which model image ran. What is kept where, and what an observer learns from the chain |
 
 ## Why not a policy on NEAR's Agent API or OutLayer?
@@ -112,19 +145,25 @@ Probarion does, the evidence and what is not built.
 - [NEAR's Agent API](https://docs.agentsonintents.com/integration/agent-api/policies-and-limits) (read 2026-11-13)
   gives each agent a wallet on NEAR Intents under one owner-signed policy. The API enforces destinations, a USD
   budget, a timelock and a schedule; the wallet provider enforces the rest, such as per-asset limits, owner approval
-  and freeze. A transfer names its recipient, which must pass the policy's destination rules.
+  and freeze. Its USD budget is one per agent, shared by every grant. A transfer names its recipient, which must
+  pass the policy's destination rules.
 - [OutLayer agent custody](https://app.outlayer.ai/docs/agent-custody) (read 2026-11-13) keeps the wallet's keys in
   an Intel TDX enclave and evaluates an encrypted on-chain policy there on every transaction: limits, address
-  whitelists, approval above a threshold and freeze. The agent names the recipient in its transfer request.
-- Probarion binds the payee in a mandate the owner signs on a NEAR contract, `spend` has no address field, and every
-  decision is recorded and re-checkable without Probarion. They can be used together: an agent can hold a policy
-  wallet for swaps and transfers and pay invoices from a vault. Nothing that connects the two is built.
+  whitelists, approval above a threshold and freeze. The agent names the recipient in its transfer request. Its
+  daily, hourly and monthly caps are checked against a usage counter from its API gateway, since the TEE keeps no
+  state of its own, and its dashboard keeps a history of transactions, policy changes, approvals and freezes.
+- In Probarion each mandate ties one payee to its own caps per payment and in total, number of uses, expiry and
+  approval threshold. The vault contract keeps those counters in its own state and refuses an invoice hash or ref it
+  has already used, and `spend` has no address field. Every decision Probarion's code makes, refusals included, is
+  signed into a hash-chained ledger, anchored on a vault that has a ledger key, and once the owner publishes it
+  anyone can verify it without Probarion's servers. They can be used together: an agent can hold a policy wallet for
+  swaps and transfers and pay invoices from a vault. Nothing that connects the two is built.
 
 ## Who it is for
 
 A hypothesis, not traction: no one pays for Probarion today and no price is set. Buyers: finance and
-accounts-payable teams that let an agent pay supplier invoices (Payables, the console's reference agent), agent
-platforms through MCP, and sellers that charge agents per call with HTTP 402
+accounts-payable teams that let an agent pay supplier invoices (Probarion Payables, the console's reference agent),
+agent platforms through MCP, and sellers that charge agents per call with HTTP 402
 ([the pay-per-call example](examples/402)). The SDK, CLI, MCP server and verifier stay free under the MIT license;
 the hosted console would be paid, per vault per month or per verified payment.
 
@@ -1246,7 +1285,7 @@ As of 2026-11-03, `pnpm verify` ran 301 Rust tests: 227 vault unit tests, 2 erro
 2 property tests that take about two minutes, and 53 factory, 12 intents-stub and 5 test-ft tests.
 As of 2026-11-09 it ran 290 Node script tests and 199 launch checks. As of 2026-11-13 the package
 suites pass 843 in `@probarion/core`, 801 in `@probarion/sdk`, 353 in the CLI and 9,647 in the web
-console, each run on its own on Windows. Skipped on that run:
+console, each run on its own on Windows. Skipped in those runs:
 - in the SDK, the two tests of a recorded real NEAR AI Cloud decision, which wait for that
   recording;
 - in the CLI, 16 tests: one file-permission test, one file-symlink test that needs a Windows
@@ -1254,7 +1293,7 @@ console, each run on its own on Windows. Skipped on that run:
   PATH. CI skips the near-cli-rs ones too: its TypeScript job does not install near-cli-rs;
 - in the web console, the replay of recorded eval runs, which waits for those recordings.
 
-The browser extension's tests, added after that count, need no server and no Chrome:
+The browser extension's tests, not in these counts, need no server and no Chrome:
 `pnpm --filter @probarion/extension test` (251 tests). `pnpm --filter @probarion/extension build`
 writes the unpacked extension to `apps/extension/dist`; [its README](apps/extension/README.md) says
 how to load and try it.

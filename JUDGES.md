@@ -15,19 +15,27 @@ included, is signed into a hash-chained Ed25519 ledger whose root is anchored on
 If the agent's key on the mainnet vault `v0.probarion.near` leaked now, the most it could move is **1 USDC, to
 `probarion-duong.near`**, mandate 1's payee and the owner's own wallet, **plus at most about 0.2462 NEAR of the
 vault's NEAR, burned as gas**, the key's allowance. Read at 19:01 UTC on 2026-11-13, at mainnet block 224404547, with
-the view calls `list_mandates`, `get_config` and `view_access_key_list`
-([the read](docs/evidence/mainnet-v0/worst-case-2026-11-13.json)). Mandates 2 and 3 are used up, there is no mandate
-4, the vault has no full-access key and is not frozen, and the ledger key can call `anchor` only. Read it again,
+view calls only, and the Intents balance at 19:08 UTC ([the read](docs/evidence/mainnet-v0/worst-case-2026-11-13.json)
+names each call). Mandates 2 and 3 are used up, there is no mandate
+4, the vault has no full-access key and is not frozen, and the ledger key can call `anchor` only. In general, a
+leaked agent key can move at most what the mandates naming that key have left, each to its own mandate's payee, plus
+gas up to the key's allowance. If the ledger key leaked, a forger could sign ledger entries, anchor their root and
+burn up to that key's 0.2492 NEAR allowance as gas; it moves no USDC. The owner's account `probarion.near` is outside
+this bound: it can sign a new mandate to any payee, so its keys guard all of the vault's USDC. Read it again,
 read-only, with Node.js 24 and no clone:
 
 ```bash
 node --input-type=module -e '
 const rpc = (params) => fetch("https://rpc.mainnet.fastnear.com", { method: "POST", headers: { "content-type": "application/json" },
   body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { finality: "final", account_id: "v0.probarion.near", ...params } }) }).then((r) => r.json()).then((j) => j.result);
-const args = Buffer.from(JSON.stringify({ from_index: 0, limit: 10 })).toString("base64");
-const list = await rpc({ request_type: "call_function", method_name: "list_mandates", args_base64: args });
-for (const m of JSON.parse(Buffer.from(list.result)))
-  console.log(`mandate ${m.id}: ${m.status}, pays ${m.payee.account_id ?? m.payee.address}, ${(m.max_total - m.spent - m.reserved) / 1e6} USDC and ${m.max_uses - m.uses} payments left`);
+const view = async (method_name, args) =>
+  JSON.parse(Buffer.from((await rpc({ request_type: "call_function", method_name, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") })).result));
+const cfg = await view("get_config", {});
+console.log(`owner ${cfg.owner}, frozen: ${cfg.frozen}`);
+for (const m of await view("list_mandates", { from_index: 0, limit: 10 })) {
+  const left = m.max_uses - m.uses, until = new Date(Number(BigInt(m.expires_at_ns) / 1000000n)).toISOString().slice(0, 10);
+  console.log(`mandate ${m.id}: ${m.status}, pays ${m.payee.account_id ?? m.payee.address}, ${(m.max_total - m.spent - m.reserved) / 1e6} USDC and ${left} payment${left === 1 ? "" : "s"} left, at most ${m.max_per_payment / 1e6} USDC a payment, until ${until}`);
+}
 for (const k of (await rpc({ request_type: "view_access_key_list" })).keys) {
   const fc = k.access_key.permission.FunctionCall;
   console.log(fc ? `key ${fc.method_names.join(",")} only, gas allowance ${(Number(fc.allowance) / 1e24).toFixed(4)} NEAR` : "a full-access key");
@@ -35,12 +43,13 @@ for (const k of (await rpc({ request_type: "view_access_key_list" })).keys) {
 '
 ```
 
-At 19:03 UTC on 2026-11-13 it printed:
+At 20:47 UTC on 2026-11-13 it printed:
 
 ```text
-mandate 1: active, pays probarion-duong.near, 1 USDC and 1 payments left
-mandate 2: exhausted, pays 0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27, 0 USDC and 0 payments left
-mandate 3: exhausted, pays 0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27, 0 USDC and 0 payments left
+owner probarion.near, frozen: false
+mandate 1: active, pays probarion-duong.near, 1 USDC and 1 payment left, at most 1 USDC a payment, until 2027-01-31
+mandate 2: exhausted, pays 0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27, 0 USDC and 0 payments left, at most 1 USDC a payment, until 2026-11-20
+mandate 3: exhausted, pays 0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27, 0 USDC and 0 payments left, at most 0.25 USDC a payment, until 2026-11-20
 key anchor only, gas allowance 0.2492 NEAR
 key spend only, gas allowance 0.2462 NEAR
 ```
@@ -54,12 +63,33 @@ payment needs no approval. A new payee or a higher cap needs a new mandate, sign
    **Read the chain now** on spend 3, the newest payout. Your browser reads its 4 transactions and 3 views from public
    RPC and runs seven checks, from "the owner signed the payee" to "0.2476 USDC arrived on Base". Spend 2 is folded
    under it with its own button. [Mainnet payouts, step by step](https://probarion.xyz/docs/start/mainnet-payout)
-   gives each value they read. Then verify the vault's signed ledger:
+   gives each value they read. Then verify the vault's signed ledger with Node.js 24 and no clone. In Bash:
 
-   <!-- F02 verify block -->
+   ```bash
+   mkdir -p probarion-mainnet && cd probarion-mainnet
+   B=https://probarion.xyz/samples/mainnet
+   curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \
+     -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
+   npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
+     --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
+   ```
 
-   In a clone, after the install below, the same check is one command
-   ([the README's](README.md#near-mainnet-2026-11-11)).
+   In Windows PowerShell 5.1 (`npx.cmd`, because a Restricted execution policy refuses `npx.ps1`):
+
+   ```powershell
+   mkdir -Force probarion-mainnet | Out-Null
+   cd probarion-mainnet
+   $B = "https://probarion.xyz/samples/mainnet"
+   curl.exe -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
+   npx.cmd -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
+   ```
+
+   On 2026-11-13, with Node.js 24.12.0, each printed checks a to h PASS, i SKIP (`not a factory vault`),
+   `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`, in about 20 s with the package already in the
+   npx cache ([transcripts](docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt); the site did not serve the
+   files yet, so those runs fetched the same bytes from a local copy and from GitHub). Release 0.1.1 has no
+   `--invoice`, so check e says `A8 not run`, and without `--online` it does not verify the TEE quotes. In a clone,
+   after the install below, the same check with A8 is one command ([the README's](README.md#near-mainnet-2026-11-11)).
 2. **The MCP server, with no clone.** `npx -y @probarion/mcp@0.1.1 demo` lists the five MCP tools (none takes an
    address), asks the testnet demo vault's contract about three amounts, shows an injected recipient refused by the
    schema and runs verify on that vault's public ledger. Its last line ends `Nothing was signed or sent.` The demo
@@ -113,7 +143,8 @@ pnpm judge                     # also the live read-only steps on testnet and ma
 `pnpm judge` builds the four packages, prints one row per step with the README line it proves, and exits 0 when no
 step failed. On 2026-11-13, on Windows with other builds running on the same machine, a fresh clone of commit
 2b97c27 installed in 1 min 0 s (its packages were already in the local pnpm store) and its offline quick run ended
-with the first line below. The full run, on the same branch before its last edit to the README's test counts, ended
+with the first line below. A first install takes longer: README step 1 records one here at 2 min 42 s, plus 34 s
+to build. The full run, on the same branch before its last edit to the README's test counts, ended
 with the second, in 4 min 15 s:
 
 ```text
@@ -145,7 +176,7 @@ testnet archival RPC answered HTTP 429 to that run, so its 16 online checks did 
 | S1's two attested decisions on mainnet, both refused by code | For INV-M002, `z-ai/glm-5.3-flash` and then `Qwen/Qwen3.8-27B` on NEAR AI Cloud proposed paying. Each payee hint named a NEAR account, the mandate's asset account, for a Base payee, and code refused both: rule `mandate.payee_mismatch`, ledger entry 0, and rule `mandate.payee_mismatch`, ledger entry 1. Both proposals had the right amount and Base address, so these were false refusals by a strict rule, at the cost of two tries and no money; [PR #142](https://github.com/probarion/probarion/pull/142) changed the rule after the run, for a model's hint only. Both decisions pass A1 to A7, and A8 with the invoice text; nothing was sent on either, and each was anchored before the next cycle ([the run](docs/evidence/mainnet-v0/s1-2026-11-13/README.md#why-the-payout-was-decided-rules-only)) | [`8REzPLVw…`](https://nearblocks.io/txns/8REzPLVwoQJrkccMQeFCTLaQHu8m7AczxsMzEH9PLvPp), [`6ULZZvGa…`](https://nearblocks.io/txns/6ULZZvGa7M99jR7Uk5f1Md4KCdD1Cnd5au2s8fAZDMqY) (the anchors) |
 | A payment on an attested model's proposal on mainnet | On 2026-11-13, for INV-M003, `z-ai/glm-5.3-flash` on NEAR AI Cloud proposed paying 0.25 USDC under mandate 3, with a payee hint that named the mandate's Base address and no NEAR account. Every code rule passed (ledger entry 4: `allow`, `model+rules`), and spend 3 paid it to the owner's own Base address, a test: 0.25 USDC sent, 0.2476 USDC arrived after the bridge fee. The decision passes A1 to A7, and A8 with the invoice text ([the run](docs/evidence/mainnet-v0/s2-2026-11-13/README.md)), and O1 and O2 in a later read-only run ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)) | [`4cmSz4b3…`](https://nearblocks.io/txns/4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T) (mandate 3), [`5amtgb8M…`](https://nearblocks.io/txns/5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH) (spend 3), [`6jRY21z9…`](https://nearblocks.io/txns/6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG) (the anchor) |
 | A gullible model's 50 USDC ask, refused on chain | The Canary rehearsal of 2026-11-10: a model given a deliberately gullible prompt proposed 50 USDC under a mandate of 1 USDC a payment. Code refused it with `invoice.amount_invalid` (no amount it could read, so the cap rule did not run) and with the Canary's rule that refuses every attempt. The same spend, sent raw with the agent key, was refused on chain with `PROBARION:OverPerPayment` ([evidence](docs/evidence/canary-vault)) | [`6XuxN42d…`](https://testnet.nearblocks.io/txns/6XuxN42dDWaboaqaiCuRGKCoA1UrypcDfvat48v6z8DH) |
-| Payables paid two invoices on its own with an attested model | On 2026-11-12 `Qwen/Qwen3.8-27B` proposed paying INV-2009 and then INV-2010, every code rule passed, and spends 4 and 5 paid 2.00 test USDC each to the mandate's payee ([evidence](docs/evidence/demo-vault/README.md#2026-11-12-payables-pays-on-its-own-with-an-attested-model)) | [`EA7MbLts…`](https://testnet.nearblocks.io/txns/EA7MbLtsRjQUBbycfNyh6u1ieLNU5WXtyGy2K8eiPBuU), [`3YEGw5Qd…`](https://testnet.nearblocks.io/txns/3YEGw5Qdp9RbnR5LXFbAKXWPPhgiz7hf6vdDapfXvEE4) |
+| Probarion Payables paid two invoices on its own with an attested model | On 2026-11-12 `Qwen/Qwen3.8-27B` proposed paying INV-2009 and then INV-2010, every code rule passed, and spends 4 and 5 paid 2.00 test USDC each to the mandate's payee ([evidence](docs/evidence/demo-vault/README.md#2026-11-12-payables-pays-on-its-own-with-an-attested-model)) | [`EA7MbLts…`](https://testnet.nearblocks.io/txns/EA7MbLtsRjQUBbycfNyh6u1ieLNU5WXtyGy2K8eiPBuU), [`3YEGw5Qd…`](https://testnet.nearblocks.io/txns/3YEGw5Qdp9RbnR5LXFbAKXWPPhgiz7hf6vdDapfXvEE4) |
 | A1 to A8, O1 and O2 on recorded decisions | The demo vault's 5 attested decisions pass A1 to A7 offline, A8 with the committed invoices ([output](docs/evidence/demo-vault/verify-a8-2026-11-12.txt)), and O1 and O2 in a live run at 16:13 UTC on 2026-11-12 ([output](docs/evidence/demo-vault/verify-online-a8-2026-11-12.txt)). The Canary's 2 pass A1 to A7, O1 and O2 ([output](docs/evidence/canary-vault/verify-online-2026-11-11.txt)). On mainnet, the 3 of `v0.probarion.near` of 2026-11-13, entries 0, 1 and 4, pass A1 to A7 and, with the two committed invoices, A8 offline ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)), and O1 and O2 in a live run at 17:52 UTC on 2026-11-13 ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)). The TEE measurement is not pinned, so this does not show which model image ran | None |
 | The live TEE check | On 2026-11-12, after the promote that put main at b3baa82, the route and the card passed all four checks for `Qwen/Qwen3.8-27B`, and a cross-site call got `403 bad_origin` ([evidence](docs/evidence/tee-check/live-2026-11-12.json)) | None |
 | Pay per call (HTTP 402) | On 2026-11-09 an agent paid 20 calls at 0.01 test USDC each through the MCP server, and code refused the 21st when the mandate's 20 uses ran out ([evidence](docs/evidence/402-vault)). On 2026-11-11 the agent countered a 0.012 quote once at 0.01 and spend 21 paid it, with one receipt line ([the negotiation](docs/evidence/402-vault/README.md#the-negotiation-demo-2026-11-11)). The example is not an implementation of x402 | [`8q5qwWhz…`](https://testnet.nearblocks.io/txns/8q5qwWhzxKnZYgMbXLGvBJmvVT2HFyLJVQhDqLBf561H) (spend 1), [`4T3zW2KU…`](https://testnet.nearblocks.io/txns/4T3zW2KUAxZsiUPkyGyGwSKPX13pT4fYWrZN6auHNY69) (spend 20) |
@@ -172,8 +203,8 @@ so a signature check could not name the instance or image that signed ([trust as
 ## Who it is for
 
 A hypothesis, not traction: no one pays for Probarion today and no price is set. Buyers: finance and accounts-payable
-teams that let an agent pay supplier invoices (Payables, the console's reference agent), agent platforms through MCP,
-and sellers that charge agents per call with HTTP 402 ([the pay-per-call example](examples/402)). The SDK, CLI, MCP server
+teams that let an agent pay supplier invoices (Probarion Payables, the console's reference agent), agent platforms
+through MCP, and sellers that charge agents per call with HTTP 402 ([the pay-per-call example](examples/402)). The SDK, CLI, MCP server
 and verifier stay free under the MIT license; the hosted console would be paid, per vault per month or per verified payment.
 
 | Unit cost | Measured or recorded |
@@ -187,9 +218,6 @@ and verifier stay free under the MIT license; the hosted console would be paid, 
 
 ## Not yet, as of 2026-11-13
 
-- **Done on 2026-11-13: O1 and O2 on mainnet.** A read-only `verify --online` at 17:52 UTC passed O1 and O2 on the
-  mainnet vault's 3 attested decisions ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)).
-  The TEE measurement is still not pinned, as below.
 - **Spend 1 was sent without the SDK, and the payee rule's change was not tried on mainnet.** Spend 1, the 1 USDC
   payment of 2026-11-11 on NEAR, was sent with the vault's spend-only key from the owner's own terminal, without the
   SDK, so no signed ledger entry and no attestation cover its decision ([the run](README.md#near-mainnet-2026-11-11)).
@@ -202,7 +230,8 @@ and verifier stay free under the MIT license; the hosted console would be paid, 
   testnet burn does not leave NEAR; the real Intents payouts are the two mainnet tests of 2026-11-13.
 - **No outside users yet.** [/usage](https://probarion.xyz/usage) on testnet showed 0 external owners, 0 Canary
   participants and 0 pilots, beside 2 team vaults; the Canary's board showed 0 visitor attempts and 6 by the team.
-- **The TEE measurement is not pinned**, so no check shows which model image ran ([why](docs/measurement-pin-2026-11.md)).
+- **The TEE measurement is not pinned**, so no check shows which model image ran ([why](docs/measurement-pin-2026-11.md)),
+  though O1 and O2 passed on the mainnet vault's 3 attested decisions at 17:52 UTC on 2026-11-13.
 - **No audit.** No third party has audited the contracts or the packages.
 - **No end-to-end encryption.** The request to NEAR AI Cloud is plain JSON over HTTPS, the hosted console reads each
   invoice, and the signed ledger keeps the model's answer, which can restate it ([Privacy](README.md#privacy--private-ai)).

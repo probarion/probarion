@@ -10,6 +10,7 @@
     "curl -s https://rpc.mainnet.fastnear.com -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"call_function\",\"finality\":\"final\",\"account_id\":\"v0.probarion.near\",\"method_name\":\"list_mandates\",\"args_base64\":\"eyJmcm9tX2luZGV4IjowLCJsaW1pdCI6MTB9\"}}'",
     "curl -s https://rpc.mainnet.fastnear.com -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"view_access_key_list\",\"finality\":\"final\",\"account_id\":\"v0.probarion.near\"}}'"
   ],
+  "excerpt": "Fields the worst case does not depend on are left out: mandates 2 and 3, mandate 1 and get_config are abridged. The how_to_read_again commands, and get_config called the same way, return the full answers.",
   "note": "A call_function result is the JSON answer as a byte array; decode it as UTF-8 to read it. Allowances are in yoctoNEAR (10^24 per NEAR); USDC amounts in its 6-decimal base units.",
   "get_config": {
     "owner": "probarion.near",

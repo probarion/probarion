@@ -1194,13 +1194,15 @@ The software is an unaudited beta.
 
 - The front door. The README's top is a 30-second story with S2's mainnet test payment (0.25 USDC sent, 0.2476
   arrived on the owner's own Base address), the worst case today read live from `v0.probarion.near` at 19:01 UTC on
-  2026-11-13 (`docs/evidence/mainnet-v0/worst-case-2026-11-13.json`), the re-check of every decision with O1 and O2
-  on mainnet, an install table, a 60-second check, a by-track table, a sourced and dated answer to "why not a policy
-  on NEAR's Agent API or OutLayer?" and who it is for. JUDGES.md is rewritten: the worst case first with a one-line
-  read-only command, five links in order, one Node 24 setup, one CLI convention, today's `pnpm judge` summaries, and
-  O1 and O2 on mainnet moved to done. The new `docs/TRACKS.md` answers each track brief in its own words with
-  "Brief asks | Probarion | Evidence" tables and honest "Not built" rows, and `check-claims` now reads it. The
-  README's dated package test counts are those of 2026-11-13, and `pnpm judge` quotes them. Check:
+  2026-11-13 (`docs/evidence/mainnet-v0/worst-case-2026-11-13.json`) with what a leaked ledger key or the owner's
+  account could do, the re-check of every decision with the no-clone mainnet verify block in Bash and PowerShell and
+  O1 and O2 on mainnet, an install table, a 60-second check, a by-track table, a sourced and dated answer to "why not
+  a policy on NEAR's Agent API or OutLayer?" and who it is for. JUDGES.md is rewritten: the worst case first with a
+  read-only Node command that needs no clone, five links in order (the first with the same verify block), one Node 24
+  setup, one CLI convention and today's `pnpm judge` summaries. The README's "For judges: start here" block and
+  JUDGES' "Worst case, priced" give way to these sections. The new `docs/TRACKS.md` answers each track brief in its
+  own words with "Brief asks | Probarion | Evidence" tables and honest "Not built" rows, and `check-claims` now reads
+  it. The README's dated package test counts are those of 2026-11-13, and `pnpm judge` quotes them. Check:
   `node scripts/check-claims.mjs` and `pnpm judge --offline --quick`.
 
 - The landing's "What works today, and what does not" is a status board. A summary computed from
