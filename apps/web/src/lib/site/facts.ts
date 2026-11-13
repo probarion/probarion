@@ -962,17 +962,34 @@ export const MAINNET_PAYOUT = {
     lead: "probarion verify, run on mainnet with the ledger file, {date}:",
     result: { pass: "RESULT: PASS", fail: "RESULT: FAIL" },
     counts: "{passed} passed, {failed} failed, {unproven} unproven, {skipped} skipped",
-    /** By whether check e verified the TDX quote online; no line when no decision was attested. */
+    /**
+     * By whether check e verified the TDX quote online, then by the count of attested decisions in the run's ledger,
+     * so the pronoun agrees with it; no line when no decision was attested.
+     */
     attested: {
-      offline:
-        "{attested|attested decision passes|attested decisions pass} A1 to A8. They ran without --online, so O1 and O2 did not check their TEE evidence.",
-      online:
-        "{attested|attested decision passes|attested decisions pass} A1 to A8, and O1 and O2 with --online.",
+      offline: {
+        one: "{attested} attested decision passes A1 to A8. This run did not use --online, so O1 and O2 did not check its TEE evidence.",
+        many: "{attested} attested decisions pass A1 to A8. This run did not use --online, so O1 and O2 did not check their TEE evidence.",
+      },
+      online: {
+        one: "{attested} attested decision passes A1 to A8, and O1 and O2 with --online.",
+        many: "{attested} attested decisions pass A1 to A8, and O1 and O2 with --online.",
+      },
     },
     foot: "Without the ledger file, checks c and d fail: the chain alone does not show the decision.",
     output: "The run's output",
     link: { label: "Run the verifier on a sample ledger", href: "#verify" },
     docs: { label: "The payout, step by step", href: "/docs/start/mainnet-payout" },
+  },
+  /**
+   * An earlier payout, folded under the newest one in a closed details. Its summary holds the stone's heading
+   * (stone.aria), this line, with the stone's sentence on how it was decided as {decided}, and the hint to open it;
+   * {checks} counts the checks. The hint that shows depends on whether the fold is open.
+   */
+  fold: {
+    line: "{amount} USDC burned on NEAR, {received} USDC arrived on Base. {decided}",
+    show: "Show its {checks} checks and its ledger",
+    hide: "Hide its {checks} checks and its ledger",
   },
   earlier: {
     title: "Earlier on mainnet, 2026-11-11",

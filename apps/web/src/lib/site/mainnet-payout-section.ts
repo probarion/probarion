@@ -1,5 +1,6 @@
-// The #mainnet section's words for the server render, as plain functions of the payouts: the head, the dark card of
-// each payout, its decision trail and the verifier's verdict, with the transaction links. It reads MAINNET_PAYOUT and
+// The #mainnet section's words for the server render, as plain functions of the payouts: the head, the order (newest
+// first), the dark card of each payout, the summary of an earlier one folded under the newest, its decision trail and
+// the verifier's verdict, with the transaction links. It reads MAINNET_PAYOUT and
 // the explorer links from facts.ts, so the server component imports it and the client component does not: that one uses
 // lib/site/mainnet-payout-view.ts with the copy it is handed. Every count and amount comes from the data.
 import {
@@ -67,6 +68,16 @@ export function sectionHead(payouts: readonly Payout[]): SectionHead {
   };
 }
 
+/**
+ * The payouts as the section shows them: the newest first, by the block time of its spend, then the earlier ones. The
+ * recorded file keeps them oldest first, as docs/mainnet-proof.json lists them.
+ */
+export function newestFirst<T extends { payout: Payout }>(runs: readonly T[]): T[] {
+  return [...runs].sort(
+    (a, b) => b.payout.pin.at.localeCompare(a.payout.pin.at) || b.payout.spendId - a.payout.spendId,
+  );
+}
+
 // --- the stone ------------------------------------------------------------------------------------
 
 export interface StoneEnd {
@@ -130,6 +141,34 @@ export function stoneView(p: Payout): StoneView {
       burned === arrived && utcDate(p.pin.at) === utcDate(p.base.at)
         ? fill(C.stone.sameMinute, { minute: burned, fee: usdc(p.fee) })
         : fill(C.stone.apart, { burned, arrived, fee: usdc(p.fee) }),
+  };
+}
+
+// --- an earlier payout, folded ---------------------------------------------------------------------
+
+export interface FoldView {
+  /** The stone's heading, the h3 inside the summary. */
+  title: string;
+  /** What it was: the amounts burned and arrived, and how it was decided. */
+  line: string;
+  /** The hint while the fold is closed, and while it is open. */
+  show: string;
+  hide: string;
+}
+
+/** The summary of an earlier payout, folded under the newest: its heading, what it was and the hint to open it. */
+export function foldView(p: Payout): FoldView {
+  const stone = stoneView(p);
+  const checks = numberWord(C, CHECKS.length);
+  return {
+    title: stone.aria,
+    line: fill(C.fold.line, {
+      amount: usdc(p.amount),
+      received: usdc(p.received),
+      decided: stone.decided,
+    }),
+    show: fill(C.fold.show, { checks }),
+    hide: fill(C.fold.hide, { checks }),
   };
 }
 
@@ -339,10 +378,28 @@ export interface VerifyView {
   docs: { label: string; href: string };
 }
 
-/** The verifier's run on the payout with the ledger file: its verdict line, not the list of checks. */
-export function verifyView(p: Payout): VerifyView {
+/**
+ * The attested decisions in the ledger the verifier read for `p`: its first `verify.entries` entries, gathered from the
+ * trails of every payout of the same vault, since a later run reads the entries of the earlier payouts too. The test
+ * holds this count to check e of each run's output.
+ */
+export function runAttested(p: Payout, payouts: readonly Payout[]): number {
+  const entries = new Map<number, boolean>();
+  for (const q of payouts) {
+    if (q.vault !== p.vault) continue;
+    for (const e of q.trail) if (e.seq < p.verify.entries) entries.set(e.seq, e.attested);
+  }
+  return [...entries.values()].filter(Boolean).length;
+}
+
+/**
+ * The verifier's run on the payout with the ledger file: its verdict line, not the list of checks. `payouts` are every
+ * recorded payout, whose trails give the attested decisions of the run's ledger.
+ */
+export function verifyView(p: Payout, payouts: readonly Payout[]): VerifyView {
   const v = p.verify;
-  const attested = p.trail.filter((e) => e.attested).length;
+  const attested = runAttested(p, payouts);
+  const A = v.quoteOnline ? C.verify.attested.online : C.verify.attested.offline;
   return {
     title: C.verify.title,
     lead: fill(C.verify.lead, { date: utcDate(v.at) }),
@@ -354,10 +411,7 @@ export function verifyView(p: Payout): VerifyView {
       unproven: v.unproven,
       skipped: v.skipped,
     }),
-    attested:
-      attested === 0
-        ? null
-        : fill(v.quoteOnline ? C.verify.attested.online : C.verify.attested.offline, { attested }),
+    attested: attested === 0 ? null : fill(attested === 1 ? A.one : A.many, { attested }),
     foot: C.verify.foot,
     output: { label: C.verify.output, href: repoFileUrl(p.files.verify) },
     link: C.verify.link,

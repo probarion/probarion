@@ -2,9 +2,11 @@ import type { ReactNode } from "react";
 import { ExternalLink } from "@/components/ui";
 import { type CopyPart, MAINNET_PAYOUT } from "@/lib/site/facts";
 import type { PayoutCheckId } from "@/lib/site/mainnet-payout";
-import { RECORDED_RUNS, type RecordedRun } from "@/lib/site/mainnet-payout-data";
+import { PAYOUTS, RECORDED_RUNS, type RecordedRun } from "@/lib/site/mainnet-payout-data";
 import {
   checkSources,
+  foldView,
+  newestFirst,
   type StoneEnd,
   type StoneView,
   sectionHead,
@@ -237,7 +239,7 @@ function Verify({ view }: { view: VerifyView }) {
   );
 }
 
-/** The vault's two transactions of 2026-11-11, beside the last payout: complementary to it, so an aside. */
+/** The vault's two transactions of 2026-11-11, beside the newest payout: complementary to it, so an aside. */
 function Earlier() {
   const E = C.earlier;
   return (
@@ -264,21 +266,17 @@ function Earlier() {
 }
 
 /**
- * One payout, one article: its stone, with the live re-read, then its decision trail beside the verifier's verdict, so
- * each h4 sits under the payout it is about. With more than one payout, the heading shows: the stones need it.
+ * What one payout shows under its heading: its stone, with its own live re-read, then its decision trail beside the
+ * verifier's verdict, so each h4 sits under the payout it is about.
  */
-function PayoutBlock({ run, last, many }: { run: RecordedRun; last: boolean; many: boolean }) {
+function PayoutBody({ run, aside }: { run: RecordedRun; aside: boolean }) {
   const p = run.payout;
   const stone = stoneView(p);
-  const titleId = `${p.id}-title`;
   const sources = Object.fromEntries(
     CHECK_ORDER.map(({ id }) => [id, <Parts key={id} parts={checkSources(p, id)} />]),
   ) as Record<PayoutCheckId, ReactNode>;
   return (
-    <article className={m.payout} aria-labelledby={titleId}>
-      <h3 className={many ? m.payoutTitle : "sr-only"} id={titleId}>
-        {stone.aria}
-      </h3>
+    <>
       <div className={m.stoneWrap}>
         <MainnetPayoutClient
           payout={p}
@@ -300,23 +298,73 @@ function PayoutBlock({ run, last, many }: { run: RecordedRun; last: boolean; man
       <div className={m.lower}>
         <Trail view={trailView(p)} entries={p.trail.map((e) => e.seq)} id={p.id} />
         <div className={m.side}>
-          <Verify view={verifyView(p)} />
-          {last ? <Earlier /> : null}
+          <Verify view={verifyView(p, PAYOUTS)} />
+          {aside ? <Earlier /> : null}
         </div>
       </div>
+    </>
+  );
+}
+
+/**
+ * The newest payout, one article, open. With more than one payout, its heading shows: the stones need it, and the
+ * earlier ones carry theirs in their summaries.
+ */
+function PayoutBlock({ run, many }: { run: RecordedRun; many: boolean }) {
+  const titleId = `${run.payout.id}-title`;
+  return (
+    <article className={m.payout} aria-labelledby={titleId}>
+      <h3 className={many ? m.payoutTitle : "sr-only"} id={titleId}>
+        {stoneView(run.payout).aria}
+      </h3>
+      <PayoutBody run={run} aside />
     </article>
   );
 }
 
 /**
- * The payout to Base on NEAR mainnet (#mainnet), between the ink band, which says the agent cannot name a payee, and
- * the console screenshots. One stone per recorded payout: each count and amount comes from the data, so a second
- * payout adds a stone and changes no copy. The page is complete with no JavaScript and no network; the button re-reads
- * the chain from the visitor's browser.
+ * An earlier payout, one article, folded in a native details that starts closed and opens with no script. The
+ * summary holds its heading, what it was and how it was decided, and a hint to open it; inside, the same stone, with
+ * its own button, the trail and the verdict as the newest payout shows.
+ */
+function FoldedPayout({ run }: { run: RecordedRun }) {
+  const titleId = `${run.payout.id}-title`;
+  const fold = foldView(run.payout);
+  return (
+    <article className={m.payout} aria-labelledby={titleId}>
+      <details className={m.fold}>
+        <summary className={m.foldSummary}>
+          <h3 className={m.foldTitle} id={titleId}>
+            {fold.title}
+          </h3>
+          <span className={m.foldLine}>{fold.line}</span>
+          <span className={m.foldHint}>
+            <span className={m.foldShow}>{fold.show}</span>
+            <span className={m.foldHide}>{fold.hide}</span>
+            <span className={m.foldArrow} aria-hidden="true">
+              ↓
+            </span>
+          </span>
+        </summary>
+        <div className={m.foldBody}>
+          <PayoutBody run={run} aside={false} />
+        </div>
+      </details>
+    </article>
+  );
+}
+
+/**
+ * The payouts to Base on NEAR mainnet (#mainnet), between the ink band, which says the agent cannot name a payee, and
+ * the console screenshots. The newest payout shows first and open; each earlier one follows, folded. Each count and
+ * amount comes from the data, so another payout adds a fold and changes no copy. The page is complete with no
+ * JavaScript and no network; each stone's button re-reads its payout from the visitor's browser.
  */
 export function MainnetPayout() {
   if (RECORDED_RUNS.length === 0) return null;
-  const head = sectionHead(RECORDED_RUNS.map((r) => r.payout));
+  const head = sectionHead(PAYOUTS);
+  const [newest, ...earlier] = newestFirst(RECORDED_RUNS);
+  if (newest === undefined) return null;
   return (
     <section className={m.section} id="mainnet" aria-labelledby="mainnet-title">
       <div className={s.wrap}>
@@ -331,14 +379,14 @@ export function MainnetPayout() {
           </p>
         </div>
         <div className={m.payouts}>
-          {RECORDED_RUNS.map((run, i) => (
-            <PayoutBlock
-              key={run.payout.id}
-              run={run}
-              last={i === RECORDED_RUNS.length - 1}
-              many={RECORDED_RUNS.length > 1}
-            />
-          ))}
+          <PayoutBlock run={newest} many={earlier.length > 0} />
+          {earlier.length > 0 ? (
+            <div className={m.folds}>
+              {earlier.map((run) => (
+                <FoldedPayout key={run.payout.id} run={run} />
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

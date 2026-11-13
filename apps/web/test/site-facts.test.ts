@@ -69,6 +69,7 @@ import recordedJson from "@/lib/site/live-check-recorded.json";
 import {
   BASE_RPC_URLS,
   CHECKS,
+  fill,
   NEAR_RPC_URLS,
   type Payout,
   SPEND_FIELDS,
@@ -77,6 +78,9 @@ import {
 import { PAYOUTS, RECORDED, RECORDED_RUNS } from "@/lib/site/mainnet-payout-data";
 import {
   checkSources,
+  foldView,
+  newestFirst,
+  runAttested,
   sectionHead,
   stoneView,
   trailView,
@@ -2489,9 +2493,11 @@ describe("the mainnet payout (#mainnet)", () => {
   const P = PAYOUTS[0] as Payout;
 
   it("is built from the data: one payout per mainnet spend with a Base transfer in docs/mainnet-proof.json", () => {
-    const withBase = Object.values(proof.txs).filter(
-      (t) => t.network === "mainnet" && typeof t.base_tx === "string",
-    );
+    // In the builder's order: draftPayouts sorts them by recorded_at, oldest first, whatever order the file keys them in.
+    const withBase = Object.values(proof.txs)
+      .filter((t) => t.network === "mainnet" && typeof t.base_tx === "string")
+      .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at));
+    expect(withBase.map((t) => t.spend_id)).toEqual([2, 3]);
     expect(PAYOUTS).toHaveLength(withBase.length);
     expect(PAYOUTS.map((p) => p.tx.spend.hash)).toEqual(withBase.map((t) => t.hash));
     // The recorded file is what the data files give today, plus the two blocks that the chain alone knows. When this fails,
@@ -2613,7 +2619,7 @@ describe("the mainnet payout (#mainnet)", () => {
     const v = P.verify;
     expect(verifyTxt).toContain(`entries ${v.entries}, anchors ${v.anchors},`);
     expect([v.entries, v.anchors]).toEqual([verifyJson.entries, verifyJson.anchors]);
-    const view = verifyView(P);
+    const view = verifyView(P, PAYOUTS);
     const lines = verifyTxt.split(/\r?\n/);
     expect(lines).toContain(view.counts);
     expect(lines).toContain(view.result);
@@ -2633,7 +2639,7 @@ describe("the mainnet payout (#mainnet)", () => {
     expect(refusedProposals(P)).toHaveLength(attested);
     expect(e).toContain(`${attested} attested decisions pass`);
     expect(view.attested).toBe(
-      `${attested} attested decisions pass A1 to A8. They ran without --online, so O1 and O2 did not check their TEE evidence.`,
+      `${attested} attested decisions pass A1 to A8. This run did not use --online, so O1 and O2 did not check their TEE evidence.`,
     );
     expect(v.quoteOnline).toBe(false);
     expect(e).toContain("quote not verified offline");
@@ -2649,6 +2655,58 @@ describe("the mainnet payout (#mainnet)", () => {
       verify: `${S1_DIR.join("/")}/verify-2026-11-13.txt`,
       poa: `${S1_DIR.join("/")}/poa-status.json`,
     });
+  });
+
+  it("counts each run's attested decisions as check e does, with pronouns that agree with the count", () => {
+    for (const p of PAYOUTS) {
+      // The run's JSON output beside the text one the card links.
+      const run = JSON.parse(text(ROOT, p.files.verify.replace(/\.txt$/, ".json"))) as {
+        entries: number;
+        checks: { id: string; detail: string }[];
+      };
+      const e = run.checks.find((c) => c.id === "e")?.detail ?? "";
+      const n = Number(/^(\d+) attested decisions? pass A1/.exec(e)?.[1]);
+      expect(e, p.id).toContain(`A8 (request binding and mandate match) passes for ${n} of ${n}`);
+      // The trails of the vault's payouts hold every entry of the ledger the run read, so none is left uncounted.
+      const seqs = new Set(
+        PAYOUTS.filter((q) => q.vault === p.vault)
+          .flatMap((q) => q.trail.map((x) => x.seq))
+          .filter((s) => s < run.entries),
+      );
+      expect(
+        [...seqs].sort((a, b) => a - b),
+        p.id,
+      ).toEqual([...Array(run.entries).keys()]);
+      expect(runAttested(p, PAYOUTS), p.id).toBe(n);
+      expect(verifyView(p, PAYOUTS).attested, p.id).toBe(
+        fill(
+          n === 1
+            ? MAINNET_PAYOUT.verify.attested.offline.one
+            : MAINNET_PAYOUT.verify.attested.offline.many,
+          { attested: n },
+        ),
+      );
+    }
+    // Spend 3's run read the 6 entries of both rounds: entries 0, 1 and 4 are attested, not its own entry 4 alone.
+    const s3 = PAYOUTS.find((p) => p.spendId === 3) as Payout;
+    expect(s3.trail.filter((x) => x.attested)).toHaveLength(1);
+    expect(verifyView(s3, PAYOUTS).attested).toBe(
+      "3 attested decisions pass A1 to A8. This run did not use --online, so O1 and O2 did not check their TEE evidence.",
+    );
+    // One attested decision takes "passes" and "its"; with --online, the line says O1 and O2 ran.
+    const one = { ...P, verify: { ...P.verify, entries: 1 } };
+    expect(verifyView(one, [P]).attested).toBe(
+      "1 attested decision passes A1 to A8. This run did not use --online, so O1 and O2 did not check its TEE evidence.",
+    );
+    expect(verifyView({ ...one, verify: { ...one.verify, quoteOnline: true } }, [P]).attested).toBe(
+      "1 attested decision passes A1 to A8, and O1 and O2 with --online.",
+    );
+    expect(verifyView({ ...P, verify: { ...P.verify, quoteOnline: true } }, [P]).attested).toBe(
+      "2 attested decisions pass A1 to A8, and O1 and O2 with --online.",
+    );
+    // No attested decision in the run: no line.
+    const unattested = { ...P, trail: P.trail.slice(2) };
+    expect(verifyView(unattested, [unattested]).attested).toBeNull();
   });
 
   it("says in the stone that this was a test, and that code rules alone decided it", () => {
@@ -2800,17 +2858,18 @@ describe("the mainnet payout (#mainnet)", () => {
       else if (typeof v === "object" && v !== null) Object.values(v).forEach(collect);
     };
     collect(MAINNET_PAYOUT);
-    // The words as the page fills them, from the recorded payout.
+    // The words as the page fills them, from every recorded payout.
     collect(sectionHead(PAYOUTS));
-    collect(stoneView(P));
-    collect(trailView(P));
-    collect(verifyView(P));
-    const run = RECORDED_RUNS[0];
-    if (run !== undefined) {
+    for (const run of RECORDED_RUNS) {
+      const p = run.payout;
+      collect(stoneView(p));
+      collect(foldView(p));
+      collect(trailView(p));
+      collect(verifyView(p, PAYOUTS));
       collect(restVerdict(MAINNET_PAYOUT, run.tally, run.recordedAt));
       run.outcomes.forEach((o, i) => {
         const id = CHECKS[i]?.id ?? "owner";
-        collect(checkTitle(MAINNET_PAYOUT, id, P));
+        collect(checkTitle(MAINNET_PAYOUT, id, p));
         if (o.state === "pass") collect(checkRows(MAINNET_PAYOUT, id, o.values));
       });
     }
@@ -2828,8 +2887,8 @@ describe("the mainnet payout (#mainnet)", () => {
     for (const s of strings) {
       for (const [re, what] of banned) expect(re.test(s), `${what} in: ${s}`).toBe(false);
     }
-    // Spend 2 burned. "paid" is said of spend 1 of 2026-11-11, a NEAR payment, and "pays" of the mandate's payee; "pay"
-    // is a refused proposal's action, as the ledger names it.
+    // Spends 2 and 3 burned. "paid" is said of spend 1 of 2026-11-11, a NEAR payment, and "pays" of the mandate's payee;
+    // "pay" is a proposal's action, as the ledger names it.
     const allowed = new Set<string>([
       MAINNET_PAYOUT.earlier.rows[0].text,
       MAINNET_PAYOUT.problems["owner.payee"],
@@ -2847,6 +2906,16 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
   const words = visibleText(section);
   const C = MAINNET_PAYOUT;
   const isView = (p: unknown): p is string => typeof p === "string" && p.startsWith("`");
+  /** Each payout's article, in the order of the page, by the payout its heading names. */
+  const articles = [
+    ...section.matchAll(/<article\b[^>]*\baria-labelledby="([^"]+)-title"[^>]*>/g),
+  ].map((m) => {
+    const from = m.index ?? 0;
+    return { id: m[1] ?? "", html: section.slice(from, section.indexOf("</article>", from)) };
+  });
+  const articleOf = (p: Payout) => articles.find((a) => a.id === p.id)?.html ?? "";
+  const ORDER = newestFirst(RECORDED_RUNS).map((r) => r.payout);
+  const FOLD = /<details class="[^"]*_fold_[^"]*"/;
 
   it("sits between the ink band and the console screenshots, with its two-line headline", () => {
     expect(start).toBeGreaterThan(html.indexOf('id="payee"'));
@@ -2861,30 +2930,155 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     expect(stone.decided).toBe(
       "Decided by the code rules alone, after code refused two attested model proposals.",
     );
-    const article = section.slice(section.indexOf("<article"), section.indexOf("</article>"));
-    expect(visibleText(article)).toContain(`${stone.label} ${stone.test} ${stone.decided}`);
+    expect(visibleText(articleOf(P))).toContain(`${stone.label} ${stone.test} ${stone.decided}`);
+    // Spend 3's stone says the attested model proposed it and the code rules allowed it, after no refusal.
+    const s3 = PAYOUTS.find((p) => p.spendId === 3) as Payout;
+    expect(stoneView(s3).decided).toBe(
+      "Proposed by an attested model and allowed by the code rules.",
+    );
+    for (const p of PAYOUTS) {
+      const s = stoneView(p);
+      expect(visibleText(articleOf(p)), p.id).toContain(`${s.label} ${s.test} ${s.decided}`);
+    }
   });
 
   it("draws one stone per recorded payout, and no empty slot", () => {
     expect(section.match(/<article\b/g)?.length).toBe(RECORDED_RUNS.length);
+    expect(section.match(/<div class="[^"]*_stone_/g)?.length).toBe(RECORDED_RUNS.length);
+    expect(articles.map((a) => a.id).sort()).toEqual(PAYOUTS.map((p) => p.id).sort());
     expect(words).not.toMatch(/coming soon|placeholder|\bTBD\b/i);
   });
 
-  it("shows the seven checks at rest, the button for scripts and a line for no script", () => {
-    const rows = [...section.matchAll(/<li class="[^"]*_check_[^"]*" data-state="([a-z]+)"/g)];
-    expect(rows.map((m) => m[1])).toEqual(CHECKS.map(() => "recorded"));
-    expect(section).toMatch(/<ol class="[^"]*_checks_[^"]*" aria-busy="false" role="list"/);
-    // The button is in the markup, hidden until the script runs; the noscript line stands in for it.
-    expect(section).toMatch(
-      /<button type="button" class="[^"]*_run_[^"]*" hidden="">Read the chain now<\/button>/,
+  it("shows the seven checks at rest, the button for scripts and a line for no script, in every payout", () => {
+    for (const run of RECORDED_RUNS) {
+      const at = articleOf(run.payout);
+      const id = run.payout.id;
+      const rows = [...at.matchAll(/<li class="[^"]*_check_[^"]*" data-state="([a-z]+)"/g)];
+      expect(
+        rows.map((m) => m[1]),
+        id,
+      ).toEqual(CHECKS.map(() => "recorded"));
+      expect(at, id).toMatch(/<ol class="[^"]*_checks_[^"]*" aria-busy="false" role="list"/);
+      // The button is in the markup, hidden until the script runs; the noscript line stands in for it.
+      expect(at.match(/<button type="button" class="[^"]*_run_[^"]*" hidden="">/g), id).toEqual([
+        expect.stringContaining("_run_"),
+      ]);
+      expect(at, id).toMatch(
+        /<button type="button" class="[^"]*_run_[^"]*" hidden="">Read the chain now<\/button>/,
+      );
+      expect(at, id).toContain("<noscript><p class=");
+      expect(at, id).toMatch(/aria-live="polite" aria-atomic="true" data-tone="ok"/);
+      expect(visibleText(at), id).toContain(restVerdict(C, run.tally, run.recordedAt).title);
+    }
+    // One button per payout, each in its own stone, and none outside them.
+    expect(section.match(/<button type="button" class="[^"]*_run_/g)?.length).toBe(
+      RECORDED_RUNS.length,
     );
-    expect(section).toContain("<noscript><p class=");
-    expect(section).toMatch(/aria-live="polite" aria-atomic="true" data-tone="ok"/);
-    const run = RECORDED_RUNS[0];
-    expect(run).toBeDefined();
-    if (run) expect(words).toContain(restVerdict(C, run.tally, run.recordedAt).title);
     // Nothing moves before the button: no trace on the stone at rest.
     expect(section).not.toContain("data-trace");
+  });
+
+  it("shows the newest payout at the top and open, and folds each earlier one in a closed details", () => {
+    // The newest by the block of its spend; the recorded file keeps them oldest first.
+    expect(PAYOUTS.map((p) => p.pin.at)).toEqual(PAYOUTS.map((p) => p.pin.at).sort());
+    expect(ORDER.map((p) => p.id)).toEqual([...PAYOUTS].reverse().map((p) => p.id));
+    expect(articles.map((a) => a.id)).toEqual(ORDER.map((p) => p.id));
+    const [newest, ...earlier] = ORDER;
+    if (newest === undefined) throw new Error("no payout");
+    expect(newest.spendId).toBe(3);
+    expect(earlier.map((p) => p.spendId)).toEqual([2]);
+    // The newest: its heading in the open, then its stone, with no fold around it.
+    const top = articleOf(newest);
+    expect(top).toMatch(
+      new RegExp(
+        `^<article[^>]*><h3 class="[^"]*_payoutTitle_[^"]*" id="${newest.id}-title">${stoneView(newest).aria}</h3>`,
+      ),
+    );
+    expect(top).not.toMatch(FOLD);
+    expect(top).not.toContain("_foldSummary_");
+    expect(section.indexOf(top)).toBeLessThan(section.search(FOLD));
+    // Each earlier one: a details with no open attribute, so it starts closed and opens with no script.
+    for (const p of earlier) {
+      const at = articleOf(p);
+      const f = foldView(p);
+      const stone = stoneView(p);
+      expect(at, p.id).toMatch(
+        new RegExp(
+          `^<article[^>]*><details class="[^"]*_fold_[^"]*"><summary class="[^"]*_foldSummary_[^"]*"><h3 class="[^"]*_foldTitle_[^"]*" id="${p.id}-title">`,
+        ),
+      );
+      expect(at.match(/<details class="[^"]*_fold_[^"]*"[^>]*>/)?.[0], p.id).not.toMatch(
+        /\bopen\b/,
+      );
+      const summary = at.slice(at.indexOf("<summary"), at.indexOf("</summary>"));
+      // The summary names its spend, its amounts and how it was decided, and hints that it opens.
+      expect(f.title).toBe(stone.aria);
+      expect(f.title).toContain(`spend ${p.spendId}`);
+      expect(f.line).toContain(`${usdc(p.amount)} USDC burned on NEAR`);
+      expect(f.line).toContain(`${usdc(p.received)} USDC arrived on Base`);
+      expect(f.line.endsWith(stone.decided)).toBe(true);
+      expect(visibleText(summary).trim()).toBe(`${f.title} ${f.line} ${f.show} ${f.hide} ↓`);
+      // The arrow is decoration; the hint for a closed fold shows, the one for an open fold waits in the markup.
+      expect(summary).toMatch(/<span class="[^"]*_foldArrow_[^"]*" aria-hidden="true">↓<\/span>/);
+      expect(summary).toMatch(new RegExp(`<span class="[^"]*_foldShow_[^"]*">${f.show}</span>`));
+      expect(summary).toMatch(new RegExp(`<span class="[^"]*_foldHide_[^"]*">${f.hide}</span>`));
+      // Every word comes from MAINNET_PAYOUT, filled from the payout.
+      const checks = C.numbers[CHECKS.length];
+      expect(f.line).toBe(
+        fill(C.fold.line, {
+          amount: usdc(p.amount),
+          received: usdc(p.received),
+          decided: stone.decided,
+        }),
+      );
+      expect(f.show).toBe(fill(C.fold.show, { checks: checks ?? "" }));
+      expect(f.hide).toBe(fill(C.fold.hide, { checks: checks ?? "" }));
+      const decided = Object.values(C.stone.decided).flatMap((d) => Object.values(d));
+      const refused = refusedProposals(p).length;
+      expect(decided.map((d) => fill(d, { refused: C.numbers[refused] ?? refused }))).toContain(
+        stone.decided,
+      );
+      // Inside the fold, after the summary: its own stone, checks and button, its trail and its verdict.
+      const body = at.slice(at.indexOf("</summary>"));
+      expect(body, p.id).toMatch(/<div class="[^"]*_stone_/);
+      expect(body, p.id).toMatch(/>Read the chain now<\/button>/);
+      expect(body, p.id).toContain(trailView(p).title);
+    }
+    // Spend 2's summary, word for word.
+    const s2 = foldView(earlier[0] as Payout);
+    expect(s2).toEqual({
+      title: "The payout of spend 2 to Base, 2026-11-13",
+      line: "1.00 USDC burned on NEAR, 0.9976 USDC arrived on Base. Decided by the code rules alone, after code refused two attested model proposals.",
+      show: "Show its seven checks and its ledger",
+      hide: "Hide its seven checks and its ledger",
+    });
+    // The component names no payout: the words and the order come from the data.
+    const tsx = text(SRC, "components", "site", "MainnetPayout.tsx");
+    expect(tsx).not.toMatch(/spend[- ]?[23]\b|1\.00|0\.9976|0\.25\b|0\.2476/);
+  });
+
+  it("folds with no script: a 44px summary with its ring, and an arrow and a hint that turn with [open]", () => {
+    const css = text(SRC, "components", "site", "mainnet.module.css").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const body = (selector: string) => {
+      const at = css.indexOf(`\n${selector} {`);
+      return at < 0 ? "" : css.slice(at, css.indexOf("}", at));
+    };
+    expect(body(".foldSummary")).toMatch(/min-height: 44px;/);
+    expect(body(".foldSummary")).toMatch(/cursor: pointer;/);
+    expect(body(".foldSummary")).toMatch(/list-style: none;/);
+    expect(body(".foldSummary::-webkit-details-marker")).toMatch(/display: none;/);
+    expect(body(".foldHint")).toMatch(/min-height: 44px;/);
+    expect(body(".fold[open] .foldArrow")).toMatch(/transform: rotate\(180deg\);/);
+    expect(css).toMatch(/\.foldHide,\s*\.fold\[open\] \.foldShow \{\s*display: none;/);
+    expect(body(".fold[open] .foldHide")).toMatch(/display: inline;/);
+    // The site's focus ring stays: no rule takes the summary's outline away.
+    expect(css).not.toMatch(/\.fold[A-Za-z]*[^{]*\{[^}]*outline: (none|0)/);
+    // No script opens or closes a fold: the client component uses none of its classes.
+    const client = text(SRC, "components", "site", "MainnetPayoutClient.tsx");
+    expect(client).not.toMatch(/\bm\.fold/);
   });
 
   it("calls the burn neutral and the arrival ok", () => {
@@ -2923,18 +3117,35 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     }
   });
 
-  it("shows the trail with its refused spur and one coin seal per anchor, and the verifier as one verdict line", () => {
-    const trail = trailView(P);
-    expect(trail.items.filter((i) => i.spur).length).toBe(refusedProposals(P).length);
-    expect(words).toContain(trail.spur);
-    expect(words).toContain(trail.spurEnd);
-    expect(section.match(/class="[^"]*_sealCoin_/g)?.length).toBe(P.seals.length);
-    for (const seal of trail.seals) expect(section).toContain(`href="${seal.tx.url}"`);
-    const v = verifyView(P);
-    expect(words).toContain(v.result);
-    expect(words).toContain(v.counts);
-    expect(section).toMatch(/href="#verify"[^>]*>Run the verifier on a sample ledger/);
-    for (const row of C.earlier.rows) expect(section).toContain(`href="${row.tx.url}"`);
+  it("shows the trail with its refused spur and one coin seal per anchor, and the verifier as one verdict line, in every payout", () => {
+    // Spend 2's trail has the spur of two refused proposals; spend 3's has none.
+    expect(PAYOUTS.map((p) => refusedProposals(p).length)).toEqual([2, 0]);
+    for (const p of PAYOUTS) {
+      const at = articleOf(p);
+      const said = visibleText(at);
+      const trail = trailView(p);
+      const refused = refusedProposals(p).length;
+      expect(trail.items.filter((i) => i.spur).length, p.id).toBe(refused);
+      expect(said.includes(trail.spur), p.id).toBe(refused > 0);
+      expect(said.includes(trail.spurEnd), p.id).toBe(refused > 0);
+      expect(at.match(/class="[^"]*_sealCoin_/g)?.length, p.id).toBe(p.seals.length);
+      for (const seal of trail.seals) expect(at, p.id).toContain(`href="${seal.tx.url}"`);
+      const v = verifyView(p, PAYOUTS);
+      expect(said, p.id).toContain(v.result);
+      expect(said, p.id).toContain(v.counts);
+      expect(said, p.id).toContain(v.attested ?? "?");
+      expect(at, p.id).toMatch(/href="#verify"[^>]*>Run the verifier on a sample ledger/);
+      expect(at, p.id).toContain(`href="${v.output.href}"`);
+    }
+    expect(section.match(/class="[^"]*_sealCoin_/g)?.length).toBe(
+      PAYOUTS.reduce((n, p) => n + p.seals.length, 0),
+    );
+    // The vault's transactions of 2026-11-11 sit once, beside the newest payout.
+    const newest = articleOf(ORDER[0] as Payout);
+    for (const row of C.earlier.rows) {
+      expect(newest).toContain(`href="${row.tx.url}"`);
+      expect(section.split(`href="${row.tx.url}"`).length - 1).toBe(1);
+    }
   });
 
   it("keeps the client component to react and the payout readers", () => {

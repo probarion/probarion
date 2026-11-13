@@ -1,6 +1,7 @@
 /*
  * The #mainnet section (MainnetPayout.tsx): a payout on NEAR mainnet drawn as the brand mark laid along a route, the
- * stone, with its seven checks; then the decision trail beside the verifier's verdict. Light only, and every colour is
+ * stone, with its seven checks; then the decision trail beside the verifier's verdict. The newest payout shows open, and
+ * each earlier one follows, folded behind a summary card. Light only, and every colour is
  * a token from app/globals.css. Nothing moves until the button is pressed, and then only under
  * prefers-reduced-motion: no-preference, once each time: no effect starts on scroll, and nothing loops.
  */
@@ -44,6 +45,96 @@
 }
 .stoneWrap {
   min-width: 0;
+}
+
+/*
+ * The earlier payouts, after the newest: each folded in a native details that starts closed and opens with no script.
+ * The summary is a white card with the payout's heading, what it was, and a hint whose arrow turns when it opens.
+ */
+.folds {
+  display: grid;
+  gap: 16px;
+}
+.fold {
+  min-width: 0;
+}
+.foldSummary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title hint"
+    "line hint";
+  align-items: center;
+  gap: 8px 40px;
+  min-height: 44px;
+  padding: clamp(18px, 2.4vw, 28px) clamp(18px, 2.6vw, 36px);
+  border: 1px solid var(--color-line);
+  border-radius: 24px;
+  background: var(--color-surface);
+  cursor: pointer;
+  list-style: none;
+}
+.foldSummary::-webkit-details-marker {
+  display: none;
+}
+.foldTitle {
+  grid-area: title;
+  font-weight: 400;
+  font-size: clamp(22px, 2vw, 28px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.foldLine {
+  grid-area: line;
+  max-width: var(--container-measure);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.foldHint {
+  grid-area: hint;
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-gold-ink);
+}
+/* A gold ring with the arrow in it: it points down while closed and up once the payout is open. */
+.foldArrow {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-gold-deep);
+  border-radius: 50%;
+  font-size: 16px;
+}
+.fold[open] .foldArrow {
+  transform: rotate(180deg);
+}
+.foldHide,
+.fold[open] .foldShow {
+  display: none;
+}
+.fold[open] .foldHide {
+  display: inline;
+}
+.foldSummary:hover .foldShow,
+.foldSummary:hover .foldHide {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.foldBody {
+  display: grid;
+  gap: clamp(28px, 3vw, 40px);
+  min-width: 0;
+  margin-top: clamp(28px, 3vw, 40px);
 }
 
 /* A pill in the section's tones: a burn is neutral, an arrival or an allow is ok, a refusal is bad. */
@@ -926,6 +1017,17 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .lede {
+    justify-self: start;
+  }
+  /* A fold's hint goes under its line, at the start, so the heading keeps the width. */
+  .foldSummary {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "title"
+      "line"
+      "hint";
+  }
+  .foldHint {
     justify-self: start;
   }
 }
