@@ -11,7 +11,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CopyAuditLink, OpenLinkedDecision } from "@/components/proof/DecisionLinks";
 import { ATTESTATION_MEANINGS, DecisionPanel } from "@/components/proof/DecisionPanel";
-import { DECISIONS_SHOWN, Decisions, ProofView } from "@/components/proof/ProofView";
+import {
+  DECISIONS_OPEN,
+  DECISIONS_SHOWN,
+  Decisions,
+  ProofView,
+} from "@/components/proof/ProofView";
 import type { Network } from "@/lib/config";
 import {
   DECISION_LIMITS,
@@ -575,7 +580,7 @@ describe("/proof Decisions on the testnet demo vault (rules-only)", () => {
 });
 
 describe("paging and the client parts", () => {
-  it(`shows the ${DECISIONS_SHOWN} newest decisions and keeps the older ones, anchors included, behind one control`, async () => {
+  it(`shows the ${DECISIONS_OPEN} newest decisions, the next ones up to ${DECISIONS_SHOWN} behind one control, and the older ones, anchors included, behind another`, async () => {
     const rows = await decisionRows(demo, "testnet");
     const base = rows[1] as DecisionRow;
     const many = Array.from({ length: DECISIONS_SHOWN + 3 }, (_, i) => {
@@ -585,13 +590,55 @@ describe("paging and the client parts", () => {
     const out = section(await page(demo, many));
     const t = text(out);
     expect(t).toContain(
-      `${DECISIONS_SHOWN + 3} decisions, 0 made with model output, showing the ${DECISIONS_SHOWN} newest`,
+      `${DECISIONS_SHOWN + 3} decisions, 0 made with model output, showing the ${DECISIONS_OPEN} newest`,
     );
+    // The newest DECISIONS_OPEN are full cards outside any group.
+    const next = out.indexOf(
+      `<details class="group/next mt-4" data-next="${DECISIONS_SHOWN - DECISIONS_OPEN}">`,
+    );
+    expect(next).toBeGreaterThan(-1);
+    for (let i = 0; i < DECISIONS_OPEN; i++) {
+      expect(out.indexOf(`id="seq-${DECISIONS_SHOWN + 2 - i}"`)).toBeLessThan(next);
+    }
+    // The next ones are full cards in the closed group, before the older group.
     const older = out.indexOf('data-older="3"');
     expect(older).toBeGreaterThan(out.indexOf(`id="seq-3"`));
+    for (const seq of [DECISIONS_SHOWN + 2 - DECISIONS_OPEN, 3]) {
+      const at = out.indexOf(`id="seq-${seq}"`);
+      expect(at).toBeGreaterThan(next);
+      expect(at).toBeLessThan(older);
+      expect(text(card(out, seq))).toContain("What the contract checked");
+    }
+    expect(t).toContain(`Show the next ${DECISIONS_SHOWN - DECISIONS_OPEN} decisions`);
+    expect(t).toContain(`seq ${DECISIONS_SHOWN + 2 - DECISIONS_OPEN} to seq 3`);
     expect(t).toContain("Show 3 older decisions");
     expect(t).toContain("seq 2 to seq 0");
     for (const seq of [2, 1, 0]) expect(out.indexOf(`id="seq-${seq}"`)).toBeGreaterThan(older);
+  });
+
+  it(`keeps a short ledger whole, and opens the next group when the address names a card in it (?seq=N)`, async () => {
+    // The fixture's 3 decisions all show, with no group.
+    const few = section(await page(attested));
+    expect(few).not.toContain("data-next=");
+    expect(few).not.toContain("data-older=");
+    expect(text(few)).not.toContain("showing the");
+    const rows = await decisionRows(demo, "testnet");
+    const base = rows[1] as DecisionRow;
+    const many = Array.from({ length: DECISIONS_OPEN + 2 }, (_, i) => {
+      const seq = DECISIONS_OPEN + 1 - i;
+      return { ...base, seq, id: `seq-${seq}`, spendIds: [] };
+    });
+    const closed = section(await page(demo, many));
+    expect(closed).toMatch(/<details class="group\/next mt-4" data-next="2">/);
+    expect(text(closed)).toContain("Show the next 2 decisions");
+    expect(closed).toContain("<span>seq 1 to seq 0</span>");
+    const opened = section(await page(demo, many, 0));
+    expect(opened).toMatch(/<details class="group\/next mt-4" data-next="2" open="">/);
+    expect(card(opened, 0)).toMatch(/<details class="group\/card" open="">/);
+    // One card in the group: "the next decision", at its seq.
+    const one = section(await page(demo, many.slice(0, DECISIONS_OPEN + 1)));
+    expect(text(one)).toContain("Show the next decision");
+    expect(one).toContain("<span>seq 1</span>");
   });
 
   it("renders an older decision as its summary line only, with its anchors and a link to its full card", async () => {

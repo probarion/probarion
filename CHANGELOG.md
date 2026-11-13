@@ -1304,6 +1304,16 @@ The software is an unaudited beta.
   A8 offline (these tests run no online check, so O1 and O2 are not part of them). Check with
   `node scripts/check-claims.mjs` and, after `pnpm install --frozen-lockfile` and
   `pnpm --filter @probarion/core build`, `pnpm --filter @probarion/sdk exec vitest run test/nearai.recorded.test.ts`.
+- A vault's proof page tells its story first. Three lines under the vault's name, counted from the snapshot the
+  checks ran on and dated with its full `taken_at`, say what the vault has paid out on chain and how much, how
+  each paid spend was decided (after an attested model proposed it, with A1 to A7 passing; on the code rules
+  alone; or before the signed ledger), and how many decisions the code rules refused or held and how many
+  payments the contract refused, by rule or code. The "Check the TEE now" card moves up, right under the result
+  and above the checks. The 3 newest decision cards show; the next ones, up to 20, fold under "Show the next N
+  decisions", and an audit link still opens the card it names. The page stays dynamic (no revalidate and no route
+  cache) and rate-limited per IP address. As before, the checks reuse a vault's result for up to 60 s, and the
+  story is dated with that snapshot's `taken_at`. Check it with
+  `pnpm exec vitest run test/proof-story.test.ts test/proof-routes.test.ts` in `apps/web`.
 
 - The landing's "What works today, and what does not" is a status board. A summary computed from
   the rows comes first: how many are Verified, and what each row marked In part or Not tried yet

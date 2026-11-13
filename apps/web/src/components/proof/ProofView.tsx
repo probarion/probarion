@@ -46,11 +46,13 @@ import {
 import { NEXT_STEP } from "@/lib/site/next-step";
 import { OpenLinkedDecision } from "./DecisionLinks";
 import { DecisionLine, DecisionPanel } from "./DecisionPanel";
+import { ProofStory } from "./ProofStory";
 import { TeeCheckPanel } from "./TeeCheckPanel";
 
 // The public proof page, as a server component with no data access of its own: page.tsx loads the result and
-// hands it here, with the snapshot's decision rows. The result comes first, then the checks, each decision, the live
-// TEE check (the same on every vault's page), the burns and the steps to verify it yourself.
+// hands it here, with the snapshot's decision rows. The story of the snapshot comes first, in three lines, then the
+// result, the live TEE check (the same on every vault's page), the checks, each decision, the burns and the steps to
+// verify it yourself.
 
 const KIND_LABEL: Readonly<Record<TenantKind, string>> = {
   team: "Team vault",
@@ -419,7 +421,10 @@ function AttestationLine({ modelDecisions }: { modelDecisions: number }) {
   );
 }
 
-/** How many decisions show before "Show N older decisions": the 402 vault already holds 21. */
+/** How many decision cards show before "Show the next N decisions": the newest few tell the story. */
+export const DECISIONS_OPEN = 3;
+
+/** How many decisions are full cards before "Show N older decisions": the 402 vault already holds 21. */
 export const DECISIONS_SHOWN = 20;
 
 /**
@@ -430,10 +435,11 @@ const WIDE = "min-[1100px]:ml-[calc((100%_-_1040px)/2)] min-[1100px]:w-[1040px]"
 
 /**
  * Every decision of the ledger, newest first (G7), each with its audit anchors (G4). The newest DECISIONS_SHOWN are
- * full cards (<details>), and only the newest decision made with model output starts open. The older ones wait in a
- * second <details> as their summary lines, anchors included, so every audit link still lands while the page stays
- * small; `fullSeq` (from ?seq=N) renders that one older decision's full card, open, with its group open. A small
- * client part opens the card a link points at.
+ * full cards (<details>), and only the newest decision made with model output starts open. The first DECISIONS_OPEN
+ * show; the rest of those cards wait in a <details> ("Show the next N decisions"), so the page stays short. The older
+ * ones wait in a second <details> as their summary lines, anchors included, so every audit link still lands while the
+ * page stays small; `fullSeq` (from ?seq=N) renders that one decision's full card, open, with its group open. A small
+ * client part opens the card a link points at, and every closed group around it.
  */
 export function Decisions({
   vault,
@@ -456,9 +462,12 @@ export function Decisions({
       open={r.seq === open || r.seq === fullSeq}
     />
   );
-  const shown = rows?.slice(0, DECISIONS_SHOWN) ?? [];
+  const shown = rows?.slice(0, DECISIONS_OPEN) ?? [];
+  const next = rows?.slice(DECISIONS_OPEN, DECISIONS_SHOWN) ?? [];
   const older = rows?.slice(DECISIONS_SHOWN) ?? [];
+  const nextOpen = next.some((r) => r.seq === fullSeq);
   const olderOpen = older.some((r) => r.seq === fullSeq);
+  const theNext = (n: number) => (n === 1 ? "the next decision" : `the next ${n} decisions`);
   const withModel = rows?.filter((r) => r.decidedBy === "model+rules").length ?? 0;
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   // The 1040 px breakout is for the cards' three columns: a single sentence keeps the page's column.
@@ -484,9 +493,27 @@ export function Decisions({
         <>
           <p className={`mt-3 text-xs ${muted}`} data-decisions={rows.length}>
             {plural(rows.length, "decision", "decisions")}, {withModel} made with model output
-            {older.length > 0 ? `, showing the ${shown.length} newest` : null}
+            {rows.length > shown.length ? `, showing the ${shown.length} newest` : null}
           </p>
           <ol className="mt-3 grid gap-3">{shown.map(card)}</ol>
+          {next.length > 0 ? (
+            <details className="group/next mt-4" data-next={next.length} open={nextOpen}>
+              <summary
+                className={`flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-2 text-xs ${muted} [&::-webkit-details-marker]:hidden`}
+              >
+                <span className={linePillClass}>
+                  <span className="group-open/next:hidden">Show {theNext(next.length)}</span>
+                  <span className="hidden group-open/next:inline">Hide {theNext(next.length)}</span>
+                </span>
+                <span>
+                  {next.length === 1
+                    ? `seq ${next[0]?.seq}`
+                    : `seq ${next[0]?.seq} to seq ${next[next.length - 1]?.seq}`}
+                </span>
+              </summary>
+              <ol className="mt-3 grid gap-3">{next.map(card)}</ol>
+            </details>
+          ) : null}
           {older.length > 0 ? (
             <details className="group/older mt-4" data-older={older.length} open={olderOpen}>
               <summary
@@ -524,9 +551,10 @@ export function Decisions({
 }
 
 /**
- * A vault's live checks a-i, with explorer links, each decision of its ledger, its burns, the offline steps and the
- * next step (the console). `decisions` is `decisionRows` of the same snapshot, or null when they could not be built;
- * `fullSeq` is the older decision whose full card the address asks for (?seq=N), if any; `teeModel` is the model the
+ * A vault's story in three lines, the result, the live TEE check, its live checks a-i with explorer links, each
+ * decision of its ledger, its burns, the offline steps and the next step (the console). `decisions` is `decisionRows` of the same
+ * snapshot, or null when they could not be built (then the story is left out, since it counts them);
+ * `fullSeq` is the decision whose full card the address asks for (?seq=N), if any; `teeModel` is the model the
  * live TEE check asks first (NEARAI_MODEL), or null.
  */
 export function ProofView({
@@ -558,6 +586,9 @@ export function ProofView({
           {report.entries === 1 ? "entry" : "entries"} · {report.anchors}{" "}
           {report.anchors === 1 ? "anchor" : "anchors"}
         </p>
+        {decisions === null ? null : (
+          <ProofStory snapshot={snapshot} rows={decisions} takenAt={takenAt} />
+        )}
       </Header>
 
       <Panel state={state} title={HEADLINE_TEXT[state]}>
@@ -583,6 +614,8 @@ export function ProofView({
         </div>
       </Panel>
 
+      <TeeCheckPanel model={teeModel} />
+
       <section className={section} aria-labelledby="checks">
         <h2 id="checks" className={sectionTitle}>
           Checks
@@ -599,7 +632,6 @@ export function ProofView({
       </section>
 
       <Decisions vault={vault} network={network} rows={decisions} fullSeq={fullSeq} />
-      <TeeCheckPanel model={teeModel} />
       <Burns burns={burns} />
       <VerifyYourself vault={vault} network={network} takenAt={takenAt} />
       <NextStep step={NEXT_STEP.proof} className="mt-6 text-sm text-ink/80" linkClassName={link} />
