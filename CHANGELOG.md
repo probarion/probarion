@@ -1147,8 +1147,8 @@ The software is an unaudited beta.
 
 - `scripts/check-claims.mjs` says what it is doing while it runs, on stderr: first `reading up to <n> files`, with a
   note that the first run on a fresh Windows clone can take a few minutes, then `<n> files read` every 500 files.
-  Most of a first run is reading each file once (in a fresh local clone on 2026-11-14, 1,151 of its 1,396 files;
-  the claim-marker scan reads 1,018 of them). stdout keeps the problems and the one summary line
+  Most of a first run is reading each file once (in a fresh local clone on 2026-11-14 it read 1,151 of 1,398 files,
+  1,018 of them for the claim-marker scan). stdout keeps the problems and the one summary line
   (`scripts/check-claims-progress.test.mjs`). The SDK's two tests of a recorded NEAR AI Cloud decision no longer
   skip while they wait for a recording: `packages/sdk/test/fixtures/nearai-recorded/decision.json` is built from
   entry 4 of the committed mainnet ledger of `v0.probarion.near` (S2, 2026-11-13) and its invoice INV-M003, a
