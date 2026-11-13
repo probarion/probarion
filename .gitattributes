@@ -16,3 +16,5 @@ eval/invoices/*.pdf binary
 examples/402/demo-purpose.txt -text
 # S1 on mainnet (2026-11-13): the invoice and PO hashes are on chain and the ledger is kept byte for byte, so git never converts the folder.
 docs/evidence/mainnet-v0/s1-2026-11-13/* -text
+# S2 on mainnet (2026-11-13): the invoice and PO hashes are on chain and the ledger is kept byte for byte, so git never converts the folder.
+docs/evidence/mainnet-v0/s2-2026-11-13/* -text

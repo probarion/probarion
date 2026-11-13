@@ -1,0 +1,48 @@
+{
+  "at": "2026-11-13T11:41:17.760Z",
+  "network": "mainnet",
+  "vault": "v0.probarion.near",
+  "ref": "INV-M003",
+  "invoice_hash": "c246134881e52b147f9d4416f447e7151b7049d0e31cefcafa0db25027d683b6",
+  "status": "burned",
+  "spend_id": 3,
+  "code": null,
+  "spend_tx": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH",
+  "anchor_tx": "6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG",
+  "ledger_seq": 5,
+  "ledger_complete": true,
+  "decision_hash": "d3807956b1e0a0481656862a50a2147d2b0a1f04834a30829529311c9cec32aa",
+  "decision_seq": 4,
+  "verdict": "allow",
+  "decided_by": "model+rules",
+  "model": "z-ai/glm-5.3-flash",
+  "proposal": {
+    "action": "pay",
+    "amount": "250000",
+    "confidence": 0.92,
+    "payee_hint": {
+      "address": "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27",
+      "name": "vault owner's own Base wallet (mandate payee)",
+      "chain": "base"
+    }
+  },
+  "model_usage": {
+    "model": "z-ai/glm-5.3-flash",
+    "promptTokens": 634,
+    "completionTokens": 1202
+  },
+  "model_attempts": [
+    {
+      "attempt": 1,
+      "ok": true,
+      "secs": 38.2,
+      "model": "z-ai/glm-5.3-flash"
+    }
+  ],
+  "model_rules": [
+    "model.refused: pass (model proposed pay)",
+    "model.low_confidence: pass (confidence 0.92 (floor 0.7))"
+  ],
+  "rules_not_passed": [],
+  "ledger_entries": 6
+}

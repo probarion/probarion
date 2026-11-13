@@ -27,13 +27,16 @@
   "setup": {
     "add_agent_tx": "C1auyjtE9SbDroPenWARewRvDYMdfKmcF19FBssdzEJn",
     "near_mandate_tx": "8TnxDYrDDsRboPAFj1Pc2SyniZvya8iigpNJLPm9FzX2",
-    "base_mandate_tx": "77cC8nMq6qWynU51FsPn8mkFAb3NEuDmEG7ZXjX6483g"
+    "base_mandate_tx": "77cC8nMq6qWynU51FsPn8mkFAb3NEuDmEG7ZXjX6483g",
+    "s2_base_mandate_tx": "4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T"
   },
   "proof": {
     "first_near_payment_tx": "22oqhgruo7JqdpPg5Cb2ts25mLK2fto8y1YAxNA56ieE",
     "first_base_payout_tx": "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9",
     "first_base_payout_base_tx": "0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71",
-    "first_no_mandate_refusal_tx": "2Dabq4uMh9VvttH3uj85samfYoX2wbQheADHS96AtwYh"
+    "first_no_mandate_refusal_tx": "2Dabq4uMh9VvttH3uj85samfYoX2wbQheADHS96AtwYh",
+    "attested_base_payout_tx": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH",
+    "attested_base_payout_base_tx": "0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7"
   },
   "factory": {
     "account_id": "vaults.probarion.near",
