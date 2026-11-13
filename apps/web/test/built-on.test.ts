@@ -313,7 +313,7 @@ describe("the built-on section", () => {
 describe("the built-on facts", () => {
   const prose = README.replace(/\s+/g, " ");
 
-  it("NEAR: the vault and the factory on testnet, one small vault on mainnet with a NEAR payment, a Base payout and a refusal", () => {
+  it("NEAR: the vault and the factory on testnet, one small vault on mainnet with a NEAR payment, two Base payouts and a refusal", () => {
     const [near] = BUILT_ON.rows;
     expect(near.body).toBe(
       "Each vault is a NEAR contract that holds its USDC and checks every payment against the owner's mandate.",
@@ -324,7 +324,7 @@ describe("the built-on facts", () => {
     expect(near.checks).toEqual([
       "The vault and the factory run on NEAR testnet",
       "One small vault on mainnet since 2026-11-11, `v0.probarion.near`",
-      "On mainnet: a NEAR payment, a Base payout and a refusal, all on chain",
+      "On mainnet: a NEAR payment, two Base payouts and a refusal, all on chain",
     ]);
     expect(readmeRow("Vault contract")).toContain("**Shipped on NEAR testnet**");
     expect(readmeRow("Factory contract")).toContain("**Shipped on NEAR testnet**");
@@ -337,12 +337,15 @@ describe("the built-on facts", () => {
     expect(mainnet).toContain("the POA bridge released 0.9976 USDC on Base");
     expect(mainnet).toContain("1.00 USDC once, to the owner's own Base address");
     expect(mainnet).toContain("a labeled test of the cross-chain path");
+    expect(mainnet).toContain("0.25 USDC once, to the same address");
+    expect(mainnet).toContain("the POA bridge released 0.2476 USDC on Base");
+    expect(mainnet).toContain("The ledger now holds 6 entries, anchored 4 times");
     expect(near.note).toBe(
-      "The 2026-11-13 Base payout, 1.00 USDC, was a rules-only test to the owner's own address.",
+      "Tests to the owner's Base address: one rules-only, one on an attested model's proposal.",
     );
     // The same words as the status list's row, which is held to the README in site-facts.test.ts.
     expect(statusOf("Mainnet vault").pill).toBe(
-      "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
+      "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
     );
     const record = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
       vault_v0: { account_id: string };
@@ -502,17 +505,17 @@ describe("the built-on facts", () => {
     expect(listing).toContain(`**Name:** ${store.ids[0]}\n`);
   });
 
-  it("the stack note: one mainnet payout through NEAR Intents, tested against a stand-in otherwise, and attestation checks that exist", () => {
+  it("the stack note: two mainnet payouts through NEAR Intents, tested against a stand-in otherwise, and attestation checks that exist", () => {
     const [intents, attestation] = BUILT_ON.also.items;
     expect(intents).toEqual({
       name: "NEAR Intents",
-      body: "Payouts are built and tested against a testnet stand-in, and one has run on mainnet: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+      body: "Payouts tested against a testnet stand-in. Two ran on mainnet on 2026-11-13, tests to the owner's Base address: one by code rules alone, one by an attested model and code rules.",
     });
-    // Word for word the sentence the section said before, its subject moved into the entry's name: what was tested
-    // against a stand-in and what ran on mainnet stay apart.
+    // Read with the entry's name, one sentence keeps what was tested against a stand-in apart from what ran on mainnet,
+    // and says how each mainnet payout was decided.
     const body = intents?.body ?? "";
     expect(`${intents?.name} ${body.charAt(0).toLowerCase()}${body.slice(1)}`).toBe(
-      "NEAR Intents payouts are built and tested against a testnet stand-in, and one has run on mainnet: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+      "NEAR Intents payouts tested against a testnet stand-in. Two ran on mainnet on 2026-11-13, tests to the owner's Base address: one by code rules alone, one by an attested model and code rules.",
     );
     expect(attestation).toEqual({
       name: "Intel TDX and NVIDIA NRAS",
@@ -525,7 +528,10 @@ describe("the built-on facts", () => {
       "On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`",
     );
     expect(prose).toContain(
-      "On mainnet one payout has run: on 2026-11-13 `v0.probarion.near` paid 1.00 USDC to the owner's own Base address this way, a test decided by code rules alone",
+      "On mainnet two payouts have run this way, both tests to the owner's own Base address on 2026-11-13. In S1 `v0.probarion.near` paid 1.00 USDC, a test decided by code rules alone",
+    );
+    expect(prose).toContain(
+      "In S2 it paid 0.25 USDC, decided by an attested model and the code rules, and the bridge released 0.2476 USDC",
     );
   });
 });
@@ -610,7 +616,7 @@ describe("the built-on copy", () => {
     ]) {
       expect(`${lead} ${notices.join(" ")}`).toContain(notice);
     }
-    // It says Probarion is designed to pay through Base and Solana: one Base payout and no Solana payout has run on mainnet.
+    // It says Probarion is designed to pay through Base and Solana: two Base payouts and no Solana payout have run on mainnet.
     expect(lead).toContain("built on or is designed to pay through");
   });
 

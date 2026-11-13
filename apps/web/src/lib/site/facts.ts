@@ -819,7 +819,7 @@ export const STATUS = {
     {
       id: "mainnet-vault",
       row: "Mainnet vault",
-      pill: "On mainnet: 2 test payments (1 to Base, rules-only), 1 refused on chain",
+      pill: "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
       tone: "live",
     },
   ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
@@ -913,9 +913,9 @@ export const BUILT_ON = {
       checks: [
         "The vault and the factory run on NEAR testnet",
         "One small vault on mainnet since 2026-11-11, `v0.probarion.near`",
-        "On mainnet: a NEAR payment, a Base payout and a refusal, all on chain",
+        "On mainnet: a NEAR payment, two Base payouts and a refusal, all on chain",
       ],
-      note: "The 2026-11-13 Base payout, 1.00 USDC, was a rules-only test to the owner's own address.",
+      note: "Tests to the owner's Base address: one rules-only, one on an attested model's proposal.",
       links: [
         { label: "Testnet proof page", href: DEMO_PROOF },
         { label: "The mainnet vault", href: "/docs/start/testnet-and-mainnet#the-mainnet-vault" },
@@ -948,7 +948,7 @@ export const BUILT_ON = {
     items: [
       {
         name: "NEAR Intents",
-        body: "Payouts are built and tested against a testnet stand-in, and one has run on mainnet: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+        body: "Payouts tested against a testnet stand-in. Two ran on mainnet on 2026-11-13, tests to the owner's Base address: one by code rules alone, one by an attested model and code rules.",
       },
       {
         name: "Intel TDX and NVIDIA NRAS",
@@ -1202,7 +1202,7 @@ export const INTEGRATE = {
     },
     {
       title: "Cross-chain payouts",
-      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate. On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR. On mainnet one payout through NEAR Intents has run: a 1.00 USDC test to the owner's own Base address on 2026-11-13, decided by code rules alone.",
+      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate. On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR. On mainnet two payouts through NEAR Intents have run, tests to the owner's own Base address on 2026-11-13: 1.00 USDC decided by code rules alone, then 0.25 USDC decided by an attested model and the code rules.",
       control: "Address fixed by the mandate",
       outcome:
         "On testnet the vault built the memo `WITHDRAW_TO:0x1111…1111` from the mandate and burned 1 test USDC.",
