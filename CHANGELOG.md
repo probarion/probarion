@@ -1240,6 +1240,28 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The README, JUDGES.md, `docs/TRACKS.md` and the docs follow the other changes of 2026-11-13. They now say what
+  the payee check is: `probarion payee check` and the `/check` page give allow, warn or block with reasons,
+  read-only, in this repository and not in npm 0.1.1, and `/check` is live only after the next deploy. On
+  2026-11-13 at 20:44:51 UTC, and again at 22:26 UTC, `probarion-payee.testnet` with `--vault v0.probarion.testnet`
+  printed ALLOW, and at 22:26 UTC the owner's mainnet payees printed WARN. The live check's text follows the
+  landing: "An inflated invoice" answers `OverPerPayment`, "A hijacked prompt" answers `ok` and the page says the
+  attacker gets 0, and the recorded fallback is from 19:08 UTC on 2026-11-13 (block 277550985). The README's web
+  console row is Live on NEAR testnet for its tried parts, with email alerts and the Base top-up not tried, and
+  names the hero's S2 card, "Ask the mainnet contract", the no-clone verify blocks and the page order, and the
+  proof page row gives that page's new order. The README also has a Status row for the payee check, the `/usage`
+  mainnet record, the `/canary` attempt box and an ops line for `node scripts/smoke-live.mjs`. The footer links
+  "Payee check" (`/check`, so also the sitemap) and "Run a pilot", and `apps/web/e2e/a11y.spec.ts` checks `/check`.
+  In the docs, Evaluate in 5 minutes gives the same live check answers, and the SDK reference and Install name the
+  `./payee` entry point and `payee check`'s use of `NEAR_ARCHIVAL_RPC_URLS`. JUDGES.md's gas row says `/usage`
+  shows the mainnet gas after the next deploy, and the README counts 145 Playwright tests in `apps/web/e2e`
+  (`playwright test --list`). `check-claims` also reads `docs/agent-market-2026-11.md`, which `docs/TRACKS.md`
+  links from track 07. The package test counts are re-measured, each with its package's own `test` script on
+  Windows at 22:20 UTC on 2026-11-13: 888 in `@probarion/core`, 824 in `@probarion/sdk` (none skipped), 364 in the
+  CLI and 197 in `@probarion/mcp`; `pnpm judge` quotes the first three. `docs/evidence/mainnet-v0/README.md` and
+  `docs/measurement-pin-2026-11.md` add dated sections for the no-clone verify and the landing row's new words.
+  Check: `node scripts/check-claims.mjs` and `pnpm judge --offline --quick`.
+
 - The front door. The README's top is a 30-second story with S2's mainnet test payment (0.25 USDC sent, 0.2476
   arrived on the owner's own Base address), the worst case today read live from `v0.probarion.near` at 19:01 UTC on
   2026-11-13 (`docs/evidence/mainnet-v0/worst-case-2026-11-13.json`) with what a leaked ledger key or the owner's

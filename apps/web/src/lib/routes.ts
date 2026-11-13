@@ -17,9 +17,10 @@ export interface NavItem {
 }
 
 /**
- * /security, /usage and /status are in FOOTER_NAV only:
+ * /security, /check, /usage and /status are in FOOTER_NAV only:
  * with them, the header's links do not fit in the bar at 1241 px, where it first shows them.
- * The footer still lists Usage and System status with the product pages (FOOTER_PRODUCT in lib/site/facts.ts).
+ * The footer still lists Payee check, Usage and System status with the product pages (FOOTER_PRODUCT in
+ * lib/site/facts.ts). FOOTER_NAV also puts each of them in the sitemap (publicRoutes).
  * Two items are sections of the landing page: the mainnet payouts second, and the status board as What works.
  */
 export const SITE_NAV: readonly NavItem[] = [
@@ -35,6 +36,7 @@ export const FOOTER_NAV: readonly NavItem[] = [
   { route: "/terms", label: "Terms" },
   { route: "/privacy", label: "Privacy" },
   { route: "/security", label: "Security" },
+  { route: "/check", label: "Payee check" },
   { route: "/usage", label: "Usage" },
   { route: "/status", label: "System status" },
 ];

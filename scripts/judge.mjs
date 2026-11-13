@@ -1394,15 +1394,15 @@ export function planSteps(root = ROOT) {
       "@probarion/core",
       "packages/core",
       "@probarion/core tests pass",
-      "843 in `@probarion/core`",
+      "888 in `@probarion/core`",
     ),
     vitest(
       "@probarion/sdk",
       "packages/sdk",
       "@probarion/sdk tests pass",
-      "801 in `@probarion/sdk`",
+      "824 in `@probarion/sdk`",
     ),
-    vitest("probarion", "packages/cli", "CLI (probarion) tests pass", "353 in the CLI"),
+    vitest("probarion", "packages/cli", "CLI (probarion) tests pass", "364 in the CLI"),
     vitest(
       "@probarion/mcp",
       "packages/mcp",

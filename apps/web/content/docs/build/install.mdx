@@ -173,9 +173,10 @@ With the packages from npm, your code imports them by name, as in `import { Prob
 | --- | --- | --- | --- |
 | `@probarion/sdk` | `.` | `@probarion/sdk` | `./packages/sdk/dist/index.js` |
 | `@probarion/sdk` | `./testing` | `@probarion/sdk/testing` | `./packages/sdk/dist/testing/index.js` |
+| `@probarion/sdk` | `./payee` | Not in npm 0.1.1 | `./packages/sdk/dist/payee-signals.js` |
 | `@probarion/core` | `.` | `@probarion/core` | `./packages/core/dist/index.js` |
 
-Each entry point has its type declarations beside it. To import `@probarion/sdk/testing` from TypeScript, set `"moduleResolution"` to `"NodeNext"` or `"Bundler"`. `./testing` holds test doubles: a fake chain, a fake NEAR JSON-RPC server and a fake NEAR AI Cloud. A test that passes against them does not show that a real vault behaves the same.
+`./payee` holds the payee check's reads, which `.` also exports, without the parts that load `node:fs`, for a browser page. Each entry point has its type declarations beside it. To import `@probarion/sdk/testing` from TypeScript, set `"moduleResolution"` to `"NodeNext"` or `"Bundler"`. `./testing` holds test doubles: a fake chain, a fake NEAR JSON-RPC server and a fake NEAR AI Cloud. A test that passes against them does not show that a real vault behaves the same.
 
 The importing file must be an ES module: an `.mjs` file, or a `.js` file under a `package.json` that sets `"type": "module"`. The root `package.json` of the clone sets it, so a `.js` or `.mjs` file in the root of the clone is an ES module.
 
@@ -224,7 +225,7 @@ In a clone, a package of the clone's pnpm workspace that depends on the SDK also
 | --- | --- | --- |
 | `NEAR_NETWORK` | CLI | The network when `--network` is not given: `mainnet` or `testnet`. Unset: `testnet`. The SDK takes `network` as an option. |
 | `NEAR_RPC_URLS` | SDK, CLI | Comma-separated RPC URLs, in failover order. The SDK's `rpcUrls` option and the CLI's `--rpc` take precedence. Unset: the network's default RPCs. |
-| `NEAR_ARCHIVAL_RPC_URLS` | SDK, CLI `verify` | Archival RPCs for burn transactions older than about 2.5 days. The CLI's `--archival-rpc` takes precedence. Unset: FastNEAR's archival node for the network. |
+| `NEAR_ARCHIVAL_RPC_URLS` | SDK, CLI `verify` and `payee check` | Archival RPCs for burn transactions older than about 2.5 days, and for `payee check`'s read of the account about 7 days back. The CLI's `--archival-rpc` takes precedence. Unset: FastNEAR's archival node for the network. |
 | `PROBARION_VAULT_ID` | CLI | The default for `--vault`. The SDK takes `vault` as an option. |
 | `PROBARION_FACTORY_ID` | CLI `vault create` | The factory that creates the vault. Unset: the network's factory. |
 | `PROBARION_LEDGER_PATH` | SDK, CLI `verify` and `ledger export` | The ledger file. Unset: `.probarion/ledger.jsonl` in the working directory. |

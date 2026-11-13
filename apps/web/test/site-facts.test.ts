@@ -1095,7 +1095,8 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
         {
           start: "Web console",
           says: [
-            "**In progress**",
+            "**Live on NEAR testnet** for the parts tried there with a real wallet",
+            "adding an email alert and the 1Click top-up of Base USDC are not tried yet",
             "went further with a real wallet: Create a vault, the agent and ledger keys, the faucet, a mandate, four Payables invoices and a public proof page",
             "On 2026-11-11 more of the console was tried with the owner's real wallet (Meteor, on testnet; Claude drove the console and the owner signed): Freeze and Unfreeze on the demo vault, and on `trial.vaults.probarion.testnet` the Top-up tab's USDC transfer on NEAR, the Agent (MCP) tab and approving two held spends on the console's approval page ([evidence](docs/evidence/trial-vault/README.md))",
             "On 2026-11-12, on the same vault and in the same way, the owner rejected a held spend on the approval page, revoked a mandate on the Mandates tab, added a spare agent key on the Keys tab and then removed it there, and withdrew the vault's whole balance, 1 test USDC, with Withdraw all on the Overview ([evidence](docs/evidence/trial-vault/README.md#2026-11-12-reject-revoke-a-spare-agent-key-and-withdraw-all))",
@@ -2784,6 +2785,7 @@ describe("the footer columns", () => {
       "/canary",
       "/docs",
       "/#status",
+      "/check",
       "/usage",
       "/status",
     ]);
@@ -2791,11 +2793,15 @@ describe("the footer columns", () => {
     // The status page is the system's health; the landing's status board is what works.
     expect(FOOTER.product.find((i) => i.route === "/status")?.label).toBe("System status");
     expect(FOOTER.product.find((i) => i.route === "/#status")?.label).toBe("What works");
+    expect(FOOTER.product.find((i) => i.route === "/check")?.label).toBe("Payee check");
   });
 
   it("links a pilot issue form only once the repository has one", () => {
     // config.yml turns blank issues off, so a link to a template that is not there opens a chooser with no pilot form.
     const html = renderToStaticMarkup(createElement(SiteFooter));
+    expect(FOOTER.developers).toContainEqual({ href: LINKS.pilot, label: "Run a pilot" });
+    expect(LINKS.pilot).toBe(`${LINKS.github}/issues/new?template=pilot.yml`);
+    expect(html).toContain(`href="${LINKS.pilot}"`);
     if (html.includes("template=pilot.yml"))
       expect(existsSync(join(ROOT, ".github", "ISSUE_TEMPLATE", "pilot.yml"))).toBe(true);
     expect(text(ROOT, ".github", "ISSUE_TEMPLATE", "config.yml")).toContain(

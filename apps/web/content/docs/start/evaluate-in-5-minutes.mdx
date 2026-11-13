@@ -2,7 +2,7 @@ In about five minutes, with Node.js 24, pnpm 10, git and a bash-compatible shell
 
 <Callout kind="note" title="Before you install anything">
 
-Two checks run in your browser, on the landing page. In the [live check](/#try), pick "A hijacked prompt": the vault's `check_spend` view answers `OverPerPayment`. The other scenarios answer `ok`, `NoMandate` and `NotAgent`. The [ledger test](/#verify) runs the verifier from `@probarion/core` in your browser on the signed test fixture of step 2.
+Two checks run in your browser, on the landing page. In the [live check](/#try), pick "An inflated invoice": the vault's `check_spend` view answers `OverPerPayment`. "A hijacked prompt" answers `ok`, and the page says the attacker gets 0, because the request has no address field. The other scenarios answer `ok`, `NoMandate` and `NotAgent`. The [ledger test](/#verify) runs the verifier from `@probarion/core` in your browser on the signed test fixture of step 2.
 
 </Callout>
 

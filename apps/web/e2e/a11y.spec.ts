@@ -14,6 +14,7 @@ import { expect, type Page, test } from "@playwright/test";
 const PAGES = [
   "/",
   "/status",
+  "/check",
   "/docs",
   "/docs/concepts/payment-checks",
   "/proof/demo.vaults.probarion.testnet",
@@ -135,6 +136,7 @@ function readingPages(): string[] {
   return [
     "/",
     "/status",
+    "/check",
     "/privacy",
     "/terms",
     "/security",

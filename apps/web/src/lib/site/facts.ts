@@ -78,6 +78,8 @@ export const LINKS = {
   mainnetVerifyOnline: blob("docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt"),
   /** The demo video on X, the README's "Demo video": a 1:57 cut recorded on the live product. */
   demoVideo: "https://x.com/probarionhq/status/2120882499689836651",
+  /** The public "Run a pilot" issue form (.github/ISSUE_TEMPLATE/pilot.yml), also /usage's PILOT_FORM_URL. */
+  pilot: `${REPO_URL}/issues/new?template=pilot.yml`,
 } as const;
 
 // --- metadata -------------------------------------------------------------------------------------
@@ -132,7 +134,7 @@ const COVERED_WHILE_PLANNED: readonly string[] = ["/security"];
 const listed = (items: readonly NavItem[]) =>
   items.filter(({ route }) => isBuilt(route) || !COVERED_WHILE_PLANNED.includes(route));
 /** FOOTER_NAV pages that the footer lists with the product pages, not with the legal ones. */
-const FOOTER_PRODUCT: readonly string[] = ["/usage", "/status"];
+const FOOTER_PRODUCT: readonly string[] = ["/check", "/usage", "/status"];
 
 export const FOOTER = {
   motto: "TEE protects the data. The contract protects the money.",
@@ -152,6 +154,7 @@ export const FOOTER = {
     { href: LINKS.interfaces, label: "Interfaces" },
     { href: LINKS.security, label: "SECURITY.md" },
     { href: LINKS.changelog, label: "Changelog" },
+    { href: LINKS.pilot, label: "Run a pilot" },
   ],
   follow: [{ href: LINKS.x, label: "@probarionhq on X" }],
 } as const;

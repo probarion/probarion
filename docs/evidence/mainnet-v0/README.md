@@ -163,3 +163,15 @@ added and `--snapshot` to a scratch file, passed O1 and O2 for the vault's 3 att
 ([output](s2-2026-11-13/verify-online-2026-11-13.txt),
 [the online check](s2-2026-11-13/README.md#the-online-check-2026-11-13)). The TEE measurement is not pinned, so this
 does not show which model image ran.
+
+## 2026-11-13: No clone
+
+The site's copy of the vault's signed ledger after S2, the recorded transactions and spend 1's pre-ledger decision
+let `npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near` run in an empty folder, with no
+clone and no key ([the blocks](../../../README.md#re-check-every-decision)). On 2026-11-13, between 19:02 and 19:11
+UTC, with Node.js 24.12.0 in Git Bash and in Windows PowerShell 5.1, it printed checks a to h PASS, i SKIP and
+`RESULT: PASS` ([transcripts](no-clone-verify-2026-11-14.txt); the file name uses the local date, UTC+7).
+probarion.xyz did not serve the files yet, so those runs fetched the same bytes from a local copy and from GitHub.
+Release 0.1.1 has no `--invoice`, so A8 does not run, and without `--online` check e does not verify the TEE quotes.
+The TEE measurement is not pinned. The URLs under https://probarion.xyz/samples/mainnet answer only after the
+promote and the deploy that ship them.
