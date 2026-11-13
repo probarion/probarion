@@ -887,62 +887,6 @@ a.netPill:hover {
   color: var(--color-bad);
 }
 
-/* The console: real testnet screenshots, three across. On a phone the row scrolls sideways, one shot at a time. */
-/* Positioned, so that a link's absolutely positioned screen-reader text stays inside the row when it scrolls. */
-.shotRow {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  min-width: 0;
-}
-.shot {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-}
-.shotImage {
-  display: block;
-  overflow: hidden;
-  border: 1px solid var(--color-line);
-  border-radius: 14px;
-  background: var(--color-surface);
-}
-/* The row scrolls on a phone and clips what is outside it, so the ring is drawn inside the shot. */
-.shotImage:focus-visible {
-  outline-offset: -3px;
-}
-.shotImage img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-.shot h3 {
-  font-weight: 500;
-  font-size: 17px;
-}
-.shot p {
-  margin-top: 4px;
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-/* The meta line under a caption: 2.5em or more of the caption's text from line top to line top (WCAG 1.4.8). */
-.shot .shotMeta {
-  margin-top: 15px;
-  font-size: 13px;
-  color: var(--color-mute);
-}
-.shotMeta a {
-  white-space: nowrap;
-}
-.shotProof {
-  margin-top: 22px;
-  max-width: var(--container-measure);
-  font-size: 15px;
-  color: var(--color-mute);
-}
-
 /* Ink band. It keeps its own padding inside, and owns G of paper below itself, as each section does. */
 .band {
   background: var(--color-band);
@@ -1774,21 +1718,6 @@ a.netPill:hover {
 @media (max-width: 760px) {
   .netSwitch {
     display: none;
-  }
-  .shotRow {
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: 86%;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    padding-bottom: 8px;
-    /* 6px of room each side, taken back by the margin, so the row does not cut a caption link's focus ring. */
-    margin-inline: -6px;
-    padding-inline: 6px;
-    scroll-padding-inline: 6px;
-  }
-  .shot {
-    scroll-snap-align: start;
   }
   .betaWide {
     display: none;

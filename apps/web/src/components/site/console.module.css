@@ -1,0 +1,166 @@
+/*
+ * The console (ConsoleShots.tsx): three real testnet captures of one invoice, held and then paid, as three numbered
+ * rows of one shape. The number, the title and the text are the journey's own (journey.module.css), so the landing's
+ * two numbered sequences read as one. From 1100px a caption rail sits beside the capture, which is never drawn wider
+ * than its own 856px, and the transaction slot sits at the rail's foot, level with the capture's bottom edge. Below
+ * 1100px a row stacks. Nothing scrolls sideways and nothing moves on scroll. Every colour is a token from
+ * app/globals.css.
+ */
+
+/* What the three shots share, said once in the head, under the lede. */
+.record {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 40px;
+  margin-top: 24px;
+}
+.record > div {
+  min-width: 0;
+}
+.record dt {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-mute);
+}
+.record dd {
+  margin-top: 2px;
+  font-size: 15px;
+}
+/* A class and two elements, so that it beats .site code's 0.86em whatever order the modules load in. */
+.record dd code {
+  font-size: 14px;
+}
+
+/* The three steps, ruled like the journey's. The action row's rule closes the last one. */
+.steps {
+  list-style: none;
+}
+.step {
+  padding-block: clamp(28px, 3.5vw, 44px);
+  border-top: 1px solid var(--color-line);
+}
+/* Stacked: caption, capture, then what is under it, in source order. No named areas here, so that a row whose slot
+   is empty gets no empty track and no gap for it. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 20px;
+}
+.cap {
+  min-width: 0;
+}
+.capTitle {
+  margin-top: 14px;
+}
+/* An account name in a caption stays whole: its 23 characters fit a 320px screen even with WCAG 1.4.12 spacing. */
+.cap p code {
+  white-space: nowrap;
+}
+
+/* A capture: a link to the file itself, only as tall as its image, and never wider than the capture's 856px plus its
+   1px border each side, so that the image is never drawn larger than the file. */
+.shot {
+  display: block;
+  align-self: start;
+  max-width: 858px;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Under a capture: the link to the file, where the page draws it smaller, then the transaction in its labelled slot.
+   The gap leaves 1.55 + 16/15 = 2.62em from line top to line top (WCAG 1.4.8). */
+.ev {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+.full {
+  font-size: 15px;
+}
+.tx {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+.txLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-mute);
+}
+/* A transaction link wraps as a whole, never inside its hash, and its arrow stays with it. */
+.txLink {
+  font-size: 15px;
+  white-space: nowrap;
+}
+.hash {
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+/* The close: what the proof page shows, then the proof page and the console, on the steps' grid from 1100px. */
+.actions {
+  display: grid;
+  gap: 18px;
+  padding-top: clamp(28px, 3.5vw, 44px);
+  border-top: 1px solid var(--color-line);
+}
+.actionsText {
+  max-width: 30em;
+  font-size: 16px;
+  color: var(--color-mute);
+}
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* From 924px a stacked capture is drawn at its own size (858px, the 24px gutters and a scrollbar of up to 18px), so
+   "Open full size" would open the same picture: it goes, and so does a slot left with nothing in it. */
+@media (min-width: 924px) {
+  .full,
+  .bare {
+    display: none;
+  }
+}
+
+/* The rail beside the capture: at least 17rem, the capture at most its own size. Between 1100px and about 1245px the
+   capture is drawn a little smaller than the file (from about 720px); the image itself still links to the file. */
+@media (min-width: 1100px) {
+  .row {
+    grid-template-columns: minmax(17rem, 1fr) minmax(0, 858px);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "cap img"
+      "ev img";
+    column-gap: clamp(32px, 4vw, 56px);
+    row-gap: 24px;
+  }
+  .cap {
+    grid-area: cap;
+  }
+  .shot {
+    grid-area: img;
+  }
+  .ev {
+    grid-area: ev;
+    align-self: end;
+  }
+  .tx {
+    padding-top: 14px;
+    border-top: 1px solid var(--color-line);
+  }
+  .actions {
+    grid-template-columns: minmax(17rem, 1fr) minmax(0, 858px);
+    column-gap: clamp(32px, 4vw, 56px);
+    align-items: center;
+  }
+}

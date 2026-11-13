@@ -65,12 +65,14 @@ describe("the landing's section heads", () => {
         `<section class="${h.section}" id="${x.id}" aria-labelledby="${x.id}-title"><div class="${s.wrap}">` +
           `<header class="${h.head}"><hgroup><p class="${s.eyebrow}">([^<]+)</p>` +
           `<h2 class="${s.h2} ${h.title}" id="${x.id}-title">([^<]+)</h2></hgroup>` +
-          `<p class="${h.lede}">([\\s\\S]*?)</p></header>`,
+          `<p class="${h.lede}">([\\s\\S]*?)</p>(<dl class="[^"]+">[\\s\\S]*?</dl>)?</header>`,
       ).exec(html);
       expect(head, x.id).not.toBeNull();
       expect(decode(head?.[1] ?? ""), x.id).toBe(x.eyebrow);
       expect(decode(head?.[2] ?? ""), x.id).toBe(x.title);
       expect(text(head?.[3] ?? ""), x.id).toBe(plain(x.lede));
+      // Only the console says one thing for its whole body under the lede: the record its three shots share.
+      expect(head?.[4] !== undefined, x.id).toBe(x.id === "console");
     }
   });
 

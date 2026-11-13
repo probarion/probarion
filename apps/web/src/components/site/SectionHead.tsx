@@ -12,9 +12,16 @@ export interface HeadCopy {
 
 /**
  * The head every landing section opens with: a hairline, the eyebrow, the heading and the lede, stacked on one left
- * edge. The eyebrow and the heading are one `hgroup`; the heading carries `id`, which names the section.
+ * edge. The eyebrow and the heading are one `hgroup`; the heading carries `id`, which names the section. `after` is
+ * what a section says once for its whole body, under the lede and inside the head (the console's record).
  */
-export function SectionHead({ id, eyebrow, title, lede }: HeadCopy & { id: string }) {
+export function SectionHead({
+  id,
+  eyebrow,
+  title,
+  lede,
+  after,
+}: HeadCopy & { id: string; after?: ReactNode }) {
   return (
     <header className={h.head}>
       <hgroup>
@@ -26,6 +33,7 @@ export function SectionHead({ id, eyebrow, title, lede }: HeadCopy & { id: strin
       <p className={h.lede}>
         <Rich text={lede} />
       </p>
+      {after}
     </header>
   );
 }
@@ -37,17 +45,20 @@ export function SectionHead({ id, eyebrow, title, lede }: HeadCopy & { id: strin
 export function LandingSection({
   id,
   head,
+  headAfter,
   children,
 }: {
   id: string;
   head: HeadCopy;
+  /** Rendered in the head, under the lede: see SectionHead's `after`. */
+  headAfter?: ReactNode;
   children: ReactNode;
 }) {
   const titleId = `${id}-title`;
   return (
     <section className={h.section} id={id} aria-labelledby={titleId}>
       <div className={s.wrap}>
-        <SectionHead id={titleId} {...head} />
+        <SectionHead id={titleId} {...head} after={headAfter} />
         {children}
       </div>
     </section>

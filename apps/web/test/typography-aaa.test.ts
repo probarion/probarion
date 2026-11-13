@@ -8,7 +8,7 @@ import { isTestFile, toPosix, walk } from "./deploy-scan";
 /*
  * The site's typography against WCAG 2.2: contrast at AAA (1.4.6: 7:1, or 4.5:1 for large text), the visual
  * presentation of reading text (1.4.8), readable sizes and weights, and the guards that keep text spacing (1.4.12) and
- * reflow (1.4.10) working. Every check reads the real files: the tokens in app/globals.css and the six CSS modules.
+ * reflow (1.4.10) working. Every check reads the real files: the tokens in app/globals.css and the CSS modules in MODULES.
  * Large text is 24px and up (18.66px bold and up; no module sets a weight above 600). What is left out is listed below,
  * each with its reason.
  */
@@ -25,6 +25,7 @@ const MODULES: Readonly<Record<string, string>> = {
   head: "src/components/site/head.module.css",
   journey: "src/components/site/journey.module.css",
   integrate: "src/components/site/integrate.module.css",
+  console: "src/components/site/console.module.css",
 };
 const AAA = 7;
 const AAA_LARGE = 4.5;
@@ -498,7 +499,6 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["docs", ".prose li > :is(p, ul, ol) + :is(p, ul, ol)", "margin-top", 16.5, "docs", ".prose"],
       ["site", ".gaps li + li", "margin-top", 15, "site", ".site"],
       ["site", ".boFine p + p", "margin-top", 13, "site", ".site"],
-      ["site", ".shot .shotMeta", "margin-top", 15, "site", ".site"],
       ["canary", ".column p + p", "margin-top", 17, "site", ".site"],
       ["canary", ".line", "margin-top", 17, "site", ".site"],
       ["canary", ".steps", "gap", 16, "site", ".site"],
@@ -515,6 +515,9 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       // Integrate: a use's control over its runs when the columns stack, and a run's outcome over its evidence.
       ["integrate", ".use", "row-gap", 15, "site", ".site"],
       ["integrate", ".run", "row-gap", 15, "site", ".site"],
+      // The console: the record under the head's lede, and a capture's full-size link over its transaction.
+      ["console", ".record", "margin-top", 17, "site", ".site"],
+      ["console", ".ev", "gap", 15, "site", ".site"],
     ];
     for (const [file, selector, prop, px, lhFile, lhSelector] of cases) {
       const lh = Number(decl(lhFile, lhSelector, "line-height"));
@@ -554,6 +557,7 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["site", ".closeNote"],
       ["integrate", ".partNote"],
       ["integrate", ".useBody"],
+      ["console", ".actionsText"],
       ["site", ".duelNote"],
       ["site", ".proofIntro"],
       ["site", ".compareMore"],
@@ -673,22 +677,19 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     expect(search.outline).toBe("2px solid var(--color-gold-small)");
     expect(search["box-shadow"]).toBeUndefined();
     // Rings that a clipping box would cut are drawn inside it.
-    for (const s of [
-      ".codeBody:focus-visible",
-      ".shotImage:focus-visible",
-      ".scroll:focus-visible",
-    ]) {
+    for (const s of [".codeBody:focus-visible", ".scroll:focus-visible"]) {
       expect(decl("site", s, "outline-offset"), s).toBe("-3px");
     }
-    // Scrollers with links at their edges (the Canary tables, the landing's screenshot row on a phone) leave 6px of
+    // The console's captures sit in no scroller, so their links keep the ring 3px outside, as every other link does.
+    expect(
+      MODULE_RULES.filter((r) => r.file === "console" && r.decls["outline-offset"]).map(where),
+    ).toEqual([]);
+    // Scrollers with links at their edges (the Canary tables) leave 6px of
     // room each side for the 2px ring, 3px out, and take it back with their margin.
     expect(read("src", "components", "site", "ScrollRegion.tsx")).toContain(
       'target.scrollIntoView({ block: "nearest", inline: "nearest" })',
     );
-    for (const [file, selector] of [
-      ["canary", ".scroll"],
-      ["site", ".shotRow"],
-    ] as const) {
+    for (const [file, selector] of [["canary", ".scroll"]] as const) {
       expect(decl(file, selector, "padding-inline"), selector).toBe("6px");
       expect(decl(file, selector, "margin-inline"), selector).toBe("-6px");
       // ScrollRegion scrolls a link that a keyboard focuses into view; it stops 6px in, so its ring shows whole.

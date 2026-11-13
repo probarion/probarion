@@ -842,19 +842,25 @@ export interface ConsoleShot {
   alt: string;
   title: string;
   body: string;
-  /** Where and when it was taken. */
-  meta: string;
+  /** The shot's testnet transaction: a verb, a space, then the short hash, which the page sets in mono. */
   link?: { label: string; url: string };
 }
-
-/** Captured on probarion.xyz on 2026-11-09, while INV-2004 went through the testnet demo vault. */
-const SHOT_META = "Testnet console, 2026-11-09, vault demo.vaults.probarion.testnet";
 
 export const CONSOLE_SHOTS = {
   eyebrow: "The console",
   title: "An invoice held for an approver, then paid.",
   intro:
     "Screenshots from the testnet demo vault, taken while a fifth invoice went through it: INV-2004, 4 test USDC, above the mandate's 3 USDC approval limit.",
+  /** What the three shots share, said once in the head: taken on probarion.xyz while INV-2004 went through. */
+  record: [
+    { term: "Network", value: "Testnet" },
+    { term: "Captured", value: "2026-11-09" },
+    { term: "Vault", value: "`demo.vaults.probarion.testnet`" },
+  ],
+  /** The name over a shot's transaction link. The invoice's page has no transaction, and nothing stands in for one. */
+  txLabel: "Testnet transaction",
+  /** Under each shot below 1100px, where the page shows it smaller than the capture. */
+  fullSize: "Open full size",
   shots: [
     {
       id: "held",
@@ -864,7 +870,6 @@ export const CONSOLE_SHOTS = {
       alt: "The vault overview in the console: Held for approval (1), spend 3, 4 USDC to probarion-payee.testnet under mandate 1. Only the vault's approvers can approve or reject it.",
       title: "Held for an approver",
       body: "The owner confirmed the amount in their wallet. Above 3 USDC, the vault holds the spend until an approver signs, and it can only pay `probarion-payee.testnet`.",
-      meta: SHOT_META,
       link: demoTx("Held ", tx("9qUtxTguj17dp8KX61GW7YTVBQyJGZBt1ZWiQoM2699d", "9qUtxTgu…699d")),
     },
     {
@@ -875,7 +880,6 @@ export const CONSOLE_SHOTS = {
       alt: "The invoice page in Payables: the owner's NEP-413 confirm, then three columns. Model wanted: rules only. Code allowed: each rule passed. Contract did: held for approval, spend 3.",
       title: "The invoice's page",
       body: "The owner's signed confirm, every code rule the invoice passed, and what the contract did with it, side by side.",
-      meta: SHOT_META,
     },
     {
       id: "paid",
@@ -885,7 +889,6 @@ export const CONSOLE_SHOTS = {
       alt: "The vault overview after the approval: nothing held, and three paid spends of 4, 4 and 2 USDC, all to probarion-payee.testnet.",
       title: "Paid after approval",
       body: "The approver approved spend 3 from their own key, and the vault paid. Each spend went to the mandate's payee.",
-      meta: SHOT_META,
       link: demoTx(
         "Approved ",
         tx("EYPyrd9hapyZthjMwysShUnkDSVkMQHtPYHitidbr972", "EYPyrd9h…r972"),
