@@ -23,6 +23,7 @@ import { cli } from "@/lib/proof/cli";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import {
   BAND,
+  BASE_TX,
   betaStrip,
   CHAIN,
   CHECK_HINTS,
@@ -41,7 +42,9 @@ import {
   JOURNEY,
   LINKS,
   LIVE_CHECK,
+  MAINNET_PAYOUT,
   MAINNET_TX,
+  mainnetTxFact,
   NUMBERS,
   OG_IMAGE,
   PROBLEM,
@@ -63,6 +66,24 @@ import {
   VERIFY_NOTE,
 } from "@/lib/site/facts";
 import recordedJson from "@/lib/site/live-check-recorded.json";
+import {
+  BASE_RPC_URLS,
+  CHECKS,
+  NEAR_RPC_URLS,
+  type Payout,
+  SPEND_FIELDS,
+  usdc,
+} from "@/lib/site/mainnet-payout";
+import { PAYOUTS, RECORDED, RECORDED_RUNS } from "@/lib/site/mainnet-payout-data";
+import { sectionHead, stoneView, trailView, verifyView } from "@/lib/site/mainnet-payout-section";
+import { draftPayouts, readSources } from "@/lib/site/mainnet-payout-sources";
+import {
+  checkRows,
+  checkTitle,
+  READ_COUNTS,
+  refusedProposals,
+  restVerdict,
+} from "@/lib/site/mainnet-payout-view";
 import { NEXT_STEP } from "@/lib/site/next-step";
 import { TERMS_PAGE } from "@/lib/site/ops-copy";
 import { ledgerRows, verifyTamper } from "@/lib/site/tamper";
@@ -2405,5 +2426,355 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
     expect(README).toContain(
       "a spend against mandate 999 was refused on chain with `PROBARION:NoMandate`",
     );
+  });
+});
+
+describe("the mainnet payout (#mainnet)", () => {
+  const S1_DIR = ["docs", "evidence", "mainnet-v0", "s1-2026-11-13"];
+  const proof = JSON.parse(text(ROOT, "docs", "mainnet-proof.json")) as {
+    links: Record<string, string>;
+    txs: Record<
+      string,
+      {
+        hash: string;
+        kind: string;
+        network: string;
+        amount_usdc: string | null;
+        base_tx: string | null;
+        spend_id: number | null;
+        error_code: string | null;
+        recorded_at: string;
+        what: string;
+      }
+    >;
+  };
+  const proofTx = (hash: string) => Object.values(proof.txs).find((t) => t.hash === hash);
+  const deployment = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
+    funding: { intents_topup: { near_tx: string } };
+    setup: { base_mandate_tx: string };
+    proof: Record<string, string>;
+  };
+  const evidence = text(ROOT, ...S1_DIR, "README.md");
+  const verifyTxt = text(ROOT, ...S1_DIR, "verify-2026-11-13.txt");
+  const verifyJson = JSON.parse(text(ROOT, ...S1_DIR, "verify-2026-11-13.json")) as {
+    ok: boolean;
+    entries: number;
+    anchors: number;
+    checks: { id: string; status: string; detail: string }[];
+  };
+  const poa = JSON.parse(text(ROOT, ...S1_DIR, "poa-status.json")) as {
+    data: {
+      tx_hash: string;
+      transfer_tx_hash: string;
+      withdraw_amount: string;
+      withdrawal_fee: string;
+    };
+  };
+  const ledgerLines = text(ROOT, ...S1_DIR, "ledger-2026-11-13.jsonl")
+    .split(/\r?\n/)
+    .filter((l) => l.trim() !== "");
+  const snapshot = JSON.parse(text(ROOT, ...S1_DIR, "snapshot-2026-11-13.json")) as {
+    chain: { anchors: { seq: number; count: number; root: string }[] };
+  };
+  const P = PAYOUTS[0] as Payout;
+
+  it("is built from the data: one payout per mainnet spend with a Base transfer in docs/mainnet-proof.json", () => {
+    const withBase = Object.values(proof.txs).filter(
+      (t) => t.network === "mainnet" && typeof t.base_tx === "string",
+    );
+    expect(PAYOUTS).toHaveLength(withBase.length);
+    expect(PAYOUTS.map((p) => p.tx.spend.hash)).toEqual(withBase.map((t) => t.hash));
+    // The recorded file is what the data files give today, plus the two blocks that the chain alone knows. When this fails,
+    // the data changed: run `record-mainnet-payout` again.
+    expect(PAYOUTS.map(({ pin: _pin, base: _base, ...draft }) => draft)).toEqual(
+      draftPayouts(readSources(ROOT)),
+    );
+    expect(RECORDED_RUNS.map((r) => r.tally.state)).toEqual(PAYOUTS.map(() => "pass"));
+    expect(RECORDED.payouts.map((r) => r.payout)).toEqual(PAYOUTS);
+  });
+
+  it("names the S1 transactions that the proof file and the deployment record hold, on their explorers", () => {
+    const kinds = {
+      topUp: "intents_topup",
+      ledgerKey: "ledger_key_set",
+      baseMandate: "mandate_created",
+      anchor1: "anchor",
+      anchor2: "anchor",
+      anchor3: "anchor",
+      basePayout: "base_payout",
+    } as const;
+    for (const [key, kind] of Object.entries(kinds)) {
+      const t = MAINNET_TX[key as keyof typeof kinds];
+      expect(proofTx(t.hash), key).toMatchObject({ kind, network: "mainnet" });
+      expect(t).toEqual(mainnetTxFact(t.hash));
+      expect(t.url).toBe(explorerTxUrl("mainnet", t.hash));
+      const [head, tail] = t.label.split("…");
+      expect(t.hash.startsWith(head ?? "?") && t.hash.endsWith(tail ?? "?")).toBe(true);
+    }
+    // The same transactions as the recorded payout.
+    expect(P.setup.map((s) => s.tx)).toEqual([
+      MAINNET_TX.topUp.hash,
+      MAINNET_TX.ledgerKey.hash,
+      MAINNET_TX.baseMandate.hash,
+    ]);
+    expect(P.seals.map((s) => s.tx)).toEqual([
+      MAINNET_TX.anchor1.hash,
+      MAINNET_TX.anchor2.hash,
+      MAINNET_TX.anchor3.hash,
+    ]);
+    expect(P.tx.mandate.hash).toBe(MAINNET_TX.baseMandate.hash);
+    expect(P.tx.spend.hash).toBe(MAINNET_TX.basePayout.hash);
+    expect(P.tx.anchor.hash).toBe(MAINNET_TX.anchor3.hash);
+    expect(P.tx.base).toBe(BASE_TX.basePayout.hash);
+    // contracts/deployments/mainnet.json, whose keys stay keys.
+    expect(deployment.funding.intents_topup.near_tx).toBe(MAINNET_TX.topUp.hash);
+    expect(deployment.setup.base_mandate_tx).toBe(MAINNET_TX.baseMandate.hash);
+    expect(Object.values(deployment.proof)).toContain(MAINNET_TX.basePayout.hash);
+    expect(Object.values(deployment.proof)).toContain(BASE_TX.basePayout.hash);
+    // The Base transfer: the spend's base_tx, the POA bridge's transfer, on Basescan.
+    expect(proofTx(MAINNET_TX.basePayout.hash)?.base_tx).toBe(BASE_TX.basePayout.hash);
+    expect(poa.data).toMatchObject({
+      tx_hash: MAINNET_TX.basePayout.hash,
+      transfer_tx_hash: BASE_TX.basePayout.hash,
+    });
+    expect(Object.values(proof.links)).toContain(BASE_TX.basePayout.url);
+    expect(BASE_TX.basePayout.label).toBe("0xc2df8f87…ea71");
+  });
+
+  it("holds the amounts, the fee and the Base block to the proof file, the POA status and the evidence", () => {
+    const spend = proofTx(P.tx.spend.hash);
+    expect(usdc(P.amount)).toBe(spend?.amount_usdc);
+    expect(spend?.spend_id).toBe(P.spendId);
+    expect(P.received).toBe(poa.data.withdraw_amount);
+    expect(P.fee).toBe(poa.data.withdrawal_fee);
+    expect(BigInt(P.received) + BigInt(P.fee)).toBe(BigInt(P.amount));
+    expect([usdc(P.amount), usdc(P.received), usdc(P.fee)]).toEqual(["1.00", "0.9976", "0.0024"]);
+    expect(spend?.what).toContain(`released ${usdc(P.received)} USDC on Base`);
+    expect(evidence).toContain(`burned ${usdc(P.amount)} Base USDC`);
+    expect(evidence).toContain(`kept ${usdc(P.fee)} USDC as its fee`);
+    expect(evidence).toContain(`On Base, block ${P.base.block}:`);
+    expect(evidence).toContain(`\`Transfer\` of ${P.received} (${usdc(P.received)} USDC)`);
+    // The recorded reads say the same.
+    const base = RECORDED.payouts[0]?.reads.base as { blockNumber: string };
+    expect(Number.parseInt(base.blockNumber, 16)).toBe(P.base.block);
+    const spendRead = RECORDED.payouts[0]?.reads.spend as {
+      transaction_outcome: { block_hash: string };
+    };
+    expect(spendRead.transaction_outcome.block_hash).toBe(P.pin.hash);
+    // The mandate's limits, as the proof file says them.
+    expect(proofTx(P.tx.mandate.hash)?.what).toContain(
+      `Mandate ${P.mandate.id}: the owner's own Base address via NEAR Intents, at most ${usdc(P.mandate.maxPerPayment)} USDC per payment and in total, ${P.mandate.maxUses} payment, until 2026-11-20`,
+    );
+    expect(proofTx(MAINNET_TX.topUp.hash)?.amount_usdc).toBe(usdc(P.setup[0]?.amount ?? "0"));
+  });
+
+  it("holds every count to the verifier's output, the ledger file and the snapshot", () => {
+    const v = P.verify;
+    expect(verifyTxt).toContain(`entries ${v.entries}, anchors ${v.anchors},`);
+    expect([v.entries, v.anchors]).toEqual([verifyJson.entries, verifyJson.anchors]);
+    const view = verifyView(P);
+    const lines = verifyTxt.split(/\r?\n/);
+    expect(lines).toContain(view.counts);
+    expect(lines).toContain(view.result);
+    expect(view.counts).toBe("8 passed, 0 failed, 0 unproven, 1 skipped");
+    expect(v.ok).toBe(verifyJson.ok);
+    // The ledger: every entry is about this invoice, and the last anchor covers them all.
+    expect(P.trail).toHaveLength(ledgerLines.length);
+    expect(P.trail).toHaveLength(v.entries);
+    expect(P.seals).toHaveLength(v.anchors);
+    expect(P.seals.map(({ seq, count, root }) => ({ seq, count, root }))).toEqual(
+      snapshot.chain.anchors.map(({ seq, count, root }) => ({ seq, count, root })),
+    );
+    expect(P.anchor.count).toBe(ledgerLines.length);
+    // The attested decisions: those code refused, and check e's count.
+    const attested = P.trail.filter((e) => e.attested).length;
+    const e = verifyJson.checks.find((c) => c.id === "e")?.detail ?? "";
+    expect(refusedProposals(P)).toHaveLength(attested);
+    expect(e).toContain(`${attested} attested decisions pass`);
+    expect(view.attested).toBe(`${attested} attested decisions, checked A1 to A8.`);
+    expect(v.quoteOnline).toBe(false);
+    expect(e).toContain("quote not verified offline");
+    expect(view.foot).toBe(MAINNET_PAYOUT.verify.offline);
+    expect(view.link.href).toBe("#verify");
+  });
+
+  it("says in the stone that this was a test, and that code rules alone decided it", () => {
+    const s = stoneView(P);
+    expect(s.label).toBe("A test, not a customer payment");
+    expect(s.test).toBe("A test of the cross-chain path, sent to the owner's own Base wallet.");
+    expect(s.decided).toBe(
+      "Decided by the code rules alone, after code refused two attested model proposals.",
+    );
+    expect(evidence).toContain("**A test, not a customer payment.**");
+    expect(evidence).toContain(
+      "**Decided rules-only.** The payment was decided by the code rules alone",
+    );
+    expect(s.near).toMatchObject({ figure: "1.00", unit: "USDC burned", tone: "neutral" });
+    expect(s.base).toMatchObject({ figure: "0.9976", unit: "USDC arrived", tone: "ok" });
+    expect(partsText(s.near.line)).toBe("Vault v0.probarion.near, spend 2, BdN7oB76…rSQ9");
+    expect(partsText(s.base.line)).toBe(
+      "Owner's wallet 0xB22E…6EB27, block 56821514, 0xc2df8f87…ea71",
+    );
+    expect(s.timing).toBe(
+      "Both in the same minute, 07:24 UTC. The POA bridge kept 0.0024 USDC as its fee.",
+    );
+    expect(s.aria).toBe("The payout of spend 2 to Base, 2026-11-13");
+  });
+
+  it("draws the trail: the refused proposals on the spur, then the allowed decision and the burn, and the anchors as seals", () => {
+    const t = trailView(P);
+    expect(t.intro).toBe(
+      "Twice an attested model on NEAR AI Cloud proposed paying, and twice code refused it before anything was sent. Then the code rules alone allowed the payment. Each step is a signed ledger entry.",
+    );
+    expect(t.items.map((i) => [i.label, i.pill, i.tone, i.spur])).toEqual([
+      ["Entry 0, 07:17 UTC", "Refused by code", "bad", true],
+      ["Entry 1, 07:22 UTC", "Refused by code", "bad", true],
+      ["Entry 2, 07:24 UTC", "Allowed by code rules", "ok", false],
+      ["Entry 3, 07:24 UTC", "Burned, sent to Base", "neutral", false],
+    ]);
+    expect(t.items.map((i) => partsText(i.text))).toEqual([
+      "z-ai/glm-5.3-flash, an attested model in a TEE on NEAR AI Cloud, proposed pay. The rule mandate.payee_mismatch refused it: the model named the token contract as a NEAR account.",
+      "Qwen/Qwen3.8-27B, attested, proposed pay. Code refused it the same way.",
+      "No model this time. The code rules alone decided allow.",
+      "Spend 2: 1.00 USDC burned on NEAR for the Base wallet, BdN7oB76…rSQ9.",
+    ]);
+    // The models and the rule, as the run's outcome files recorded them.
+    const outcomes = ["outcome-20261113T071746Z.json", "outcome-20261113T072221Z.json"].map(
+      (f) =>
+        JSON.parse(text(ROOT, ...S1_DIR, f)) as { model: string; code: string; status: string },
+    );
+    expect(refusedProposals(P).map((x) => [x.model, x.refusedBy])).toEqual(
+      outcomes.map((o) => [o.model, [o.code]]),
+    );
+    expect(outcomes.map((o) => o.status)).toEqual(["refused_by_code", "refused_by_code"]);
+    expect(t.seals.map((s) => [s.text, s.tx.label])).toEqual([
+      ["Anchor 1 covers entry 0", "8REzPLVw…LvPp"],
+      ["Anchor 2 covers entries 0 and 1", "6ULZZvGa…DMqY"],
+      ["Anchor 3 covers entries 0 to 3", "65eBfw6v…eA9Q"],
+    ]);
+    expect(t.summary).toBe("4 entries, hash-linked and signed, all covered by 3 anchors on chain.");
+    expect(partsText(t.setup)).toBe(
+      "Set up the same day: a top-up, 1.50 USDC on NEAR swapped by NEAR Intents 1Click into Base USDC inside intents.near for the vault (DWUMvM58…u6mw); the ledger key (CFhtVrCA…68jb); and mandate 2: the owner's own Base wallet, up to 1.00 USDC, 1 use, until 2026-11-20 (77cC8nMq…483g).",
+    );
+  });
+
+  it("says at rest what was recorded, counting the reads and the checks from the code", () => {
+    expect(READ_COUNTS).toEqual({ txs: 4, views: 2 });
+    const run = RECORDED_RUNS[0];
+    expect(run?.tally).toEqual({
+      total: CHECKS.length,
+      pass: 7,
+      fail: 0,
+      unread: 0,
+      state: "pass",
+    });
+    if (run === undefined) return;
+    const rest = restVerdict(MAINNET_PAYOUT, run.tally, run.recordedAt);
+    expect(rest.title).toBe("Recorded on 2026-11-13: 7 of 7 checks passed.");
+    expect(rest.sub).toBe(
+      "Press the button and this page reads the same 4 transactions and 2 views again, in your browser, from public RPC.",
+    );
+    expect(checkTitle(MAINNET_PAYOUT, "burn", P)).toBe("1.00 USDC burned on NEAR");
+    expect(checkTitle(MAINNET_PAYOUT, "base", P)).toBe("0.9976 USDC arrived on Base");
+    // The hosts the words name are the hosts the code reads.
+    const nearHosts = NEAR_RPC_URLS.map((u) => new URL(u).host);
+    expect(nearHosts.every((h) => h.endsWith(".fastnear.com"))).toBe(true);
+    for (const line of [MAINNET_PAYOUT.run.readingSub, MAINNET_PAYOUT.run.foot]) {
+      expect(line).toContain("FastNEAR's public nodes");
+      expect(line).toContain(new URL(BASE_RPC_URLS[0] ?? "https://x").host);
+    }
+    expect(SPEND_FIELDS).toEqual(SPEND_REQUEST_FIELDS);
+  });
+
+  it("keeps the facts file and the recorded file out of the live run's modules", () => {
+    const live = firstLoadOf(join(SRC, "lib", "site", "mainnet-payout-view.ts"));
+    expect(live).toEqual(["lib/site/mainnet-payout.ts"]);
+    expect(staticImports(text(SRC, "lib", "site", "mainnet-payout.ts"))).toEqual([]);
+  });
+
+  it("tells the earlier mainnet transactions as the proof file records them", () => {
+    const [paid, refused] = MAINNET_PAYOUT.earlier.rows;
+    const p = proofTx(paid.tx.hash);
+    const r = proofTx(refused.tx.hash);
+    expect(p).toMatchObject({ kind: "near_payment", spend_id: 1, amount_usdc: "1.00" });
+    expect(r).toMatchObject({ kind: "refused_on_chain", error_code: "NoMandate" });
+    expect(paid.text).toBe("Spend 1 paid 1 USDC to a NEAR wallet.");
+    expect(refused.text).toContain(`\`PROBARION:${r?.error_code}\``);
+    for (const t of [p, r]) {
+      expect(MAINNET_PAYOUT.earlier.title).toBe(
+        `Earlier on mainnet, ${t?.recorded_at.slice(0, 10)}`,
+      );
+    }
+  });
+
+  it("adds a stone for a second payout and changes no line of copy", () => {
+    const second: Payout = {
+      ...P,
+      id: "spend-3",
+      spendId: 3,
+      date: "2026-11-14",
+      amount: "250000",
+      received: "247600",
+      fee: "2400",
+    };
+    expect(sectionHead([P])).toEqual({
+      eyebrow: "On NEAR mainnet, 2026-11-13",
+      line1: "The agent sent no address.",
+      line2: "The mandate did.",
+      lede: "1.00 USDC left the vault `v0.probarion.near` on NEAR, and 0.9976 USDC reached a wallet on Base. The agent's call had no field for an address. The vault took it from the mandate the owner signed.",
+    });
+    const two = sectionHead([P, second]);
+    expect(two.eyebrow).toBe("On NEAR mainnet, 2026-11-13 and 2026-11-14");
+    expect(two.lede).toBe(
+      "Two payouts left the vault `v0.probarion.near` on NEAR, 1.25 USDC in all, and 1.2452 USDC reached wallets on Base. The agent's calls had no field for an address. The vault took each one from the mandate the owner signed.",
+    );
+    expect(stoneView(second).aria).toBe("The payout of spend 3 to Base, 2026-11-14");
+    expect(stoneView(second).near.figure).toBe("0.25");
+  });
+
+  it("keeps the copy rules: no dash, none of the words the site avoids, burned not paid, real USDC", () => {
+    const strings: string[] = [];
+    const collect = (v: unknown) => {
+      if (typeof v === "string") strings.push(v);
+      else if (Array.isArray(v)) v.forEach(collect);
+      else if (typeof v === "object" && v !== null) Object.values(v).forEach(collect);
+    };
+    collect(MAINNET_PAYOUT);
+    // The words as the page fills them, from the recorded payout.
+    collect(sectionHead(PAYOUTS));
+    collect(stoneView(P));
+    collect(trailView(P));
+    collect(verifyView(P));
+    const run = RECORDED_RUNS[0];
+    if (run !== undefined) {
+      collect(restVerdict(MAINNET_PAYOUT, run.tally, run.recordedAt));
+      run.outcomes.forEach((o, i) => {
+        const id = CHECKS[i]?.id ?? "owner";
+        collect(checkTitle(MAINNET_PAYOUT, id, P));
+        if (o.state === "pass") collect(checkRows(MAINNET_PAYOUT, id, o.values));
+      });
+    }
+    expect(strings.length).toBeGreaterThan(150);
+    const banned: [RegExp, string][] = [
+      [new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`), "an en or em dash"],
+      [/\bfirst\b/i, "first"],
+      [/\bonly\b/i, "only"],
+      [/unhackable/i, "unhackable"],
+      [/\battack/i, "attack"],
+      [/\btrick/i, "tricked"],
+      [/test USDC|test tokens?/i, "test USDC"],
+      [/\b(unlike|better than|competitors?|other entr(y|ies))\b/i, "a comparison"],
+    ];
+    for (const s of strings) {
+      for (const [re, what] of banned) expect(re.test(s), `${what} in: ${s}`).toBe(false);
+    }
+    // Spend 2 burned. "paid" is said of spend 1 of 2026-11-11, a NEAR payment, and "pays" of the mandate's payee; "pay"
+    // is a refused proposal's action, as the ledger names it.
+    const allowed = new Set<string>([
+      MAINNET_PAYOUT.earlier.rows[0].text,
+      MAINNET_PAYOUT.problems["owner.payee"],
+    ]);
+    const said = strings.map((s) => s.replace(/\bproposed (pay|\{action\})\b/g, "proposed"));
+    expect(said.filter((s) => /\b(paid|pays?)\b/i.test(s) && !allowed.has(s))).toEqual([]);
   });
 });

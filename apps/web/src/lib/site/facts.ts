@@ -1,13 +1,15 @@
 // Every word and fact of the public site, in one module so that test/site-facts.test.ts can hold each one to the file
 // it comes from. Backticks in a string render as <code> (components/site/Rich.tsx). TX and the hero cards are testnet
 // transactions (the smoke run of contracts/deployments/testnet.json, the demo vault and the Canary), and MAINNET_TX the
-// mainnet vault's two: each links its own network's explorer, whatever network the page is opened at.
+// mainnet vault's: each links its own network's explorer, whatever network the page is opened at. MAINNET_PAYOUT holds
+// the words of the #mainnet section; its numbers come from lib/site/mainnet-payout-recorded.json.
 import type { CheckId } from "@probarion/core";
 import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { withVia } from "@/lib/canary/via";
 import { explorerTxUrl } from "@/lib/config";
 import { CLI_ON_NPM, cli, REPO_URL } from "@/lib/proof/cli";
 import { FOOTER_NAV, isBuilt, type NavItem, SITE_NAV } from "@/lib/routes";
+import { type PayoutCheckId, type ProblemCode, type ReadName, shortHash } from "./mainnet-payout";
 import type { TamperResult } from "./tamper";
 
 const blob = (path: string) => `${REPO_URL}/blob/main/${path}`;
@@ -169,6 +171,29 @@ const mainnetTx = (hash: string, label: string): TxFact => ({
 export const MAINNET_TX = {
   payment: mainnetTx("22oqhgruo7JqdpPg5Cb2ts25mLK2fto8y1YAxNA56ieE", "22oqhgru…6ieE"),
   refusal: mainnetTx("2Dabq4uMh9VvttH3uj85samfYoX2wbQheADHS96AtwYh", "2Dabq4uM…twYh"),
+  // S1, 2026-11-13: the payout to Base (docs/evidence/mainnet-v0/s1-2026-11-13). The #mainnet section draws its links
+  // from the recorded payouts (mainnetTxFact below); these name the same transactions for copy elsewhere, and the
+  // test holds the two to each other.
+  topUp: mainnetTx("DWUMvM58dH3MpH9Jj838ycrfvCMjNJpgFsr43qu8u6mw", "DWUMvM58…u6mw"),
+  ledgerKey: mainnetTx("CFhtVrCA3Cjumcx68kixLbR5r6Xo8Fp1PTueK8z968jb", "CFhtVrCA…68jb"),
+  baseMandate: mainnetTx("77cC8nMq6qWynU51FsPn8mkFAb3NEuDmEG7ZXjX6483g", "77cC8nMq…483g"),
+  anchor1: mainnetTx("8REzPLVwoQJrkccMQeFCTLaQHu8m7AczxsMzEH9PLvPp", "8REzPLVw…LvPp"),
+  anchor2: mainnetTx("6ULZZvGa7M99jR7Uk5f1Md4KCdD1Cnd5au2s8fAZDMqY", "6ULZZvGa…DMqY"),
+  anchor3: mainnetTx("65eBfw6vMettw5GFc3R2A2WHvDiGeyXs7STGojCveA9Q", "65eBfw6v…eA9Q"),
+  basePayout: mainnetTx("BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9", "BdN7oB76…rSQ9"),
+} as const;
+
+/** A mainnet transaction by its hash alone, labelled the way the site labels hashes (mainnet-payout `shortHash`). */
+export const mainnetTxFact = (hash: string): TxFact => mainnetTx(hash, shortHash(hash));
+/** A Base transaction, on Basescan. */
+export const baseTxFact = (hash: string): TxFact => ({
+  hash,
+  label: shortHash(hash),
+  url: `https://basescan.org/tx/${hash}`,
+});
+/** The POA bridge's release on Base for S1's spend 2 (docs/mainnet-proof.json `base_tx`). */
+export const BASE_TX = {
+  basePayout: baseTxFact("0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71"),
 } as const;
 
 /** A piece of a line of copy: text (backticks are code), or a link. An href that starts with # stays on the page. */
@@ -602,6 +627,314 @@ export const BAND = {
   structName: "SpendRequest",
   gone: "recipient",
   goneNote: "does not exist",
+} as const;
+
+// --- the mainnet payout ---------------------------------------------------------------------------
+
+/** One row of a check: a label, a line built from the values the check read, and how it is set. */
+export interface PayoutRowCopy {
+  label: string;
+  text: string;
+  /** A value that stays whole, such as an address or a memo. */
+  full?: true;
+  /** A quiet line under the rows, with no label. */
+  note?: true;
+}
+
+/**
+ * The words of the #mainnet section (components/site/MainnetPayout.tsx). Every number in them comes from the recorded
+ * payouts (lib/site/mainnet-payout-recorded.json) through lib/site/mainnet-payout-section.ts (the server render) and
+ * lib/site/mainnet-payout-view.ts (the live run, which is handed this copy), which fill the braces: `{name}` is a
+ * value, `{name|one|many}` a count with its noun. A second payout adds a stone and changes no line here.
+ */
+export const MAINNET_PAYOUT = {
+  /** {dates}: the payouts' dates, joined. */
+  eyebrow: "On NEAR mainnet, {dates}",
+  line1: "The agent sent no address.",
+  line2: "The mandate did.",
+  lede: {
+    one: "{amount} USDC left the vault `{vault}` on NEAR, and {received} USDC reached a wallet on Base. The agent's call had no field for an address. The vault took it from the mandate the owner signed.",
+    many: "{count} payouts left the vault `{vault}` on NEAR, {amount} USDC in all, and {received} USDC reached wallets on Base. The agent's calls had no field for an address. The vault took each one from the mandate the owner signed.",
+  },
+  /** The dark card of one payout. */
+  stone: {
+    aria: "The payout of spend {spendId} to Base, {date}",
+    label: "A test, not a customer payment",
+    test: "A test of the cross-chain path, sent to the owner's own Base wallet.",
+    /** How the payout was decided, by the allowing entry's `decided_by` and the attested proposals code refused before it. */
+    decided: {
+      "rules-only": {
+        none: "Decided by the code rules alone.",
+        one: "Decided by the code rules alone, after code refused one attested model proposal.",
+        many: "Decided by the code rules alone, after code refused {refused} attested model proposals.",
+      },
+      "model+rules": {
+        none: "Proposed by an attested model and allowed by the code rules.",
+        one: "Proposed by an attested model and allowed by the code rules, after code refused one earlier proposal.",
+        many: "Proposed by an attested model and allowed by the code rules, after code refused {refused} earlier proposals.",
+      },
+    },
+    near: {
+      place: "NEAR mainnet",
+      unit: "USDC burned",
+      line: "Vault `{vault}`, spend {spendId}",
+    },
+    base: {
+      place: "Base",
+      unit: "USDC arrived",
+      line: "Owner's wallet {payee}, block {block}",
+    },
+    /** The route's decorative labels (aria-hidden): the ticks are the check numbers. */
+    bridge: "bridge",
+    sameMinute: "Both in the same minute, {minute} UTC. The POA bridge kept {fee} USDC as its fee.",
+    apart:
+      "Burned at {burned} UTC, arrived at {arrived} UTC. The POA bridge kept {fee} USDC as its fee.",
+  },
+  run: {
+    atRest: "Recorded on {date}: {pass} of {total} checks passed.",
+    atRestSub:
+      "Press the button and this page reads the same {txs|transaction|transactions} and {views|view|views} again, in your browser, from public RPC.",
+    button: "Read the chain now",
+    buttonBusy: "Reading the chain",
+    buttonAgain: "Read it again",
+    reading: "Reading {txs|transaction|transactions} and {views|view|views}",
+    readingSub: "From FastNEAR's public nodes and mainnet.base.org, in this browser.",
+    pass: "Read just now: {pass} of {total} checks pass.",
+    passSub: "At {time} UTC, in {seconds} s, from {hosts}.",
+    fail: "A check failed: {pass} of {total} pass.",
+    failSub: "The chain does not say what this page says. Each failed row names the value it read.",
+    unread: "{pass} of {total} checks pass, and {unread} could not be read, so this is not a pass.",
+    unreadSub:
+      "A node did not answer. Those rows keep their recorded values. Try again, or open the transaction links.",
+    noScript:
+      "With JavaScript off, the recorded results stay. Each row links its transaction on nearblocks or Basescan.",
+    foot: "The reads change nothing and need no key or account, and none of them goes through Probarion's server: NEAR from FastNEAR's public nodes, Base from mainnet.base.org. The views are read at the spend's own block, so they show the vault as it was at the spend. They re-read the chain; they are not the verifier. Whether the anchored ledger holds this spend's decision needs the ledger file: the verifier's checks c and d.",
+  },
+  rowState: {
+    recorded: "Recorded",
+    recordedOn: "{date}",
+    reading: "Reading",
+    pass: "Pass",
+    passNote: "read now",
+    fail: "Does not match: {why}.",
+    unread: "Could not read: {why}. The values shown are the recorded ones.",
+  },
+  /** The seven checks, in the order of the route. A title may hold an amount from the payout. */
+  checks: {
+    owner: {
+      title: "The owner signed the payee",
+      rows: [
+        { label: "signed by", text: "{signer}, the vault's owner (get_config)" },
+        { label: "payee", text: "Base {payee}", full: true },
+        { label: "limit", text: "{max} USDC, {uses|use|uses}, until {until}" },
+        { label: "returns", text: "mandate {mandateId}" },
+      ],
+    },
+    key: {
+      title: "The agent's key can call one method: spend",
+      rows: [
+        { label: "key", text: "{key}, which signed spend {spendId}" },
+        { label: "may call", text: "{methods} on {receiver}, nothing else" },
+        { label: "read at", text: "block {height}, the block of spend {spendId}" },
+      ],
+    },
+    noaddr: {
+      title: "The spend call has no address in it",
+      rows: [
+        { label: "mandate_id", text: "{mandate_id}" },
+        { label: "amount", text: "{amount}" },
+        { label: "invoice_hash", text: "{invoice_hash}" },
+        { label: "ref", text: "{ref}" },
+        { label: "decision_hash", text: "{decision_hash}" },
+        { label: "", text: "{fields} fields, and none of them is an address", note: true },
+      ],
+    },
+    memo: {
+      title: "The vault wrote the memo from the mandate",
+      rows: [
+        { label: "call", text: "{from} → {to}, ft_withdraw" },
+        { label: "memo", text: "{memo}", full: true },
+        { label: "matches", text: "the payee in 01" },
+      ],
+    },
+    burn: {
+      title: "{amount} USDC burned on NEAR",
+      rows: [
+        { label: "ft_burn", text: "{raw}, that is {usdc} USDC, from {owner}" },
+        { label: "event", text: "spend_burned, spend {spendId}" },
+        { label: "returns", text: "status {status}" },
+      ],
+    },
+    anchor: {
+      title: "The decision is in an anchored ledger",
+      rows: [
+        { label: "anchor", text: "seq {seq}, {count|ledger entry|ledger entries}" },
+        { label: "root", text: "{root}" },
+        { label: "signed by", text: "the ledger key in get_config" },
+      ],
+    },
+    base: {
+      title: "{received} USDC arrived on Base",
+      rows: [
+        { label: "block", text: "{block}, status success" },
+        { label: "Transfer", text: "{raw}, that is {usdc} USDC, on Base USDC {token}" },
+        { label: "to", text: "{to}, the payee in 01" },
+        { label: "fee", text: "{fee} USDC, kept by the POA bridge" },
+      ],
+    },
+  } satisfies Record<PayoutCheckId, { title: string; rows: readonly PayoutRowCopy[] }>,
+  /** Why a check does not pass: one sentence per code in lib/site/mainnet-payout PROBLEM_CODES, the values it read filled in. */
+  problems: {
+    shape: "the answer did not have the shape of an RPC answer",
+    "tx.failed": "the {read} transaction did not succeed",
+    "view.pin": "the {read} view was read at block {got}, not at the spend's block {want}",
+    "view.error": "the {read} view answered with an error",
+    "owner.method": "the mandate transaction calls {method}",
+    "owner.receiver": "the mandate went to {receiver}",
+    "owner.signer": "the mandate was signed by {signer}, the vault's owner is {owner}",
+    "owner.id": "create_mandate returned {got}",
+    "owner.payee": "the mandate pays {got}",
+    "owner.limits": "the mandate's limits are {got}",
+    "owner.agent": "the mandate names the agent key {got}",
+    "key.signer": "spend {spendId} was signed by {got}",
+    "key.block": "spend {spendId} is in block {got}, not {want}",
+    "key.full": "the key that signed spend {spendId} has full access",
+    "key.receiver": "the key may call {got}",
+    "key.methods": "the key may call {got}",
+    "noaddr.route": "the spend went from {signer} to {receiver}",
+    "noaddr.method": "the transaction calls {method}",
+    "noaddr.args": "the call has the arguments {got}",
+    "noaddr.fields": "the request has the fields {got}",
+    "noaddr.address": "the field {field} holds an address",
+    "noaddr.request": "the request is for mandate {mandate} and {amount}",
+    "memo.none": "no ft_withdraw from the vault to {intents}",
+    "memo.memo": "the memo is {got}",
+    "memo.token": "the token is {got}",
+    "memo.amount": "the amount is {got}",
+    "burn.status": "spend returned {got}",
+    "burn.none": "no ft_burn on {asset}",
+    "burn.amount": "ft_burn of {amount} by {owner}",
+    "burn.memo": "the ft_burn memo is {got}",
+    "burn.mt": "no mt_burn of {amount} from the vault in {intents}",
+    "burn.event": "no spend_burned event for spend {spendId}",
+    "anchor.route": "the anchor went from {signer} to {receiver}",
+    "anchor.key": "the anchor was signed by {got}, the ledger key is {want}",
+    "anchor.method": "the transaction calls {method}",
+    "anchor.event": "the anchor is seq {seq} of {count} entries",
+    "base.status": "the Base transaction did not succeed",
+    "base.hash": "Base answered for {got}",
+    "base.block": "the block is {got}",
+    "base.transfer": "no USDC Transfer to the mandate's payee",
+    "base.amount": "the Transfer is {got}",
+  } satisfies Record<ProblemCode, string>,
+  /** What could not be read, and why, for a row that keeps its recorded values. */
+  reads: {
+    names: {
+      mandate: "the mandate transaction",
+      spend: "the spend transaction",
+      anchor: "the anchor transaction",
+      base: "the Base transaction",
+      config: "get_config",
+      key: "view_access_key",
+    } satisfies Record<ReadName, string>,
+    item: "{read}: {why}",
+    timeout: "{host} did not answer in {detail} s",
+    network: "{host} could not be reached",
+    http: "{host} answered HTTP {detail}",
+    rpc: "{host} answered {detail}",
+    rpcBare: "{host} answered with an error",
+    body: "{host} sent an answer this page cannot read",
+    none: "{host} has no such transaction",
+    nobody: "no node was asked",
+  },
+  /** The ledger of one payout, beside the verifier on wide screens. */
+  trail: {
+    title: "How the payment was decided",
+    /** By the allowing entry's `decided_by`, and whether attested proposals were refused before it. */
+    intro: {
+      "rules-only": {
+        none: "The code rules alone allowed the payment, with no model. Each step is a signed ledger entry.",
+        some: "{Times} an attested model on NEAR AI Cloud proposed paying, and {times} code refused it before anything was sent. Then the code rules alone allowed the payment. Each step is a signed ledger entry.",
+      },
+      "model+rules": {
+        none: "An attested model on NEAR AI Cloud proposed paying, and the code rules allowed it. Each step is a signed ledger entry.",
+        some: "{Times} an attested model on NEAR AI Cloud proposed paying, and {times} code refused it before anything was sent. Then an attested model proposed it again, and the code rules allowed it. Each step is a signed ledger entry.",
+      },
+    },
+    /** The setup line: a lead, then one item per setup transaction, each with its link. */
+    setupLead: { sameDay: "Set up the same day: ", before: "Set up before the payout: " },
+    setupSep: "; ",
+    setupLast: "; and ",
+    setup: {
+      intents_topup:
+        "a top-up, {amount} USDC on NEAR swapped by NEAR Intents 1Click into Base USDC inside `intents.near` for the vault",
+      ledger_key_set: "the ledger key",
+      mandate_created:
+        "mandate {mandateId}: the owner's own Base wallet, up to {max} USDC, {uses|use|uses}, until {until}",
+    } satisfies Record<"intents_topup" | "ledger_key_set" | "mandate_created", string>,
+    entry: "Entry {seq}, {minute} UTC",
+    pills: {
+      refused: "Refused by code",
+      allowedRules: "Allowed by code rules",
+      allowedModel: "Allowed by code",
+      held: "Held by code",
+      burned: "Burned, sent to Base",
+    },
+    entries: {
+      refused:
+        "{model}, an attested model in a TEE on NEAR AI Cloud, proposed {action}. The rule `{rule}` refused it.",
+      refusedAsset:
+        "{model}, an attested model in a TEE on NEAR AI Cloud, proposed {action}. The rule `{rule}` refused it: the model named the token contract as a NEAR account.",
+      refusedAgain: "{model}, attested, proposed {action}. Code refused it the same way.",
+      refusedRules: "The code rules refused it with `{rule}`.",
+      allowedRulesAfter: "No model this time. The code rules alone decided allow.",
+      allowedRules: "The code rules alone decided allow, with no model.",
+      allowedModel: "{model}, attested, proposed {action}. The code rules allowed it.",
+      held: "Code held it for a person to approve.",
+      payment: "Spend {spendId}: {amount} USDC burned on NEAR for the Base wallet",
+    },
+    /** The dashed spur the refused proposals sit on, off the main line. */
+    spur: "Attested model proposals that code refused",
+    spurEnd: "Refused, nothing sent",
+    seal: {
+      one: "Anchor {seq} covers entry {from}",
+      two: "Anchor {seq} covers entries {from} and {to}",
+      range: "Anchor {seq} covers entries {from} to {to}",
+    },
+    summary:
+      "{entries|entry|entries}, hash-linked and signed, all covered by {anchors|anchor|anchors} on chain.",
+    summaryPartial:
+      "{entries|entry|entries}, hash-linked and signed. The {anchors|anchor|anchors} on chain cover entries 0 to {last}.",
+  },
+  /** The verifier's run with the ledger file: its verdict line, and the full list in the #verify section. */
+  verify: {
+    title: "The full check needs the ledger",
+    lead: "probarion verify, run on mainnet with the ledger file, {date}:",
+    result: { pass: "RESULT: PASS", fail: "RESULT: FAIL" },
+    counts: "{passed} passed, {failed} failed, {unproven} unproven, {skipped} skipped",
+    attested: "{attested|attested decision|attested decisions}, checked A1 to A8.",
+    offline:
+      "Without the ledger file, checks c and d fail: the chain alone does not show the decision. A1 to A8 ran offline, so the TDX quote itself was not verified (that is O1, with --online), and the model image is not pinned.",
+    online:
+      "Without the ledger file, checks c and d fail: the chain alone does not show the decision. The TDX quote was verified online (O1), and the model image is not pinned.",
+    link: { label: "Run the verifier on a sample ledger", href: "#verify" },
+  },
+  earlier: {
+    title: "Earlier on mainnet, 2026-11-11",
+    rows: [
+      { text: "Spend 1 paid 1 USDC to a NEAR wallet.", tx: MAINNET_TX.payment },
+      {
+        text: "A spend on mandate 999: the contract refused it with `PROBARION:NoMandate`.",
+        tx: MAINNET_TX.refusal,
+      },
+    ],
+  },
+  /** Counts in words, and how many times, for the lines that read better that way. Larger counts stay digits. */
+  numbers: ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"],
+  times: ["never", "once", "twice", "three times", "four times", "five times"],
+  timesMany: "{n} times",
+  and: " and ",
+  comma: ", ",
 } as const;
 
 // --- the console screenshots ----------------------------------------------------------------------
