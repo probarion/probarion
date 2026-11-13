@@ -31,6 +31,38 @@ The software is an unaudited beta.
   `contracts/deployments/mainnet.json` record the eight NEAR transactions and the Base transfer, and the judge
   holds the run's snapshot to its committed verifier output.
 
+- The landing page's mainnet payout section, `#mainnet`, between the ink band and the console screenshots. One
+  dark card per Base payout says "A test, not a customer payment" and how the payout was decided (on 2026-11-13, by
+  the code rules alone, after code refused two attested model proposals), with 1.00 USDC burned on NEAR in the
+  neutral tone and 0.9976 USDC arrived on Base in the ok tone. **Read the chain now** reads the payout's 4
+  transactions and 2 views again in the visitor's browser and runs seven checks, from the owner's signature on the
+  mandate to the `Transfer` on Base, and each row shows the values it read. Every NEAR read goes to FastNEAR's
+  archival node, with the regular node as the fallback; the views `get_config` and `view_access_key` are pinned to
+  the spend's own block, so a later change to the vault cannot change them; Base answers from `mainnet.base.org`.
+  Each request times out after 8 s and is tried twice more, after 0.5 s and 1.5 s, before the next host, with no
+  cookies and no referrer, and none goes through Probarion's server. With no JavaScript the section shows the
+  result `scripts/record-mainnet-payout.ts` recorded from public RPC
+  (`apps/web/src/lib/site/mainnet-payout-recorded.json`, 7 of 7 checks). The decision trail shows the two refused
+  proposals on a dashed spur off the main line and the 3 anchors as numbered gold seals, each with the entries it
+  covers and its transaction, and the verifier's result links the `#verify` section. The payouts are built from
+  `docs/mainnet-proof.json`, `contracts/deployments/mainnet.json` and the evidence folder, so every count on the
+  section comes from data and a second payout adds a card. Motion starts after the button press, under
+  `prefers-reduced-motion: no-preference`, and does not loop. Tests run the seven checks on the recorded reads and
+  on tampered copies (another amount, another owner, no `ft_burn`, an address in the request, a wider key, a view
+  from another block) and cover the retries, the fallback and an aborted run.
+- A docs page, [Mainnet payout, step by step](https://probarion.xyz/docs/start/mainnet-payout), after "Testnet and
+  mainnet": the payout of 2026-11-13 at a glance, what to open in a browser, the seven checks with the values each
+  one read, how the payment was decided (the two proposals that `mandate.payee_mismatch` refused and why, then the
+  code rules alone), the ledger's 4 entries and 3 anchors, the verifier command and its output, the bridge fee, the
+  1Click top-up and the gas, the NEAR technology the run used, and what the run does not show. "Testnet and mainnet"
+  links it, the README's Documentation table lists it, and the Docs Center has 35 pages.
+- A README visual of the mainnet payout, `docs/assets/readme/mainnet-payout.svg`: 1.00 USDC burned on NEAR mainnet,
+  0.9976 USDC arrived on Base, the gold bar with the coin at the Base end and ticks 01 to 07, "A test, not a customer
+  payment" and the date. It is one self-contained SVG with real text in system fonts, in the site's paper, ink and
+  gold, and its alt text says all of it. The README's S1 section shows it above a table of what to do and what you
+  see (the live button, nearblocks, Basescan, the verifier with the ledger file, the docs page) and a list of the
+  NEAR technology the run used and how.
+
 - `JUDGES.md`, a page for judges and screeners whose first part takes two minutes: the mechanism in one sentence
   (the model proposes, code rules decide, the contract checks again), three links to open (the demo vault's proof
   page with its live TEE check, the landing page's live `check_spend` and the mainnet transactions of 2026-11-11),
