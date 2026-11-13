@@ -35,8 +35,9 @@ const TONE: Readonly<Record<Tone, string | undefined>> = {
 };
 
 /**
- * A line of copy with links in it: a place on this page stays in the tab, a transaction opens its explorer in a new
- * one. A short hash keeps the site's mono face. A part can repeat (", " or ")"), so each key counts its own copies.
+ * A line of copy with links in it: a place on this page or of the site stays in the tab, a transaction or a file opens
+ * in a new one. A short hash keeps the site's mono face and stays whole while it fits; a link in words wraps between
+ * them. A part can repeat (", " or ")"), so each key counts its own copies.
  */
 function Parts({ parts }: { parts: readonly CopyPart[] }) {
   const seen = new Map<string, number>();
@@ -46,7 +47,7 @@ function Parts({ parts }: { parts: readonly CopyPart[] }) {
     seen.set(id, n);
     const key = `${id}#${n}`;
     if (typeof p === "string") return <Rich key={key} text={p} />;
-    if (p.href.startsWith("#")) {
+    if (p.href.startsWith("#") || p.href.startsWith("/")) {
       return (
         <a key={key} className={s.link} href={p.href}>
           {p.label}
@@ -58,7 +59,7 @@ function Parts({ parts }: { parts: readonly CopyPart[] }) {
     return (
       <ExternalLink
         key={key}
-        className={`${s.link} ${m.tx} ${p.label.includes("…") ? m.hash : ""}`}
+        className={p.label.includes("…") ? `${s.link} ${m.tx} ${m.hash}` : s.link}
         href={p.href}
       >
         {p.label}
@@ -98,6 +99,17 @@ function StoneIntro({ view }: { view: StoneView }) {
   );
 }
 
+/** An internal link with its arrow. */
+function Go({ link }: { link: { label: string; href: string } }) {
+  return (
+    <a className={s.link} href={link.href}>
+      {link.label}
+      {NBSP}
+      <span aria-hidden="true">→</span>
+    </a>
+  );
+}
+
 function Entry({ item }: { item: TrailItem }) {
   return (
     <>
@@ -130,11 +142,10 @@ function groups(items: readonly TrailItem[]): Group[] {
  * The decision trail: a gold main line, the attested proposals that code refused on a dashed spur that ends in a
  * refusal, then the allowed decision and the burn. Under it, the anchors as coin seals, each with the entries it covers.
  */
-function Trail({ view, entries }: { view: TrailView; entries: readonly number[] }) {
+function Trail({ view, entries, id }: { view: TrailView; entries: readonly number[]; id: string }) {
   return (
     <div className={m.trail}>
-      <h3 className={m.sideTitle}>{view.title}</h3>
-      <p className={m.trailIntro}>{view.intro}</p>
+      <h4 className={m.sideTitle}>{view.title}</h4>
       <p className={m.setup}>
         <Parts parts={view.setup} />
       </p>
@@ -142,8 +153,14 @@ function Trail({ view, entries }: { view: TrailView; entries: readonly number[] 
         {groups(view.items).map((g) =>
           g.spur ? (
             <li key={`spur-${g.items[0]?.seq}`} className={m.spur}>
-              <span className={m.spurName}>{view.spur}</span>
-              <ol className={m.spurList} {...LIST}>
+              <span className={m.spurName} id={`${id}-spur-${g.items[0]?.seq}`}>
+                {view.spur}
+              </span>
+              <ol
+                className={m.spurList}
+                aria-labelledby={`${id}-spur-${g.items[0]?.seq}`}
+                {...LIST}
+              >
                 {g.items.map((item) => (
                   <li key={item.seq} className={m.entry}>
                     <Entry item={item} />
@@ -159,8 +176,10 @@ function Trail({ view, entries }: { view: TrailView; entries: readonly number[] 
           ),
         )}
       </ol>
-      <p className={m.trailSum}>{view.summary}</p>
-      <ol className={m.seals} {...LIST}>
+      <p className={m.trailSum}>
+        <Parts parts={view.summary} />
+      </p>
+      <ol className={m.seals} aria-label={view.sealsLabel} {...LIST}>
         {view.seals.map((seal) => (
           <li key={seal.seq} className={m.seal}>
             <span className={m.sealCoin} aria-hidden="true">
@@ -191,30 +210,41 @@ function Trail({ view, entries }: { view: TrailView; entries: readonly number[] 
 function Verify({ view }: { view: VerifyView }) {
   return (
     <div className={m.verify}>
-      <h3 className={m.sideTitle}>{view.title}</h3>
+      <h4 className={m.sideTitle}>{view.title}</h4>
       <p className={m.verifyLead}>{view.lead}</p>
       <div className={m.verifyBlock}>
         <span className={view.tone === "ok" ? m.resultOk : m.resultBad}>{view.result}</span>
         <span className={m.verifyCounts}>{view.counts}</span>
         {view.attested === null ? null : <span className={m.verifyAttested}>{view.attested}</span>}
       </div>
-      <p className={m.verifyFoot}>
-        {view.foot}{" "}
-        <a className={s.link} href={view.link.href}>
-          {view.link.label}
-          {NBSP}
-          <span aria-hidden="true">→</span>
-        </a>
-      </p>
+      <p className={m.verifyFoot}>{view.foot}</p>
+      <ul className={m.verifyLinks} {...LIST}>
+        <li>
+          <ExternalLink className={s.link} href={view.output.href}>
+            {view.output.label}
+            {NBSP}
+            <span aria-hidden="true">↗</span>
+          </ExternalLink>
+        </li>
+        <li>
+          <Go link={view.link} />
+        </li>
+        <li>
+          <Go link={view.docs} />
+        </li>
+      </ul>
     </div>
   );
 }
 
+/** The vault's two transactions of 2026-11-11, beside the last payout: complementary to it, so an aside. */
 function Earlier() {
   const E = C.earlier;
   return (
-    <div className={m.earlier}>
-      <h3 className={m.sideTitle}>{E.title}</h3>
+    <aside className={m.earlier} aria-labelledby="mainnet-earlier">
+      <h3 className={m.sideTitle} id="mainnet-earlier">
+        {E.title}
+      </h3>
       <ul className={m.earlierList} {...LIST}>
         {E.rows.map((r) => (
           <li key={r.tx.hash}>
@@ -229,12 +259,15 @@ function Earlier() {
           </li>
         ))}
       </ul>
-    </div>
+    </aside>
   );
 }
 
-/** One payout: its stone, with the live re-read, then its decision trail beside the verifier's verdict. */
-function PayoutBlock({ run, last }: { run: RecordedRun; last: boolean }) {
+/**
+ * One payout, one article: its stone, with the live re-read, then its decision trail beside the verifier's verdict, so
+ * each h4 sits under the payout it is about. With more than one payout, the heading shows: the stones need it.
+ */
+function PayoutBlock({ run, last, many }: { run: RecordedRun; last: boolean; many: boolean }) {
   const p = run.payout;
   const stone = stoneView(p);
   const titleId = `${p.id}-title`;
@@ -242,11 +275,11 @@ function PayoutBlock({ run, last }: { run: RecordedRun; last: boolean }) {
     CHECK_ORDER.map(({ id }) => [id, <Parts key={id} parts={checkSources(p, id)} />]),
   ) as Record<PayoutCheckId, ReactNode>;
   return (
-    <div className={m.payout}>
-      <article className={m.stoneWrap} aria-labelledby={titleId}>
-        <h3 className="sr-only" id={titleId}>
-          {stone.aria}
-        </h3>
+    <article className={m.payout} aria-labelledby={titleId}>
+      <h3 className={many ? m.payoutTitle : "sr-only"} id={titleId}>
+        {stone.aria}
+      </h3>
+      <div className={m.stoneWrap}>
         <MainnetPayoutClient
           payout={p}
           recorded={run.outcomes}
@@ -263,15 +296,15 @@ function PayoutBlock({ run, last }: { run: RecordedRun; last: boolean }) {
           foot={C.run.foot}
           bridge={C.stone.bridge}
         />
-      </article>
+      </div>
       <div className={m.lower}>
-        <Trail view={trailView(p)} entries={p.trail.map((e) => e.seq)} />
+        <Trail view={trailView(p)} entries={p.trail.map((e) => e.seq)} id={p.id} />
         <div className={m.side}>
           <Verify view={verifyView(p)} />
           {last ? <Earlier /> : null}
         </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -299,7 +332,12 @@ export function MainnetPayout() {
         </div>
         <div className={m.payouts}>
           {RECORDED_RUNS.map((run, i) => (
-            <PayoutBlock key={run.payout.id} run={run} last={i === RECORDED_RUNS.length - 1} />
+            <PayoutBlock
+              key={run.payout.id}
+              run={run}
+              last={i === RECORDED_RUNS.length - 1}
+              many={RECORDED_RUNS.length > 1}
+            />
           ))}
         </div>
       </div>

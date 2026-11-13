@@ -35,6 +35,13 @@
   gap: clamp(28px, 3vw, 40px);
   min-width: 0;
 }
+/* Shown when there is more than one payout, to tell the stones apart. */
+.payoutTitle {
+  font-weight: 400;
+  font-size: clamp(22px, 2vw, 28px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
 .stoneWrap {
   min-width: 0;
 }
@@ -63,7 +70,7 @@
   background: var(--color-bad-bg);
   color: var(--color-bad);
 }
-/* A short hash link stays whole while it fits, and still breaks inside when it does not. */
+/* A short hash link stays whole while it fits, and still breaks inside when it does not. Links in words wrap. */
 .tx {
   display: inline-block;
   max-width: 100%;
@@ -443,8 +450,11 @@
   color: var(--color-band-mute);
   overflow-wrap: anywhere;
 }
-/* The site sets code at 0.86em, which is under 12px in 13px text: a view name keeps 12px. */
-.sources code {
+/*
+ * The site sets code at 0.86em (.site code), which is under 12px in 13px text: a view name keeps 12px. Two classes
+ * outrank .site code whatever order the stylesheets load in.
+ */
+.check .sources code {
   font-size: 12px;
 }
 .word {
@@ -469,15 +479,19 @@
   grid-area: vals;
   min-width: 0;
 }
+/* The values fold behind this line on a phone (the 620px block shows it); wider, they always show. */
+.valsSummary {
+  display: none;
+}
 .pairs {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: 2px 14px;
 }
-.pairs > div,
-.fields > div {
+.pairs > div {
   display: contents;
 }
+/* The request's fields: each name and value stay together and wrap as one, 16px from the next. */
 .fields {
   display: flex;
   flex-wrap: wrap;
@@ -485,11 +499,10 @@
   font-size: 13px;
   line-height: 1.5;
 }
-.fields > div > * {
-  display: inline;
-}
-.fields dd {
-  margin-left: 6px;
+.fields > div {
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
 }
 .pairs dt,
 .fields dt {
@@ -510,9 +523,16 @@
 .full {
   font-family: var(--font-mono);
 }
-/* While a run reads, the values on show are the last ones read, dimmed: they are not this run's yet. */
+/*
+ * While a run reads, the values on show are the last ones read, dimmed: they are not this run's yet. A row that fails
+ * or cannot be read keeps them dimmed too, and its sentence says where they come from.
+ */
 .check[data-state="reading"] .pairs dd,
-.check[data-state="reading"] .fields dd {
+.check[data-state="reading"] .fields dd,
+.check[data-state="fail"] .pairs dd,
+.check[data-state="fail"] .fields dd,
+.check[data-state="unread"] .pairs dd,
+.check[data-state="unread"] .fields dd {
   color: var(--color-band-mute);
 }
 .valsNote {
@@ -568,13 +588,6 @@
   font-size: clamp(22px, 2vw, 28px);
   line-height: 1.15;
   letter-spacing: -0.02em;
-}
-.trailIntro {
-  max-width: var(--container-measure);
-  margin-top: 10px;
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--color-mute);
 }
 .setup {
   max-width: var(--container-measure);
@@ -653,6 +666,16 @@
 }
 .station:last-child {
   padding-bottom: 0;
+}
+/* The main line ends at the last dot: a paper strip covers the rail beside the last entry's text. */
+.line > .station:last-child::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 18px;
+  bottom: 0;
+  width: 9px;
+  background: var(--color-paper);
 }
 /* The spur leaves the rail with a dashed bend, runs down past the refused entries and ends in a red stop. */
 .spur {
@@ -828,8 +851,17 @@
   line-height: 1.55;
   color: var(--color-mute);
 }
-.verifyFoot a {
+.verifyFoot a,
+.verifyLinks a {
   color: var(--color-ink);
+}
+.verifyLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.55;
 }
 .earlierList {
   margin-top: 10px;
@@ -942,6 +974,23 @@
     gap: 14px;
     padding: 16px;
   }
+  /* Seven rows of values make a long page on a phone: each folds behind its line, and a tap opens it. */
+  .valsSummary {
+    display: list-item;
+    width: fit-content;
+    padding-block: 3px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-band-mute);
+    cursor: pointer;
+  }
+  .vals[open] > .valsSummary {
+    margin-bottom: 6px;
+  }
+  /* A narrow column of right-aligned lines reads badly: the Base end aligns left, and its figure keeps right. */
+  .endBase .endLine {
+    text-align: left;
+  }
   .check {
     padding-block: 8px;
   }
@@ -980,7 +1029,8 @@
     padding: 18px 16px;
   }
 }
-@media (max-width: 480px) {
+/* At 359px and below the bridge's label would touch ticks 06 and 07. */
+@media (max-width: 359px) {
   .tickBridge {
     display: none;
   }
@@ -1040,7 +1090,8 @@
     border: 1px solid CanvasText;
   }
   .line::before,
-  .checkRail {
+  .check .checkRail,
+  .check[data-state] .checkRail {
     forced-color-adjust: none;
     background: CanvasText;
   }

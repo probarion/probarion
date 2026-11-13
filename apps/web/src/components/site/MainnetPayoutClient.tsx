@@ -17,6 +17,7 @@ import {
   readingVerdict,
   restVerdict,
   rowState,
+  type ValuesFrom,
   type VerdictView,
 } from "@/lib/site/mainnet-payout-view";
 import m from "./mainnet.module.css";
@@ -38,6 +39,8 @@ const POS: readonly number[] = CHECK_ORDER.map((_, i) =>
 );
 /** The pause between two rows while a run lands, so the coin rides tick by tick. None under reduced motion. */
 const STEP_MS = 260;
+/** The widths at which each check's values fold behind a summary: the site's phone step. */
+const PHONE = "(max-width: 620px)";
 
 type Shown = CheckOutcome | "recorded" | "reading";
 type Trace = "rest" | "running" | "done" | "stopped";
@@ -91,15 +94,29 @@ export function MainnetPayoutClient({
   const [shown, setShown] = useState<Record<PayoutCheckId, Shown>>(atRest);
   const [values, setValues] =
     useState<Record<PayoutCheckId, Record<string, string> | null>>(restValues);
+  // Where each row's values come from: a row that fails or cannot be read keeps the last ones it showed.
+  const [from, setFrom] = useState<Record<PayoutCheckId, ValuesFrom>>(() =>
+    byId<ValuesFrom>(() => "recorded"),
+  );
   const [verdict, setVerdict] = useState<VerdictView>(() =>
     restVerdict(copy, tally(recorded), recordedAt),
   );
+  // Which rows show their values. The server renders them open, so a page with no script shows them all; on a phone
+  // the script folds them, and a wider window opens them again.
+  const [open, setOpen] = useState<Record<PayoutCheckId, boolean>>(() => byId(() => true));
   const inflight = useRef<AbortController | null>(null);
 
   // The button shows once the script runs; with no JavaScript the noscript line stands in its place.
   useEffect(() => {
     setReady(true);
-    return () => inflight.current?.abort();
+    const phone = window.matchMedia?.(PHONE);
+    const fold = () => setOpen(byId(() => !phone?.matches));
+    fold();
+    phone?.addEventListener("change", fold);
+    return () => {
+      phone?.removeEventListener("change", fold);
+      inflight.current?.abort();
+    };
   }, []);
 
   const run = async () => {
@@ -128,7 +145,12 @@ export function MainnetPayoutClient({
         ]);
         if (ctl.signal.aborted) return;
         setShown((cur) => ({ ...cur, [id]: o }));
-        if (o.state === "pass") setValues((cur) => ({ ...cur, [id]: o.values }));
+        // A row that does not pass opens, so its values sit under the sentence that says where they come from.
+        if (o.state !== "pass") setOpen((cur) => ({ ...cur, [id]: true }));
+        if (o.state === "pass") {
+          setValues((cur) => ({ ...cur, [id]: o.values }));
+          setFrom((cur) => ({ ...cur, [id]: "earlier" }));
+        }
         if (!calm) await pause(STEP_MS);
       }
       const r = await result;
@@ -142,6 +164,7 @@ export function MainnetPayoutClient({
       setTrace("rest");
       setShown(atRest());
       setValues(restValues());
+      setFrom(byId<ValuesFrom>(() => "recorded"));
       setVerdict(restVerdict(copy, tally(recorded), recordedAt));
     } finally {
       if (inflight.current === ctl) {
@@ -197,7 +220,7 @@ export function MainnetPayoutClient({
       <p className={m.timing}>{timing}</p>
 
       <div className={m.runBar}>
-        <div className={m.verdict} aria-live="polite" data-tone={verdict.tone}>
+        <div className={m.verdict} aria-live="polite" aria-atomic="true" data-tone={verdict.tone}>
           <span className={m.verdictTitle}>{verdict.title}</span>
           <span className={m.verdictSub}>{verdict.sub}</span>
         </div>
@@ -217,9 +240,12 @@ export function MainnetPayoutClient({
         {CHECK_ORDER.map(({ id, n }) => {
           const s = shown[id];
           const name = nameOf(s);
-          const state = rowState(copy, s, recordedAt);
-          const problem = name === "fail" || name === "unread" ? state.word : null;
           const v = values[id];
+          const state = rowState(copy, s, from[id]);
+          const problem =
+            name === "fail" || name === "unread"
+              ? `${state.word}${v !== null && state.note !== null ? ` ${state.note}` : ""}`
+              : null;
           const rows = v === null ? [] : checkRows(copy, id, v);
           return (
             <li key={id} className={m.check} data-state={name}>
@@ -230,7 +256,10 @@ export function MainnetPayoutClient({
                 {n}
               </span>
               <div className={m.what}>
-                <h4 className={m.checkTitle}>{checkTitle(copy, id, payout)}</h4>
+                <h4 className={m.checkTitle}>
+                  <span className="sr-only">{n} </span>
+                  {checkTitle(copy, id, payout)}
+                </h4>
                 {problem === null ? (
                   <span className={m.state}>
                     <span className={m.word}>{state.word}</span>
@@ -239,7 +268,15 @@ export function MainnetPayoutClient({
                 ) : null}
                 <span className={m.sources}>{sources[id]}</span>
               </div>
-              <div className={m.vals}>
+              <details
+                className={m.vals}
+                open={open[id]}
+                onToggle={(e) => {
+                  const now = e.currentTarget.open;
+                  setOpen((cur) => (cur[id] === now ? cur : { ...cur, [id]: now }));
+                }}
+              >
+                <summary className={m.valsSummary}>{copy.run.values}</summary>
                 <dl className={id === "noaddr" ? m.fields : m.pairs}>
                   {rows
                     .filter((r) => !r.note)
@@ -257,7 +294,7 @@ export function MainnetPayoutClient({
                       {r.text}
                     </span>
                   ))}
-              </div>
+              </details>
               {problem === null ? null : <p className={m.problem}>{problem}</p>}
             </li>
           );

@@ -22,7 +22,6 @@ import {
   readingVerdict,
   restVerdict,
   rowState,
-  timesWord,
   unreadText,
 } from "./mainnet-payout-view";
 
@@ -41,25 +40,33 @@ describe("the live run's copy", () => {
 });
 
 describe("rowState", () => {
-  it("says Recorded with the date at rest, Reading while the reads run, and Pass after", () => {
-    expect(rowState(C, "recorded", "2026-11-13T11:02:19.512Z")).toEqual({
-      word: "Recorded",
-      note: "2026-11-13",
-      tone: "neutral",
-    });
-    expect(rowState(C, "reading", "x")).toEqual({ word: "Reading", note: null, tone: "neutral" });
-    expect(rowState(C, pass, "x")).toEqual({ word: "Pass", note: "read now", tone: "ok" });
+  it("says Recorded at rest, with no date (the verdict above gives it), Reading while the reads run, and Pass after", () => {
+    expect(rowState(C, "recorded")).toEqual({ word: "Recorded", note: null, tone: "neutral" });
+    expect(rowState(C, "reading")).toEqual({ word: "Reading", note: null, tone: "neutral" });
+    expect(rowState(C, pass, "earlier")).toEqual({ word: "Pass", note: "read now", tone: "ok" });
   });
 
-  it("names the value a failed check read", () => {
+  it("names the value a failed check read, and says where the values on show come from", () => {
     const o: CheckOutcome = {
       state: "fail",
       problem: { code: "base.amount", vars: { got: "997601" } },
     };
-    expect(rowState(C, o, "x")).toEqual({
+    expect(rowState(C, o, "recorded")).toEqual({
       word: "Does not match: the Transfer is 997601.",
-      note: null,
+      note: "The values shown are the recorded ones.",
       tone: "bad",
+    });
+    expect(rowState(C, o, "earlier").note).toBe(
+      "The values shown are from this browser's last read that passed.",
+    );
+  });
+
+  it("says an answer it cannot read is unread, never a mismatch", () => {
+    const o: CheckOutcome = { state: "unread", missing: [], shape: true };
+    expect(rowState(C, o, "recorded")).toEqual({
+      word: "Could not read: the answers it needs are not in the shape this page reads.",
+      note: "The values shown are the recorded ones.",
+      tone: "neutral",
     });
   });
 
@@ -77,9 +84,11 @@ describe("rowState", () => {
         { read: "config", failures: [] },
       ],
     };
-    expect(rowState(C, o, "x").word).toBe(
-      "Could not read: the spend transaction: archival-rpc.mainnet.fastnear.com did not answer in 8 s; rpc.mainnet.fastnear.com answered UNKNOWN_TRANSACTION; get_config: no node was asked. The values shown are the recorded ones.",
+    const s = rowState(C, o, "recorded");
+    expect(s.word).toBe(
+      "Could not read: the spend transaction: archival-rpc.mainnet.fastnear.com did not answer in 8 s; rpc.mainnet.fastnear.com answered UNKNOWN_TRANSACTION; get_config: no node was asked.",
     );
+    expect(s.note).toBe("The values shown are the recorded ones.");
   });
 
   it("has a sentence for each way a host can fail", () => {
@@ -103,15 +112,15 @@ describe("the verdict", () => {
   it("at rest counts the recorded checks and the reads", () => {
     expect(restVerdict(C, t, "2026-11-13T11:02:19.512Z")).toEqual({
       title: "Recorded on 2026-11-13: 7 of 7 checks passed.",
-      sub: "Press the button and this page reads the same 4 transactions and 2 views again, in your browser, from public RPC.",
+      sub: "Press the button and this page reads the same 4 transactions and 3 views again, in your browser, from public RPC.",
       tone: "ok",
     });
-    expect(READ_COUNTS).toEqual({ txs: 4, views: 2 });
+    expect(READ_COUNTS).toEqual({ txs: 4, views: 3 });
   });
 
   it("while reading, says what it reads and from where", () => {
     expect(readingVerdict(C)).toEqual({
-      title: "Reading 4 transactions and 2 views",
+      title: "Reading 4 transactions and 3 views",
       sub: "From FastNEAR's public nodes and mainnet.base.org, in this browser.",
       tone: "neutral",
     });
@@ -151,10 +160,22 @@ describe("the rows and the counts", () => {
     expect(rows.flat().every((r) => !/\{\w+(\|[^}]*)?\}/.test(r.text))).toBe(true);
     expect(rows[2]?.at(-1)).toEqual({
       label: "",
-      text: "5 fields, and none of them is an address",
+      text: "5 fields, and none of them is an address. The vault runs the recorded build 3cQXYDvf…9MF1.",
       full: false,
       note: true,
     });
+    expect(rows[5]?.map((r) => r.text)).toEqual([
+      "seq 3, 4 entries, signed by the ledger key in get_config",
+      "28ac4e58…e6c6",
+      "entry 2, d64f0de7…a336: the spend's decision_hash",
+      "The ledger file's 2 entries from entry 2 on hash to this root.",
+    ]);
+    expect(rows[6]?.map((r) => r.text)).toEqual([
+      "56821514, status success",
+      "997600, that is 0.9976 USDC, on Base USDC 0x8335…02913",
+      "0xB22E…6EB27, the payee in 01, from 0x2cff…02680",
+      "0.0024 USDC: 1.00 burned less 0.9976 arrived",
+    ]);
     expect(rows[1]?.[2]?.text).toBe(`block ${S1.payout.pin.height}, the block of spend 2`);
     expect(CHECK_ORDER.map((c) => c.n)).toEqual(["01", "02", "03", "04", "05", "06", "07"]);
   });
@@ -162,8 +183,6 @@ describe("the rows and the counts", () => {
   it("say small counts in words, and larger ones in digits", () => {
     expect(numberWord(MAINNET_PAYOUT, 2)).toBe("two");
     expect(numberWord(MAINNET_PAYOUT, 12)).toBe("12");
-    expect(timesWord(MAINNET_PAYOUT, 2)).toBe("twice");
-    expect(timesWord(MAINNET_PAYOUT, 7)).toBe("7 times");
     expect(listText(C, ["a"])).toBe("a");
     expect(listText(C, ["a", "b", "c"])).toBe("a, b and c");
   });

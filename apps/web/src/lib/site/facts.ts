@@ -13,6 +13,8 @@ import { type PayoutCheckId, type ProblemCode, type ReadName, shortHash } from "
 import type { TamperResult } from "./tamper";
 
 const blob = (path: string) => `${REPO_URL}/blob/main/${path}`;
+/** A file of this repository on GitHub, at main or at a commit. */
+export const repoFileUrl = (path: string, commit = "main") => `${REPO_URL}/blob/${commit}/${path}`;
 const tree = (path: string) => `${REPO_URL}/tree/main/${path}`;
 
 export const FIXTURE_PATH = "packages/core/test/fixtures/valid-snapshot.json";
@@ -221,7 +223,7 @@ export const HERO = {
     ", ",
     { label: "a refusal on mainnet", href: MAINNET_TX.refusal.url },
     " and ",
-    { label: "a payout to Base", href: "#mainnet" },
+    { label: "a test payout to Base", href: "#mainnet" },
     ". You need no account to read the chain or run the verifier.",
   ] satisfies readonly CopyPart[],
   paid: {
@@ -659,13 +661,15 @@ export const MAINNET_PAYOUT = {
   line2: "The mandate did.",
   lede: {
     one: "{amount} USDC left the vault `{vault}` on NEAR, and {received} USDC reached a wallet on Base. The agent's call had no field for an address. The vault took it from the mandate the owner signed.",
-    many: "{count} payouts left the vault `{vault}` on NEAR, {amount} USDC in all, and {received} USDC reached wallets on Base. The agent's calls had no field for an address. The vault took each one from the mandate the owner signed.",
+    many: "{count} payouts left the vault `{vault}` on NEAR, {amount} USDC in all, and {received} USDC reached {wallets} on Base. The agent's calls had no field for an address. The vault took each one from the mandate the owner signed.",
   },
+  /** {wallets} in lede.many: how many Base wallets the payouts reached. */
+  wallets: { one: "one wallet", many: "{n} wallets" },
   /** The dark card of one payout. */
   stone: {
     aria: "The payout of spend {spendId} to Base, {date}",
     label: "A test, not a customer payment",
-    test: "A test of the cross-chain path, sent to the owner's own Base wallet.",
+    test: "It tried the cross-chain path, sent to the owner's own Base wallet.",
     /** How the payout was decided, by the allowing entry's `decided_by` and the attested proposals code refused before it. */
     decided: {
       "rules-only": {
@@ -713,16 +717,22 @@ export const MAINNET_PAYOUT = {
       "A node did not answer. Those rows keep their recorded values. Try again, or open the transaction links.",
     noScript:
       "With JavaScript off, the recorded results stay. Each row links its transaction on nearblocks or Basescan.",
-    foot: "The reads change nothing and need no key or account, and none of them goes through Probarion's server: NEAR from FastNEAR's public nodes, Base from mainnet.base.org. The views are read at the spend's own block, so they show the vault as it was at the spend. They re-read the chain; they are not the verifier, which needs the ledger file.",
+    /** On a phone, each check's values fold behind this line. */
+    values: "What it read",
+    foot: "The reads change nothing, need no key or account and do not go through Probarion's server. The views are read at the spend's own block. They are not the verifier, which needs the ledger file.",
   },
   rowState: {
     recorded: "Recorded",
-    recordedOn: "{date}",
     reading: "Reading",
     pass: "Pass",
     passNote: "read now",
     fail: "Does not match: {why}.",
-    unread: "Could not read: {why}. The values shown are the recorded ones.",
+    unread: "Could not read: {why}.",
+    /** After a fail or an unread row: where the values still on show come from. */
+    shown: {
+      recorded: "The values shown are the recorded ones.",
+      earlier: "The values shown are from this browser's last read that passed.",
+    },
   },
   /** The seven checks, in the order of the route. A title may hold an amount from the payout. */
   checks: {
@@ -731,8 +741,10 @@ export const MAINNET_PAYOUT = {
       rows: [
         { label: "signed by", text: "{signer}, the vault's owner (get_config)" },
         { label: "payee", text: "Base {payee}", full: true },
-        { label: "limit", text: "{max} USDC, {uses|use|uses}, until {until}" },
-        { label: "returns", text: "mandate {mandateId}" },
+        {
+          label: "returns",
+          text: "mandate {mandateId}: {max} USDC, {uses|use|uses}, until {until}",
+        },
       ],
     },
     key: {
@@ -751,7 +763,11 @@ export const MAINNET_PAYOUT = {
         { label: "invoice_hash", text: "{invoice_hash}" },
         { label: "ref", text: "{ref}" },
         { label: "decision_hash", text: "{decision_hash}" },
-        { label: "", text: "{fields} fields, and none of them is an address", note: true },
+        {
+          label: "",
+          text: "{fields} fields, and none of them is an address. The vault runs the recorded build {code}.",
+          note: true,
+        },
       ],
     },
     memo: {
@@ -766,16 +782,29 @@ export const MAINNET_PAYOUT = {
       title: "{amount} USDC burned on NEAR",
       rows: [
         { label: "ft_burn", text: "{raw}, that is {usdc} USDC, from {owner}" },
-        { label: "event", text: "spend_burned, spend {spendId}" },
-        { label: "returns", text: "status {status}" },
+        {
+          label: "returns",
+          text: "status {status}, with the event spend_burned for spend {spendId}",
+        },
       ],
     },
     anchor: {
-      title: "The decision is in an anchored ledger",
+      title: "The spend's decision is in the anchored ledger",
       rows: [
-        { label: "anchor", text: "seq {seq}, {count|ledger entry|ledger entries}" },
+        {
+          label: "anchor",
+          text: "seq {seq}, {count|entry|entries}, signed by the ledger key in get_config",
+        },
         { label: "root", text: "{root}" },
-        { label: "signed by", text: "the ledger key in get_config" },
+        {
+          label: "decision",
+          text: "entry {decisionSeq}, {decisionHash}: the spend's decision_hash",
+        },
+        {
+          label: "",
+          text: "The ledger file's {links|entry|entries} from entry {decisionSeq} on hash to this root.",
+          note: true,
+        },
       ],
     },
     base: {
@@ -783,17 +812,23 @@ export const MAINNET_PAYOUT = {
       rows: [
         { label: "block", text: "{block}, status success" },
         { label: "Transfer", text: "{raw}, that is {usdc} USDC, on Base USDC {token}" },
-        { label: "to", text: "{to}, the payee in 01" },
-        { label: "fee", text: "{fee} USDC, kept by the POA bridge" },
+        { label: "to", text: "{to}, the payee in 01, from {from}" },
+        { label: "fee", text: "{fee} USDC: {burned} burned less {usdc} arrived" },
       ],
     },
   } satisfies Record<PayoutCheckId, { title: string; rows: readonly PayoutRowCopy[] }>,
   /** Under each check's title, before what it reads (reads.names): each transaction links its explorer. */
   sourcesLead: "Read from ",
+  /** After what a check reads: the file or the code it also rests on, each a link. */
+  sourcesMore: {
+    noaddr: { lead: ". The request type: ", label: "SpendRequest at that build" },
+    anchor: { lead: ", and the entries of ", label: "the ledger file" },
+    base: { lead: ". Tied to spend {spendId} by ", label: "the POA bridge's status" },
+  },
   /** Why a check does not pass: one sentence per code in lib/site/mainnet-payout PROBLEM_CODES, the values it read filled in. */
   problems: {
-    shape: "the answer did not have the shape of an RPC answer",
     "tx.failed": "the {read} transaction did not succeed",
+    "tx.actions": "the {read} transaction has {count} actions, not one function call",
     "view.pin": "the {read} view was read at block {got}, not at the spend's block {want}",
     "view.error": "the {read} view answered with an error",
     "owner.method": "the mandate transaction calls {method}",
@@ -803,6 +838,7 @@ export const MAINNET_PAYOUT = {
     "owner.payee": "the mandate pays {got}",
     "owner.limits": "the mandate's limits are {got}",
     "owner.agent": "the mandate names the agent key {got}",
+    "key.account": "spend {spendId} was sent by {got}",
     "key.signer": "spend {spendId} was signed by {got}",
     "key.block": "spend {spendId} is in block {got}, not {want}",
     "key.full": "the key that signed spend {spendId} has full access",
@@ -812,8 +848,10 @@ export const MAINNET_PAYOUT = {
     "noaddr.method": "the transaction calls {method}",
     "noaddr.args": "the call has the arguments {got}",
     "noaddr.fields": "the request has the fields {got}",
+    "noaddr.type": "the field {field} is not of the type SpendRequest gives it",
     "noaddr.address": "the field {field} holds an address",
     "noaddr.request": "the request is for mandate {mandate} and {amount}",
+    "noaddr.build": "the vault runs the code {got}, not the recorded build {want}",
     "memo.none": "no ft_withdraw from the vault to {intents}",
     "memo.memo": "the memo is {got}",
     "memo.token": "the token is {got}",
@@ -822,12 +860,15 @@ export const MAINNET_PAYOUT = {
     "burn.none": "no ft_burn on {asset}",
     "burn.amount": "ft_burn of {amount} by {owner}",
     "burn.memo": "the ft_burn memo is {got}",
-    "burn.mt": "no mt_burn of {amount} from the vault in {intents}",
+    "burn.mt": "no mt_burn of {amount} of {asset} from the vault in {intents}",
     "burn.event": "no spend_burned event for spend {spendId}",
     "anchor.route": "the anchor went from {signer} to {receiver}",
     "anchor.key": "the anchor was signed by {got}, the ledger key is {want}",
     "anchor.method": "the transaction calls {method}",
     "anchor.event": "the anchor is seq {seq} of {count} entries",
+    "anchor.decision":
+      "the spend's decision_hash is {got}, and entry {seq} of the ledger file hashes to {want}",
+    "anchor.link": "the ledger file's entries hash to {got}, and the anchor's root is {want}",
     "base.status": "the Base transaction did not succeed",
     "base.hash": "Base answered for {got}",
     "base.block": "the block is {got}",
@@ -843,6 +884,7 @@ export const MAINNET_PAYOUT = {
       base: "the Base transaction",
       config: "get_config",
       key: "view_access_key",
+      account: "view_account",
     } satisfies Record<ReadName, string>,
     item: "{read}: {why}",
     timeout: "{host} did not answer in {detail} s",
@@ -853,50 +895,42 @@ export const MAINNET_PAYOUT = {
     body: "{host} sent an answer this page cannot read",
     none: "{host} has no such transaction",
     nobody: "no node was asked",
+    /** An answer came back, in a shape the check cannot read. */
+    shape: "the answers it needs are not in the shape this page reads",
   },
   /** The ledger of one payout, beside the verifier on wide screens. */
   trail: {
     title: "How the payment was decided",
-    /** By the allowing entry's `decided_by`, and whether attested proposals were refused before it. */
-    intro: {
-      "rules-only": {
-        none: "The code rules alone allowed the payment, with no model. Each step is a signed ledger entry.",
-        some: "{Times} an attested model on NEAR AI Cloud proposed paying, and {times} code refused it before anything was sent. Then the code rules alone allowed the payment. Each step is a signed ledger entry.",
-      },
-      "model+rules": {
-        none: "An attested model on NEAR AI Cloud proposed paying, and the code rules allowed it. Each step is a signed ledger entry.",
-        some: "{Times} an attested model on NEAR AI Cloud proposed paying, and {times} code refused it before anything was sent. Then an attested model proposed it again, and the code rules allowed it. Each step is a signed ledger entry.",
-      },
-    },
     /** The setup line: a lead, then one item per setup transaction, each with its link. */
     setupLead: { sameDay: "Set up the same day: ", before: "Set up before the payout: " },
-    setupSep: "; ",
-    setupLast: "; and ",
+    setupSep: ", ",
+    setupLast: " and ",
     setup: {
-      intents_topup:
-        "a top-up, {amount} USDC on NEAR swapped by NEAR Intents 1Click into Base USDC inside `intents.near` for the vault",
+      intents_topup: "a 1Click top-up of {amount} USDC",
       ledger_key_set: "the ledger key",
-      mandate_created:
-        "mandate {mandateId}: the owner's own Base wallet, up to {max} USDC, {uses|use|uses}, until {until}",
+      mandate_created: "mandate {mandateId}",
     } satisfies Record<"intents_topup" | "ledger_key_set" | "mandate_created", string>,
     entry: "Entry {seq}, {minute} UTC",
     pills: {
       refused: "Refused by code",
       allowedRules: "Allowed by code rules",
-      allowedModel: "Allowed by code",
+      allowedModel: "Allowed by code rules",
       held: "Held by code",
       burned: "Burned, sent to Base",
     },
     entries: {
       refused:
-        "{model}, an attested model in a TEE on NEAR AI Cloud, proposed {action}. The rule `{rule}` refused it.",
+        "{model}, an attested model on NEAR AI Cloud, proposed {action}. The rule `{rule}` refused it.",
       refusedAsset:
-        "{model}, an attested model in a TEE on NEAR AI Cloud, proposed {action}. The rule `{rule}` refused it: the model named the token contract as a NEAR account.",
+        "{model}, an attested model on NEAR AI Cloud, proposed {action} with the right amount and address. The rule `{rule}` refused it: the model also named the token contract as a NEAR account, which the rule, as it ran, took for another payee.",
       refusedAgain: "{model}, attested, proposed {action}. Code refused it the same way.",
       refusedRules: "The code rules refused it with `{rule}`.",
-      allowedRulesAfter: "No model this time. The code rules alone decided allow.",
-      allowedRules: "The code rules alone decided allow, with no model.",
-      allowedModel: "{model}, attested, proposed {action}. The code rules allowed it.",
+      allowedRulesAfter:
+        "No model this time. The code rules alone decided allow. Its body hash, {bodyHash}, is spend {spendId}'s decision_hash.",
+      allowedRules:
+        "The code rules alone decided allow, with no model. Its body hash, {bodyHash}, is spend {spendId}'s decision_hash.",
+      allowedModel:
+        "{model}, attested, proposed {action}. The code rules allowed it. Its body hash, {bodyHash}, is spend {spendId}'s decision_hash.",
       held: "Code held it for a person to approve.",
       payment: "Spend {spendId}: {amount} USDC burned on NEAR for the Base wallet",
     },
@@ -908,10 +942,19 @@ export const MAINNET_PAYOUT = {
       two: "Anchor {seq} covers entries {from} and {to}",
       range: "Anchor {seq} covers entries {from} to {to}",
     },
-    summary:
-      "{entries|entry|entries}, hash-linked and signed, all covered by {anchors|anchor|anchors} on chain.",
-    summaryPartial:
-      "{entries|entry|entries}, hash-linked and signed. The {anchors|anchor|anchors} on chain cover entries 0 to {last}.",
+    /** The accessible name of the list of seals. */
+    sealsLabel: "Anchors on chain",
+    /** The line over the seals: lead, a link to the ledger file, then the tail. */
+    summary: {
+      lead: "{entries|entry|entries}, hash-linked and signed in ",
+      label: "the ledger file",
+      tail: ", all covered by {anchors|anchor|anchors} on chain.",
+    },
+    summaryPartial: {
+      lead: "{entries|entry|entries}, hash-linked and signed in ",
+      label: "the ledger file",
+      tail: ". The {anchors|anchor|anchors} on chain cover entries 0 to {last}.",
+    },
   },
   /** The verifier's run with the ledger file: its verdict line, and the full list in the #verify section. */
   verify: {
@@ -919,27 +962,30 @@ export const MAINNET_PAYOUT = {
     lead: "probarion verify, run on mainnet with the ledger file, {date}:",
     result: { pass: "RESULT: PASS", fail: "RESULT: FAIL" },
     counts: "{passed} passed, {failed} failed, {unproven} unproven, {skipped} skipped",
-    attested: "{attested|attested decision|attested decisions}, checked A1 to A8.",
-    offline:
-      "Without the ledger file, checks c and d fail: the chain alone does not show the decision. A1 to A8 ran offline, so the TDX quote itself was not verified (that is O1, with --online), and the model image is not pinned.",
-    online:
-      "Without the ledger file, checks c and d fail: the chain alone does not show the decision. The TDX quote was verified online (O1), and the model image is not pinned.",
+    /** By whether check e verified the TDX quote online; no line when no decision was attested. */
+    attested: {
+      offline:
+        "{attested|attested decision passes|attested decisions pass} A1 to A8. They ran without --online, so O1 and O2 did not check their TEE evidence.",
+      online:
+        "{attested|attested decision passes|attested decisions pass} A1 to A8, and O1 and O2 with --online.",
+    },
+    foot: "Without the ledger file, checks c and d fail: the chain alone does not show the decision.",
+    output: "The run's output",
     link: { label: "Run the verifier on a sample ledger", href: "#verify" },
+    docs: { label: "The payout, step by step", href: "/docs/start/mainnet-payout" },
   },
   earlier: {
     title: "Earlier on mainnet, 2026-11-11",
     rows: [
-      { text: "Spend 1 paid 1 USDC to a NEAR wallet.", tx: MAINNET_TX.payment },
+      { text: "Spend 1 paid 1.00 USDC to the owner's own NEAR wallet.", tx: MAINNET_TX.payment },
       {
         text: "A spend on mandate 999: the contract refused it with `PROBARION:NoMandate`.",
         tx: MAINNET_TX.refusal,
       },
     ],
   },
-  /** Counts in words, and how many times, for the lines that read better that way. Larger counts stay digits. */
+  /** Counts in words, for the lines that read better that way. Larger counts stay digits. */
   numbers: ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"],
-  times: ["never", "once", "twice", "three times", "four times", "five times"],
-  timesMany: "{n} times",
   and: " and ",
   comma: ", ",
 } as const;

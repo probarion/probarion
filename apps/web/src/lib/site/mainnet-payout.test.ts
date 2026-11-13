@@ -1,17 +1,21 @@
 // The mainnet payout's logic: the seven checks on the recorded reads and on tampered copies of them, the RPC helper's
 // retries and fallback, the views pinned to the spend's block, and a whole run on a fake fetch. No network: every
 // answer comes from lib/site/mainnet-payout-recorded.json or from the fakes below.
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   BACKOFF_MS,
   BASE_RPC_URLS,
+  base58,
   CHECKS,
   type CheckOutcome,
+  chainLinks,
   checkNumber,
   evaluate,
   evaluateAll,
   fill,
   NEAR_RPC_URLS,
+  type Payout,
   type PayoutCheckId,
   READ_NAMES,
   ReadError,
@@ -23,8 +27,10 @@ import {
   rpc,
   runPayout,
   SPEND_FIELDS,
+  sha256,
   shortAddr,
   shortHash,
+  shortHex,
   shortKey,
   startReads,
   TIMEOUT_MS,
@@ -45,9 +51,9 @@ const asReads = (values: Record<ReadName, unknown>): Reads =>
   Object.fromEntries(
     READ_NAMES.map((n) => [n, { ok: true, value: values[n], host: "test" }]),
   ) as Reads;
-/** The ids of the checks that do not pass, and the outcomes by id. */
-function run(values: Record<ReadName, unknown>) {
-  const outcomes = evaluateAll(asReads(values), P);
+/** The ids of the checks that do not pass, and the outcomes by id; `payout` is the page's own facts, P unless changed. */
+function run(values: Record<ReadName, unknown>, payout: Payout = P) {
+  const outcomes = evaluateAll(asReads(values), payout);
   const byId = Object.fromEntries(CHECKS.map((c, i) => [c.id, outcomes[i]])) as Record<
     PayoutCheckId,
     CheckOutcome
@@ -66,6 +72,22 @@ function editSpendArgs(reads: Record<ReadName, Json>, edit: (args: Json) => void
   fc.args = b64(args);
 }
 type Outcome = { outcome: { executor_id: string; logs: string[] } };
+/** The spend's receipt logs of one event, changed by `edit`. */
+function editEvent(reads: Record<ReadName, Json>, event: string, edit: (log: string) => string) {
+  for (const o of reads.spend.receipts_outcome as Outcome[]) {
+    o.outcome.logs = o.outcome.logs.map((l) => (l.includes(`"event":"${event}"`) ? edit(l) : l));
+  }
+}
+/** The root the anchor wrote on chain, from its ledger_anchored event. */
+function anchoredRoot(): string {
+  for (const o of (S1.reads.anchor as Json).receipts_outcome as Outcome[]) {
+    for (const l of o.outcome.logs) {
+      if (!l.includes('"event":"ledger_anchored"')) continue;
+      return (JSON.parse(l.slice("EVENT_JSON:".length)) as { data: { root: string } }).data.root;
+    }
+  }
+  throw new Error("no ledger_anchored event");
+}
 
 describe("the seven checks on the recorded reads", () => {
   it("are seven, in the route's order, numbered 01 to 07", () => {
@@ -118,6 +140,7 @@ describe("the seven checks on the recorded reads", () => {
       amount: "1000000",
       ref: "INV-M002",
       fields: "5",
+      code: "3cQXYDvf…9MF1",
     });
     expect(values.memo).toEqual({
       from: "v0.probarion.near",
@@ -131,13 +154,22 @@ describe("the seven checks on the recorded reads", () => {
       spendId: "2",
       status: "burned",
     });
-    expect(values.anchor).toEqual({ seq: "3", count: "4", root: "28ac4e58…e6c6" });
+    expect(values.anchor).toEqual({
+      seq: "3",
+      count: "4",
+      root: "28ac4e58…e6c6",
+      decisionSeq: "2",
+      decisionHash: "d64f0de7…a336",
+      links: "2",
+    });
     expect(values.base).toEqual({
       block: "56821514",
       raw: "997600",
       usdc: "0.9976",
       token: "0x8335…02913",
       to: "0xB22E…6EB27",
+      from: "0x2cff…02680",
+      burned: "1.00",
       fee: "0.0024",
     });
   });
@@ -250,6 +282,10 @@ describe("the checks on tampered copies", () => {
   it.each([
     ["an EVM address", "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27"],
     ["a NEAR account", "probarion-duong.near"],
+    ["an EVM address inside other text", "INV-M002 0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27"],
+    ["a NEAR account inside other text", "pay someone.near for INV-M002"],
+    ["a withdrawal memo", "WITHDRAW_TO:INV-M002"],
+    ["an implicit NEAR account", `INV ${"ab".repeat(32)}`],
   ])("%s in one of the five fields fails 03: the field holds an address", (_, value) => {
     const r = copy();
     editSpendArgs(r, (a) => {
@@ -258,6 +294,37 @@ describe("the checks on tampered copies", () => {
     const { failed, byId } = run(r);
     expect(failed).toEqual(["noaddr"]);
     expect(problem(byId.noaddr)).toEqual({ code: "noaddr.address", vars: { field: "ref" } });
+  });
+
+  it("a field of another type fails 03 and names it: an object or a number in text is not the request", () => {
+    const nested = copy();
+    editSpendArgs(nested, (a) => {
+      (a.request as Json).ref = { to: "someone.near" };
+    });
+    expect(run(nested).failed).toEqual(["noaddr"]);
+    expect(problem(run(nested).byId.noaddr)).toEqual({
+      code: "noaddr.type",
+      vars: { field: "ref" },
+    });
+    const text = copy();
+    editSpendArgs(text, (a) => {
+      (a.request as Json).mandate_id = "2";
+    });
+    expect(problem(run(text).byId.noaddr)).toEqual({
+      code: "noaddr.type",
+      vars: { field: "mandate_id" },
+    });
+  });
+
+  it("a vault that runs another build fails 03: the recorded build is the one whose request has five fields", () => {
+    const r = copy();
+    r.account.code_hash = "11111111111111111111111111111111";
+    const { failed, byId } = run(r);
+    expect(failed).toEqual(["noaddr"]);
+    expect(problem(byId.noaddr)).toEqual({
+      code: "noaddr.build",
+      vars: { got: shortHash("11111111111111111111111111111111"), want: "3cQXYDvf…9MF1" },
+    });
   });
 
   it("an argument beside the request fails 03", () => {
@@ -285,6 +352,17 @@ describe("the checks on tampered copies", () => {
     expect(problem(run(r).byId.key)).toEqual({ code: "key.full", vars: { spendId: "2" } });
   });
 
+  it("a spend sent from another account fails 02: the key is the vault's own", () => {
+    const r = copy();
+    (r.spend.transaction as Json).signer_id = "someone-else.near";
+    const { failed, byId } = run(r);
+    expect(failed).toEqual(["key", "noaddr"]);
+    expect(problem(byId.key)).toEqual({
+      code: "key.account",
+      vars: { spendId: "2", got: "someone-else.near" },
+    });
+  });
+
   it("a spend signed by another key fails 02", () => {
     const r = copy();
     (r.spend.transaction as Json).public_key =
@@ -298,6 +376,66 @@ describe("the checks on tampered copies", () => {
     const { failed, byId } = run(r);
     expect(failed).toEqual(["anchor"]);
     expect(problem(byId.anchor)?.code).toBe("anchor.key");
+  });
+
+  it("an mt_burn of another token fails 05: the vault burns the mandate's asset", () => {
+    const r = copy();
+    editEvent(r, "mt_burn", (l) => l.replace(`nep141:${P.asset}`, "nep141:other.near"));
+    const { failed, byId } = run(r);
+    expect(failed).toEqual(["burn"]);
+    expect(problem(byId.burn)).toEqual({
+      code: "burn.mt",
+      vars: { amount: "1000000", intents: "intents.near", asset: shortAddr(P.asset) },
+    });
+  });
+
+  it("a spend whose decision_hash is not the ledger's entry fails 06", () => {
+    const r = copy();
+    editSpendArgs(r, (a) => {
+      (a.request as Json).decision_hash = "0".repeat(64);
+    });
+    const { failed, byId } = run(r);
+    expect(failed).toEqual(["anchor"]);
+    expect(problem(byId.anchor)).toEqual({
+      code: "anchor.decision",
+      vars: { got: shortHex("0".repeat(64)), want: "d64f0de7…a336", seq: "2" },
+    });
+  });
+
+  it("ledger entries that do not hash to the anchored root fail 06", () => {
+    const tampered = (edit: (p: Payout) => void) => {
+      const p = structuredClone(P);
+      edit(p);
+      return problem(run(copy(), p).byId.anchor)?.code;
+    };
+    // Another body, another signature, a gap in the entries, or entries that stop before the anchor's last one.
+    expect(
+      tampered((p) => {
+        (p.links[1] as Payout["links"][number]).bodyHash = "0".repeat(64);
+      }),
+    ).toBe("anchor.link");
+    expect(
+      tampered((p) => {
+        const l = p.links[1] as Payout["links"][number];
+        l.sig = `${l.sig.slice(0, -1)}${l.sig.endsWith("2") ? "3" : "2"}`;
+      }),
+    ).toBe("anchor.link");
+    expect(
+      tampered((p) => {
+        (p.links[1] as Payout["links"][number]).seq = 4;
+      }),
+    ).toBe("anchor.link");
+    expect(
+      tampered((p) => {
+        p.links = p.links.slice(0, 1);
+      }),
+    ).toBe("anchor.link");
+    // An opening entry that is not the spend's decision.
+    expect(
+      tampered((p) => {
+        p.decision = { ...p.decision, bodyHash: "1".repeat(64) };
+      }),
+    ).toBe("anchor.decision");
   });
 
   it("an anchor of another count fails 06 and names what it read", () => {
@@ -318,12 +456,30 @@ describe("the checks on tampered copies", () => {
     expect(problem(byId.burn)).toEqual({ code: "tx.failed", vars: { read: "spend" } });
   });
 
-  it("an answer that is not shaped like the RPC's fails with the shape sentence, not an exception", () => {
+  it("a spend with no call fails the checks that read its request, and names the count", () => {
     const r = copy();
     (r.spend.transaction as Json).actions = [];
-    const { byId } = run(r);
-    expect(problem(byId.noaddr)).toEqual({ code: "shape", vars: {} });
-    expect(problem(byId.memo)).toEqual({ code: "shape", vars: {} });
+    const { failed, byId } = run(r);
+    expect(failed).toEqual(["noaddr", "memo", "anchor", "base"]);
+    expect(problem(byId.noaddr)).toEqual({
+      code: "tx.actions",
+      vars: { read: "spend", count: "0" },
+    });
+    expect(problem(byId.memo)).toEqual({ code: "tx.actions", vars: { read: "spend", count: "0" } });
+  });
+
+  it("an answer that is not shaped like the RPC's is unread, never a fail and never an exception", () => {
+    const unshaped = { state: "unread", missing: [], shape: true };
+    // A key with no permission is not a full-access key.
+    const key = copy();
+    delete key.key.permission;
+    expect(run(key).byId.key).toEqual(unshaped);
+    // A spend with no receipts is not a spend with no withdrawal.
+    const receipts = copy();
+    delete receipts.spend.receipts;
+    const { byId } = run(receipts);
+    expect(byId.memo).toEqual(unshaped);
+    expect(tally(CHECKS.map((c) => byId[c.id]))).toMatchObject({ fail: 0, state: "unread" });
   });
 
   it("cut a value read from the chain to 120 characters in the sentence", () => {
@@ -356,7 +512,7 @@ describe("the checks on tampered copies", () => {
     });
     expect(tally(outcomes)).toMatchObject({ pass: 6, unread: 1, state: "unread" });
     // A failed check outweighs an unread one.
-    const bad = { state: "fail", problem: { code: "shape", vars: {} } } as const;
+    const bad = { state: "fail", problem: { code: "tx.actions", vars: {} } } as const;
     expect(tally([...outcomes.slice(0, 6), bad]).state).toBe("fail");
     // A read that was never asked counts as missing too.
     delete reads.config;
@@ -386,6 +542,21 @@ describe("the views, pinned to the spend's block", () => {
     }
   });
 
+  it("fail 03 when the vault's code was read at another block", () => {
+    const r = copy();
+    r.account.block_hash = "4uFZy3fZGuaPWWVxPjQZNHqpHPYMpGJbg7oQZrXNtJg1";
+    const { failed, byId } = run(r);
+    expect(failed).toEqual(["noaddr"]);
+    expect(problem(byId.noaddr)).toEqual({
+      code: "view.pin",
+      vars: {
+        read: "account",
+        got: "4uFZy3fZGuaPWWVxPjQZNHqpHPYMpGJbg7oQZrXNtJg1",
+        want: P.pin.hash,
+      },
+    });
+  });
+
   it("fail when the spend is not in the pinned block", () => {
     const r = copy();
     (r.spend.transaction_outcome as Json).block_hash =
@@ -397,6 +568,11 @@ describe("the views, pinned to the spend's block", () => {
     expect((S1.reads.spend as Json).transaction_outcome).toMatchObject({ block_hash: P.pin.hash });
     expect(S1.reads.config).toMatchObject({ block_hash: P.pin.hash, block_height: P.pin.height });
     expect(S1.reads.key).toMatchObject({ block_hash: P.pin.hash, block_height: P.pin.height });
+    expect(S1.reads.account).toMatchObject({
+      block_hash: P.pin.hash,
+      block_height: P.pin.height,
+      code_hash: P.build.codeHash,
+    });
   });
 
   it("ask the node for the spend's block by its hash, never for the latest state", async () => {
@@ -408,7 +584,7 @@ describe("the views, pinned to the spend's block", () => {
     const pending = startReads(P, { fetch: fetchFn, backoffMs: [] });
     await Promise.all(READ_NAMES.map((n) => pending[n]));
     const views = asked.filter((a) => a.body.method === "query");
-    expect(views).toHaveLength(2 * NEAR_RPC_URLS.length);
+    expect(views).toHaveLength(3 * NEAR_RPC_URLS.length);
     for (const v of views) {
       const params = v.body.params as Json;
       expect(params.block_id).toBe(P.pin.hash);
@@ -420,6 +596,8 @@ describe("the views, pinned to the spend's block", () => {
       "call_function",
       "view_access_key",
       "view_access_key",
+      "view_account",
+      "view_account",
     ]);
     expect(
       views.find((v) => (v.body.params as Json).request_type === "view_access_key")?.body.params,
@@ -649,6 +827,7 @@ function answerFor(body: Json): unknown {
     };
   }
   if (body.method === "query" && params.request_type === "view_access_key") return S1.reads.key;
+  if (body.method === "query" && params.request_type === "view_account") return S1.reads.account;
   return null;
 }
 
@@ -664,7 +843,7 @@ function chain(down: readonly string[] = []) {
 }
 
 describe("runPayout", () => {
-  it("reads 4 transactions and 2 views, reports each read and check once, and passes 7 of 7", async () => {
+  it("reads 4 transactions and 3 views, reports each read and check once, and passes 7 of 7", async () => {
     const c = chain();
     const reads: ReadName[] = [];
     const checks: PayoutCheckId[] = [];
@@ -678,7 +857,7 @@ describe("runPayout", () => {
       },
       now: () => clock.shift() ?? 0,
     });
-    expect(c.urls).toHaveLength(6);
+    expect(c.urls).toHaveLength(7);
     expect([...reads].sort()).toEqual([...READ_NAMES].sort());
     expect([...checks].sort()).toEqual(CHECKS.map((x) => x.id).sort());
     expect(result.tally).toEqual({ total: 7, pass: 7, fail: 0, unread: 0, state: "pass" });
@@ -697,8 +876,43 @@ describe("runPayout", () => {
     const result = await runPayout(P, { fetch: c.fetchFn, sleep: async () => {} });
     expect(result.tally.state).toBe("pass");
     expect(result.hosts.sort()).toEqual(["mainnet.base.org", "rpc.mainnet.fastnear.com"]);
-    // 5 NEAR reads, 3 tries each on the archival node, then 1 on the regular one; 1 Base read.
-    expect(c.urls).toHaveLength(5 * 4 + 1);
+    // 6 NEAR reads, 3 tries each on the archival node, then 1 on the regular one; 1 Base read.
+    expect(c.urls).toHaveLength(6 * 4 + 1);
+  });
+
+  it("moves to the next node when one answers for another transaction, or not yet final", async () => {
+    for (const wrong of [
+      S1.reads.anchor,
+      { ...(S1.reads.spend as Json), final_execution_status: "EXECUTED_OPTIMISTIC" },
+    ]) {
+      const fetchFn = (async (url: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Json;
+        const spend = (body.params as Json).tx_hash === P.tx.spend.hash;
+        return ok(String(url) === NEAR_RPC_URLS[0] && spend ? wrong : answerFor(body));
+      }) as typeof fetch;
+      const result = await runPayout(P, { fetch: fetchFn, sleep: async () => {} });
+      expect(result.tally.state).toBe("pass");
+      expect(result.reads.spend).toMatchObject({ ok: true, host: "rpc.mainnet.fastnear.com" });
+      expect(result.reads.anchor).toMatchObject({
+        ok: true,
+        host: "archival-rpc.mainnet.fastnear.com",
+      });
+    }
+  });
+
+  it("says 07 could not be read when Base answers for another transaction or without its logs", async () => {
+    for (const wrong of [
+      { ...(S1.reads.base as Json), transactionHash: `0x${"ab".repeat(32)}` },
+      { status: "0x1", transactionHash: P.tx.base },
+    ]) {
+      const fetchFn = (async (_: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Json;
+        return ok(body.method === "eth_getTransactionReceipt" ? wrong : answerFor(body));
+      }) as typeof fetch;
+      const result = await runPayout(P, { fetch: fetchFn, sleep: async () => {} });
+      expect(result.tally).toMatchObject({ pass: 6, unread: 1, fail: 0, state: "unread" });
+      expect(result.reads.base).toMatchObject({ ok: false });
+    }
   });
 
   it("says a check could not be read when its host is down, and keeps the other checks", async () => {
@@ -728,6 +942,42 @@ describe("runPayout", () => {
     ctl.abort(stop);
     await expect(p).rejects.toBe(stop);
     expect(reported).toBe(0);
+  });
+});
+
+describe("the ledger's hash chain", () => {
+  it("hashes with SHA-256 as node:crypto does, over one block and over several", () => {
+    const long = Uint8Array.from({ length: 1000 }, (_, i) => (i * 7 + 3) % 256);
+    for (const data of [new Uint8Array(0), new TextEncoder().encode("abc"), long]) {
+      const want = createHash("sha256").update(data).digest("hex");
+      expect(Buffer.from(sha256(data)).toString("hex")).toBe(want);
+    }
+  });
+
+  it("reads base58, keeps leading zeros, and refuses a character outside the alphabet", () => {
+    expect([...(base58("2g") ?? [])]).toEqual([0x61]);
+    expect([...(base58("11") ?? [])]).toEqual([0, 0]);
+    expect(base58("0OIl")).toBeNull();
+    for (const l of P.links) expect(base58(l.sig.slice("ed25519:".length))).toHaveLength(64);
+  });
+
+  it("hashes the ledger file's entries from the decision on to the root the anchor wrote", () => {
+    const root = anchoredRoot();
+    expect(chainLinks(P.links)).toBe(root);
+    // The same links, by node:crypto: sha256(prev_link || body_hash || the raw signature).
+    let link = "";
+    for (const l of P.links) {
+      const sig = base58(l.sig.slice("ed25519:".length)) as Uint8Array;
+      link = createHash("sha256")
+        .update(Buffer.from(l.prevLink, "hex"))
+        .update(Buffer.from(l.bodyHash, "hex"))
+        .update(sig)
+        .digest("hex");
+    }
+    expect(link).toBe(root);
+    expect(P.links[0]).toMatchObject({ seq: P.decision.seq, bodyHash: P.decision.bodyHash });
+    expect(P.links.at(-1)?.seq).toBe(P.anchor.count - 1);
+    expect(chainLinks([])).toBeNull();
   });
 });
 

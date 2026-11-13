@@ -2,7 +2,14 @@
 // each payout, its decision trail and the verifier's verdict, with the transaction links. It reads MAINNET_PAYOUT and
 // the explorer links from facts.ts, so the server component imports it and the client component does not: that one uses
 // lib/site/mainnet-payout-view.ts with the copy it is handed. Every count and amount comes from the data.
-import { baseTxFact, type CopyPart, MAINNET_PAYOUT, mainnetTxFact, type TxFact } from "./facts";
+import {
+  baseTxFact,
+  type CopyPart,
+  MAINNET_PAYOUT,
+  mainnetTxFact,
+  repoFileUrl,
+  type TxFact,
+} from "./facts";
 import {
   CHECKS,
   fill,
@@ -11,6 +18,7 @@ import {
   type PayoutCheckId,
   type ReadName,
   shortAddr,
+  shortHex,
   type TrailEntry,
   usdc,
   utcDate,
@@ -22,7 +30,6 @@ import {
   numberWord,
   refusedProposals,
   type Tone,
-  timesWord,
 } from "./mainnet-payout-view";
 
 const C = MAINNET_PAYOUT;
@@ -45,6 +52,7 @@ export interface SectionHead {
 export function sectionHead(payouts: readonly Payout[]): SectionHead {
   const dates = [...new Set(payouts.map((p) => p.date))].sort();
   const vaults = [...new Set(payouts.map((p) => p.vault))];
+  const wallets = new Set(payouts.map((p) => `${p.chain}:${p.payee.toLowerCase()}`)).size;
   return {
     eyebrow: fill(C.eyebrow, { dates: listText(C, dates) }),
     line1: C.line1,
@@ -54,6 +62,7 @@ export function sectionHead(payouts: readonly Payout[]): SectionHead {
       vault: listText(C, vaults),
       amount: usdc(sum(payouts.map((p) => p.amount))),
       received: usdc(sum(payouts.map((p) => p.received))),
+      wallets: wallets === 1 ? C.wallets.one : fill(C.wallets.many, { n: numberWord(C, wallets) }),
     }),
   };
 }
@@ -135,9 +144,27 @@ function readTx(p: Payout, read: ReadName): TxFact | null {
   return null;
 }
 
+/** What a check rests on besides the chain: the request type at the vault's build, the ledger file, the bridge's status. */
+function sourcesMore(p: Payout, id: PayoutCheckId): CopyPart[] {
+  const M = C.sourcesMore;
+  if (id === "noaddr") {
+    const href = repoFileUrl("contracts/vault/src/types.rs", p.build.commit);
+    return [M.noaddr.lead, { label: M.noaddr.label, href }];
+  }
+  if (id === "anchor")
+    return [M.anchor.lead, { label: M.anchor.label, href: repoFileUrl(p.files.ledger) }];
+  if (id === "base") {
+    return [
+      fill(M.base.lead, { spendId: p.spendId }),
+      { label: M.base.label, href: repoFileUrl(p.files.poa) },
+    ];
+  }
+  return [];
+}
+
 /**
  * The line under a check's title: what it reads, from the check's own `needs`. The transactions come first, each a link
- * to its explorer, then the views by their method name.
+ * to its explorer, then the views by their method name, then the files or the code the check also rests on.
  */
 export function checkSources(p: Payout, id: PayoutCheckId): CopyPart[] {
   const needs = CHECKS.find((c) => c.id === id)?.needs ?? [];
@@ -153,7 +180,7 @@ export function checkSources(p: Payout, id: PayoutCheckId): CopyPart[] {
       tx === null ? `\`${C.reads.names[read]}\`` : { label: C.reads.names[read], href: tx.url },
     );
   });
-  return parts;
+  return [...parts, ...sourcesMore(p, id)];
 }
 
 // --- the decision trail ---------------------------------------------------------------------------
@@ -180,18 +207,24 @@ export interface SealItem {
 
 export interface TrailView {
   title: string;
-  intro: string;
   setup: CopyPart[];
   items: TrailItem[];
   spur: string;
   spurEnd: string;
+  sealsLabel: string;
   seals: SealItem[];
-  summary: string;
+  summary: CopyPart[];
 }
 
 function entryText(e: TrailEntry, p: Payout, earlier: readonly TrailEntry[]): CopyPart[] {
   const E = C.trail.entries;
-  const vars = { model: e.model ?? "", action: e.action ?? "", rule: e.refusedBy.join(", ") };
+  const vars = {
+    model: e.model ?? "",
+    action: e.action ?? "",
+    rule: e.refusedBy.join(", "),
+    bodyHash: shortHex(e.bodyHash),
+    spendId: p.spendId,
+  };
   if (e.kind === "payment") {
     return [
       fill(E.payment, { spendId: e.spend?.id ?? p.spendId, amount: usdc(p.amount) }),
@@ -211,7 +244,9 @@ function entryText(e: TrailEntry, p: Payout, earlier: readonly TrailEntry[]): Co
   }
   if (e.verdict === "allow") {
     if (e.decidedBy === "model+rules") return [fill(E.allowedModel, vars)];
-    return [earlier.some((x) => x.model !== null) ? E.allowedRulesAfter : E.allowedRules];
+    return [
+      fill(earlier.some((x) => x.model !== null) ? E.allowedRulesAfter : E.allowedRules, vars),
+    ];
   }
   return [E.held];
 }
@@ -253,16 +288,13 @@ function sealText(seq: number, count: number): string {
 /** The decision trail of one payout: the setup, the ledger entries in order, the anchors as seals. */
 export function trailView(p: Payout): TrailView {
   const refused = refusedProposals(p);
-  const intro = C.trail.intro[decidedBy(p)];
   const spur = new Set(refused.map((e) => e.seq));
   const lastCovered = Math.max(0, ...p.seals.map((s) => s.count)) - 1;
   const lastSeq = p.trail.at(-1)?.seq ?? 0;
+  const S = lastCovered >= lastSeq ? C.trail.summary : C.trail.summaryPartial;
+  const sumVars = { entries: p.trail.length, anchors: p.seals.length, last: lastCovered };
   return {
     title: C.trail.title,
-    intro: fill(refused.length === 0 ? intro.none : intro.some, {
-      Times: capital(timesWord(C, refused.length)),
-      times: timesWord(C, refused.length),
-    }),
     setup: setupLine(p),
     items: p.trail.map((e, i) => ({
       seq: e.seq,
@@ -273,6 +305,7 @@ export function trailView(p: Payout): TrailView {
     })),
     spur: C.trail.spur,
     spurEnd: C.trail.spurEnd,
+    sealsLabel: C.trail.sealsLabel,
     seals: p.seals.map((s) => ({
       seq: s.seq,
       from: 0,
@@ -280,11 +313,11 @@ export function trailView(p: Payout): TrailView {
       text: sealText(s.seq, s.count),
       tx: mainnetTxFact(s.tx),
     })),
-    summary: fill(lastCovered >= lastSeq ? C.trail.summary : C.trail.summaryPartial, {
-      entries: p.trail.length,
-      anchors: p.seals.length,
-      last: lastCovered,
-    }),
+    summary: [
+      fill(S.lead, sumVars),
+      { label: S.label, href: repoFileUrl(p.files.ledger) },
+      fill(S.tail, sumVars),
+    ],
   };
 }
 
@@ -298,8 +331,12 @@ export interface VerifyView {
   counts: string;
   attested: string | null;
   foot: string;
+  /** The run's text output in the evidence folder. */
+  output: { label: string; href: string };
   /** To the #verify section, which lists the checks. */
   link: { label: string; href: string };
+  /** The step-by-step docs page. */
+  docs: { label: string; href: string };
 }
 
 /** The verifier's run on the payout with the ledger file: its verdict line, not the list of checks. */
@@ -317,8 +354,13 @@ export function verifyView(p: Payout): VerifyView {
       unproven: v.unproven,
       skipped: v.skipped,
     }),
-    attested: attested === 0 ? null : fill(C.verify.attested, { attested }),
-    foot: v.quoteOnline ? C.verify.online : C.verify.offline,
+    attested:
+      attested === 0
+        ? null
+        : fill(v.quoteOnline ? C.verify.attested.online : C.verify.attested.offline, { attested }),
+    foot: C.verify.foot,
+    output: { label: C.verify.output, href: repoFileUrl(p.files.verify) },
     link: C.verify.link,
+    docs: C.verify.docs,
   };
 }

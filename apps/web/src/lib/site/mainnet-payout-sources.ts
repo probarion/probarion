@@ -1,10 +1,14 @@
 // Where the mainnet payouts on the landing page come from. docs/mainnet-proof.json names every mainnet spend with a
 // Base transfer; the evidence folder whose outcomes list that spend gives the mandate, the ledger entries, the anchors,
-// the bridge's release and the verifier's run; contracts/deployments/mainnet.json gives the vault's constants.
+// the bridge's release and the verifier's run; contracts/deployments/mainnet.json gives the vault's constants, its code
+// and the owner's own wallets; contracts/code-hashes.json gives the commit of that code's reproducible build.
 // scripts/record-mainnet-payout.ts and the tests read these files; the page reads nothing but the recorded file.
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  base58,
+  type LedgerLink,
   type MandateLimits,
   nsToIso,
   type PayoutDraft,
@@ -37,6 +41,25 @@ export interface Proof {
 /** contracts/deployments/mainnet.json, the fields read here. */
 export interface Deployment {
   constants: { intents: string; allowed_assets: string[] };
+  vault_v0: { account_id: string; code_hash: string };
+  /**
+   * The owner's own wallets, by chain. The section says a payout was a test to the owner's own wallet, so a payout to
+   * any other address stops the build until its words are written.
+   */
+  owner_wallets: Record<string, string[]>;
+}
+
+/** contracts/code-hashes.json, the fields read here. */
+export interface CodeHashes {
+  entries: { crate: string; commit: string; code_hash: string }[];
+}
+
+/** One line of a ledger file. */
+export interface LedgerLine {
+  body: LedgerBody;
+  body_hash: string;
+  sig: string;
+  link: string;
 }
 
 /** One outcome-*.json of a run: what the kit recorded for one cycle. */
@@ -53,6 +76,7 @@ export interface Outcome {
 export interface LedgerBody {
   vault: string;
   seq: number;
+  prev_link: string;
   kind: string;
   at: string;
   invoice_hash: string;
@@ -74,11 +98,13 @@ interface Destination {
 /** The run's snapshot (`probarion snapshot`), the chain part read here. */
 export interface RunSnapshot {
   chain: {
+    code_hash: string;
     spends: {
       id: number;
       mandate_id: number;
       amount: string;
       invoice_hash: string;
+      decision_hash: string;
       agent_pk: string;
       destination: Destination;
     }[];
@@ -125,7 +151,9 @@ export interface RunSource {
   txs: { utc: string; label: string; hash: string }[];
   /** outcome-*.json, by `at`. */
   outcomes: Outcome[];
-  ledger: { body: LedgerBody }[];
+  ledger: LedgerLine[];
+  /** The run's files, from the repository root. */
+  files: { ledger: string; verify: string; poa: string };
   snapshot: RunSnapshot;
   verify: VerifyJson;
   poa: PoaStatus;
@@ -134,6 +162,7 @@ export interface RunSource {
 export interface Sources {
   proof: Proof;
   deployment: Deployment;
+  codeHashes: CodeHashes;
   runs: RunSource[];
 }
 
@@ -171,6 +200,8 @@ export function readSources(root: string): Sources {
         if (hits.length !== 1) throw new Error(`${dir}: ${hits.length} files match ${re}`);
         return `${dir}/${hits[0]}`;
       };
+      const ledgerFile = one(/^ledger-.*\.jsonl$/);
+      const verifyFile = one(/^verify-.*\.json$/);
       runs.push({
         dir,
         txs: parseTxsLog(text(`${dir}/txs.log`)),
@@ -178,12 +209,18 @@ export function readSources(root: string): Sources {
           .filter((f) => /^outcome-.*\.json$/.test(f))
           .map((f) => json(`${dir}/${f}`) as Outcome)
           .sort((a, b) => a.at.localeCompare(b.at)),
-        ledger: text(one(/^ledger-.*\.jsonl$/))
+        ledger: text(ledgerFile)
           .split(/\r?\n/)
           .filter((l) => l.trim() !== "")
-          .map((l) => JSON.parse(l) as { body: LedgerBody }),
+          .map((l) => JSON.parse(l) as LedgerLine),
+        files: {
+          ledger: ledgerFile,
+          // The text output beside the JSON one, which the page links.
+          verify: verifyFile.replace(/\.json$/, ".txt"),
+          poa: `${dir}/poa-status.json`,
+        },
         snapshot: json(one(/^snapshot-.*\.json$/)) as RunSnapshot,
-        verify: json(one(/^verify-.*\.json$/)) as VerifyJson,
+        verify: json(verifyFile) as VerifyJson,
         poa: json(`${dir}/poa-status.json`) as PoaStatus,
       });
     }
@@ -191,6 +228,7 @@ export function readSources(root: string): Sources {
   return {
     proof: json("docs/mainnet-proof.json") as Proof,
     deployment: json("contracts/deployments/mainnet.json") as Deployment,
+    codeHashes: json("contracts/code-hashes.json") as CodeHashes,
     runs,
   };
 }
@@ -206,7 +244,19 @@ function units(amount: string): string {
   return (BigInt(m[1] ?? "0") * 1_000_000n + BigInt((m[2] ?? "").padEnd(6, "0"))).toString();
 }
 
-function trailEntry(b: LedgerBody, asset: string): TrailEntry {
+/** link = sha256(prev_link || body_hash || raw signature), with node:crypto: the builder's own check of the file. */
+function nodeLink(l: LedgerLine): string {
+  const sig = base58(l.sig.replace(/^ed25519:/, ""));
+  if (sig === null || sig.length !== 64) throw new Error(`mainnet payout: entry ${l.body.seq} sig`);
+  return createHash("sha256")
+    .update(Buffer.from(l.body.prev_link, "hex"))
+    .update(Buffer.from(l.body_hash, "hex"))
+    .update(sig)
+    .digest("hex");
+}
+
+function trailEntry(l: LedgerLine, asset: string): TrailEntry {
+  const b = l.body;
   if (b.kind !== "decision" && b.kind !== "payment") {
     throw new Error(`mainnet payout: entry ${b.seq} kind ${b.kind}`);
   }
@@ -242,6 +292,7 @@ function trailEntry(b: LedgerBody, asset: string): TrailEntry {
       kind === "payment" && c !== null && c.spend_id !== null && c.tx_hash !== null
         ? { id: c.spend_id, status: c.status ?? "", tx: c.tx_hash }
         : null,
+    bodyHash: l.body_hash,
   };
 }
 
@@ -296,6 +347,21 @@ function draft(t: ProofTx, src: Sources, byHash: ReadonlyMap<string, ProofTx>): 
   );
   const asset = dest.asset as string;
   must(src.deployment.constants.allowed_assets.includes(asset), `${asset} is not an allowed asset`);
+  const payee = dest.address as string;
+  const own = src.deployment.owner_wallets[dest.chain as string] ?? [];
+  must(
+    own.some((w) => w.toLowerCase() === payee.toLowerCase()),
+    `spend ${spendId} pays ${payee}, which owner_wallets in contracts/deployments/mainnet.json does not list: the section's words are for a test to the owner's own wallet`,
+  );
+  const v0 = src.deployment.vault_v0;
+  must(v0.account_id === vault, `${vault} is not vault_v0 in contracts/deployments/mainnet.json`);
+  must(chain.code_hash === v0.code_hash, `${run.dir}: the snapshot's code is not ${v0.code_hash}`);
+  const build = must(
+    src.codeHashes.entries.find(
+      (e) => e.crate === "probarion-vault" && e.code_hash === v0.code_hash,
+    ),
+    `${v0.code_hash} is no recorded vault build in contracts/code-hashes.json`,
+  );
   const baseToken = must(
     /^base-(0x[0-9a-f]{40})\.omft\.near$/.exec(asset),
     `${asset} is no Base token`,
@@ -336,15 +402,42 @@ function draft(t: ProofTx, src: Sources, byHash: ReadonlyMap<string, ProofTx>): 
       amount: x.kind === "intents_topup" ? units(must(x.amount_usdc, "top-up amount")) : null,
       at: new Date(x.logged).toISOString(),
     }));
-  const entries = run.ledger
-    .map((l) => l.body)
-    .filter((b) => b.vault === vault && b.invoice_hash === spend.invoice_hash)
-    .sort((a, b) => a.seq - b.seq);
+  const ledger = run.ledger
+    .filter((l) => l.body.vault === vault)
+    .sort((a, b) => a.body.seq - b.body.seq);
+  ledger.forEach((l, i) => {
+    must(l.body.seq === i, `${run.dir}: the ledger's entry ${i} has seq ${l.body.seq}`);
+    must(nodeLink(l) === l.link, `${run.dir}: entry ${i}'s link does not recompute`);
+    must(i === 0 || l.body.prev_link === ledger[i - 1]?.link, `${run.dir}: entry ${i}'s prev_link`);
+  });
+  const entries = ledger.filter((l) => l.body.invoice_hash === spend.invoice_hash);
   const payment = must(
-    entries.find((b) => b.kind === "payment" && b.contract?.tx_hash === t.hash),
+    entries.find((l) => l.body.kind === "payment" && l.body.contract?.tx_hash === t.hash),
     `${run.dir}: no payment entry for ${t.hash}`,
-  );
+  ).body;
   must(anchor.count > payment.seq, `anchor ${anchor.seq} does not cover the payment entry`);
+  must(
+    ledger[anchor.count - 1]?.link === anchor.root,
+    `anchor ${anchor.seq}'s root is not the ledger's`,
+  );
+  const decision = must(
+    entries
+      .filter(
+        (l) => l.body.kind === "decision" && l.body.verdict === "allow" && l.body.seq < payment.seq,
+      )
+      .at(-1),
+    `${run.dir}: no allow before the payment entry`,
+  );
+  must(
+    decision.body_hash === spend.decision_hash,
+    `spend ${spendId}'s decision_hash is not entry ${decision.body.seq}'s body hash`,
+  );
+  const links: LedgerLink[] = ledger.slice(decision.body.seq, anchor.count).map((l) => ({
+    seq: l.body.seq,
+    prevLink: l.body.prev_link,
+    bodyHash: l.body_hash,
+    sig: l.sig,
+  }));
   const limits: MandateLimits = {
     id: mandate.id,
     maxPerPayment: mandate.max_per_payment,
@@ -360,7 +453,7 @@ function draft(t: ProofTx, src: Sources, byHash: ReadonlyMap<string, ProofTx>): 
     chain: dest.chain as string,
     asset,
     baseToken: must(baseToken, "base token"),
-    payee: dest.address as string,
+    payee,
     mandate: limits,
     agentKey: spend.agent_pk,
     spendId,
@@ -369,6 +462,9 @@ function draft(t: ProofTx, src: Sources, byHash: ReadonlyMap<string, ProofTx>): 
     received: release.withdraw_amount,
     fee: release.withdrawal_fee,
     anchor: { seq: anchor.seq, count: anchor.count, root: anchor.root },
+    decision: { seq: decision.body.seq, bodyHash: decision.body_hash },
+    links,
+    build: { codeHash: v0.code_hash, commit: build.commit },
     tx: {
       mandate: { hash: mandateTx.hash, sender: mandateTx.signer_id },
       spend: { hash: t.hash, sender: t.signer_id },
@@ -376,10 +472,11 @@ function draft(t: ProofTx, src: Sources, byHash: ReadonlyMap<string, ProofTx>): 
       base: baseTx,
     },
     setup,
-    trail: entries.filter((b) => b.seq <= payment.seq).map((b) => trailEntry(b, asset)),
+    trail: entries.filter((l) => l.body.seq <= payment.seq).map((l) => trailEntry(l, asset)),
     seals: run.outcomes.filter((o) => o.anchor_tx !== null).map(sealOf),
     verify: verifySummary(run.verify),
     source: run.dir,
+    files: run.files,
   };
 }
 

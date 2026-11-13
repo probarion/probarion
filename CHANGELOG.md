@@ -35,21 +35,30 @@ The software is an unaudited beta.
   dark card per Base payout says "A test, not a customer payment" and how the payout was decided (on 2026-11-13, by
   the code rules alone, after code refused two attested model proposals), with 1.00 USDC burned on NEAR in the
   neutral tone and 0.9976 USDC arrived on Base in the ok tone. **Read the chain now** reads the payout's 4
-  transactions and 2 views again in the visitor's browser and runs seven checks, from the owner's signature on the
-  mandate to the `Transfer` on Base, and each row shows the values it read. Every NEAR read goes to FastNEAR's
-  archival node, with the regular node as the fallback; the views `get_config` and `view_access_key` are pinned to
-  the spend's own block, so a later change to the vault cannot change them; Base answers from `mainnet.base.org`.
-  Each request times out after 8 s and is tried twice more, after 0.5 s and 1.5 s, before the next host, with no
-  cookies and no referrer, and none goes through Probarion's server. With no JavaScript the section shows the
-  result `scripts/record-mainnet-payout.ts` recorded from public RPC
+  transactions and 3 views again in the visitor's browser and runs seven checks, from the owner's signature on the
+  mandate to the `Transfer` on Base, and each row shows the values it read. Check 03 holds the vault's code hash,
+  read with `view_account`, to the recorded build whose `SpendRequest` has the 5 fields, and finds an address
+  anywhere in a field's text. Check 06 hashes the ledger file's entries from the spend's decision to the root the
+  anchor wrote, so the decision the spend names is inside what the chain holds. Every NEAR read goes to FastNEAR's
+  archival node, with the regular node as the fallback; the views `get_config`, `view_access_key` and
+  `view_account` are pinned to the spend's own block, so a later change to the vault cannot change them; Base
+  answers from `mainnet.base.org`. Each request times out after 8 s and is tried up to twice more, when a retry can
+  help, after 0.5 s and 1.5 s, before the next host; an answer for another transaction, or one that is not final,
+  goes to the next host. The requests carry no cookies and no referrer, and none goes through Probarion's server. An
+  answer the page cannot read leaves its row unread, not failed. With no JavaScript the section shows the result
+  `apps/web/scripts/record-mainnet-payout.ts` recorded from public RPC
   (`apps/web/src/lib/site/mainnet-payout-recorded.json`, 7 of 7 checks). The decision trail shows the two refused
   proposals on a dashed spur off the main line and the 3 anchors as numbered gold seals, each with the entries it
-  covers and its transaction, and the verifier's result links the `#verify` section. The payouts are built from
+  covers and its transaction, and the verifier's result links its output, the `#verify` section and the docs page. The payouts are built from
   `docs/mainnet-proof.json`, `contracts/deployments/mainnet.json` and the evidence folder, so every count on the
-  section comes from data and a second payout adds a card. Motion starts after the button press, under
+  section comes from data and a second payout adds a card. On a phone each check's values fold behind a "What it read"
+  line, and with no JavaScript they all show. Motion starts after the button press, under
   `prefers-reduced-motion: no-preference`, and does not loop. Tests run the seven checks on the recorded reads and
-  on tampered copies (another amount, another owner, no `ft_burn`, an address in the request, a wider key, a view
-  from another block) and cover the retries, the fallback and an aborted run.
+  on tampered copies (another amount, another owner, no `ft_burn`, another token in `mt_burn`, an address in the
+  request, a wider key, another code hash, another `decision_hash`, ledger entries that do not hash to the root, a
+  view from another block) and cover the retries, the fallback, a node that answers for another transaction and an
+  aborted run. The data guard stops a payout to a wallet that `owner_wallets` in `contracts/deployments/mainnet.json`
+  does not list, since the section calls it a test to the owner's own wallet.
 - A docs page, [Mainnet payout, step by step](https://probarion.xyz/docs/start/mainnet-payout), after "Testnet and
   mainnet": the payout of 2026-11-13 at a glance, what to open in a browser, the seven checks with the values each
   one read, how the payment was decided (the two proposals that `mandate.payee_mismatch` refused and why, then the

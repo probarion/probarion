@@ -367,8 +367,8 @@ export const START: readonly DocPage[] = [
     title: "Mainnet payout, step by step",
     nav: "Mainnet payout",
     description:
-      "One 1.00 USDC payout from a NEAR mainnet vault to a Base wallet on 2026-11-13: the seven checks, how code decided it, the ledger and how to verify it.",
-    lede: "On 2026-11-13 the vault v0.probarion.near burned 1.00 USDC on NEAR mainnet, and 0.9976 USDC arrived in the owner's own Base wallet. It was a test of the cross-chain path, not a customer payment, and every step can be checked from public data.",
+      "A 1.00 USDC test payout from NEAR mainnet to the owner's own Base wallet, decided by code rules alone: the seven checks, the ledger and how to verify it.",
+    lede: "On 2026-11-13 the vault v0.probarion.near burned 1.00 USDC on NEAR mainnet, and 0.9976 USDC arrived in the owner's own Base wallet. It was a test of the cross-chain path, decided by code rules alone, not a customer payment, and every step can be checked from public data.",
     type: "explanation",
     audiences: ["evaluator", "developer", "partner"],
     status: "live",

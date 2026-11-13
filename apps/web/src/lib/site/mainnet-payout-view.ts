@@ -43,7 +43,7 @@ export const liveCopy = (c: PayoutCopy): PayoutLiveCopy => ({
 /** The tone a word or a figure is set in. A burn on NEAR is neutral, an arrival on Base is ok, a refusal is bad. */
 export type Tone = "neutral" | "ok" | "bad";
 
-/** The reads of one payout, counted from READS: 4 transactions and 2 views. */
+/** The reads of one payout, counted from READS: 4 transactions and 3 views. */
 export const READ_COUNTS = {
   txs: READS.filter((r) => r.kind === "tx").length,
   views: READS.filter((r) => r.kind === "view").length,
@@ -64,9 +64,6 @@ export function listText(c: Pick<PayoutCopy, "and" | "comma">, items: readonly s
 /** A small count in words ("two"); a larger one in digits. */
 export const numberWord = (c: Pick<PayoutCopy, "numbers">, n: number): string =>
   c.numbers[n] ?? String(n);
-/** How many times, in words ("twice"); a larger count with digits. */
-export const timesWord = (c: Pick<PayoutCopy, "times" | "timesMany">, n: number): string =>
-  c.times[n] ?? fill(c.timesMany, { n });
 
 // --- the ledger, read for the words -----------------------------------------------------------------
 
@@ -136,7 +133,9 @@ function failureText(c: Pick<PayoutCopy, "reads">, f: HostFailure): string {
 export function unreadText(
   c: Pick<PayoutCopy, "reads">,
   missing: readonly { read: ReadName; failures: HostFailure[] }[],
+  shape = false,
 ): string {
+  if (shape) return c.reads.shape;
   return missing
     .map((m) =>
       fill(c.reads.item, {
@@ -152,30 +151,36 @@ export function unreadText(
 
 export interface RowState {
   word: string;
+  /** Beside the word, or after a problem: where the values on show come from. */
   note: string | null;
   tone: Tone;
 }
 
-/** The state word beside a check: recorded at rest, reading, then what a live run found. */
+/** Where the values a row shows come from: the recorded run, or this browser's last read that passed. */
+export type ValuesFrom = "recorded" | "earlier";
+
+/**
+ * The state word beside a check: recorded at rest (the verdict above gives the date), reading, then what a live run
+ * found. A row that fails or cannot be read keeps the values it showed, and its note says where they come from.
+ */
 export function rowState(
   c: Pick<PayoutCopy, "rowState" | "problems" | "reads">,
   o: CheckOutcome | "recorded" | "reading",
-  recordedAt: string,
+  from: ValuesFrom = "recorded",
 ): RowState {
   const S = c.rowState;
-  if (o === "recorded") {
-    return {
-      word: S.recorded,
-      note: fill(S.recordedOn, { date: utcDate(recordedAt) }),
-      tone: "neutral",
-    };
-  }
+  if (o === "recorded") return { word: S.recorded, note: null, tone: "neutral" };
   if (o === "reading") return { word: S.reading, note: null, tone: "neutral" };
   if (o.state === "pass") return { word: S.pass, note: S.passNote, tone: "ok" };
+  const shown = S.shown[from];
   if (o.state === "fail") {
-    return { word: fill(S.fail, { why: problemText(c, o.problem) }), note: null, tone: "bad" };
+    return { word: fill(S.fail, { why: problemText(c, o.problem) }), note: shown, tone: "bad" };
   }
-  return { word: fill(S.unread, { why: unreadText(c, o.missing) }), note: null, tone: "neutral" };
+  return {
+    word: fill(S.unread, { why: unreadText(c, o.missing, o.shape === true) }),
+    note: shown,
+    tone: "neutral",
+  };
 }
 
 // --- the verdict ----------------------------------------------------------------------------------

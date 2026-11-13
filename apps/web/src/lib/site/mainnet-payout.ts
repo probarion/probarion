@@ -75,6 +75,17 @@ export interface TrailEntry {
   hintIsAsset: boolean;
   /** A payment entry's spend, or null. */
   spend: { id: number; status: string; tx: string } | null;
+  /** The entry's `body_hash`: for the allowing entry, the `decision_hash` its spend carries. */
+  bodyHash: string;
+}
+
+/** One entry of the ledger file as the hash chain needs it: link = sha256(prev_link || body_hash || sig). */
+export interface LedgerLink {
+  seq: number;
+  prevLink: string;
+  bodyHash: string;
+  /** `ed25519:` and the base58 of the 64-byte signature. */
+  sig: string;
 }
 
 /** One anchor of the ledger on chain: it covers entries 0 to count - 1. */
@@ -146,6 +157,15 @@ export interface Payout {
   fee: string;
   /** The anchor right after the spend, which check 06 reads. */
   anchor: { seq: number; count: number; root: string };
+  /** The ledger entry that allowed the spend: its body hash is the spend's `decision_hash`. */
+  decision: { seq: number; bodyHash: string };
+  /**
+   * The ledger file's entries from the allowing one to the last the anchor covers, in order. Check 06 hashes them up to
+   * the root the anchor wrote on chain, so the decision is inside what the chain holds.
+   */
+  links: LedgerLink[];
+  /** The vault's code (contracts/deployments/mainnet.json) and the commit of its reproducible build (contracts/code-hashes.json). */
+  build: { codeHash: string; commit: string };
   tx: { mandate: TxRef; spend: TxRef; anchor: TxRef; base: string };
   setup: SetupStep[];
   trail: TrailEntry[];
@@ -153,6 +173,8 @@ export interface Payout {
   verify: VerifySummary;
   /** The evidence folder, from the repository root. */
   source: string;
+  /** The run's files the page links, from the repository root. */
+  files: { ledger: string; verify: string; poa: string };
   /** The NEAR block of the spend (its transaction outcome): the two views are read at this block. */
   pin: { hash: string; height: number; at: string };
   /** The Base block of the release. */
@@ -164,9 +186,9 @@ export type PayoutDraft = Omit<Payout, "pin" | "base">;
 
 // --- reads ----------------------------------------------------------------------------------------
 
-export type ReadName = "mandate" | "spend" | "anchor" | "base" | "config" | "key";
+export type ReadName = "mandate" | "spend" | "anchor" | "base" | "config" | "key" | "account";
 
-/** The six reads of one payout: four transactions and two views. The page's counts come from this list. */
+/** The seven reads of one payout: four transactions and three views. The page's counts come from this list. */
 export const READS: readonly { name: ReadName; kind: "tx" | "view"; chain: "near" | "base" }[] = [
   { name: "mandate", kind: "tx", chain: "near" },
   { name: "spend", kind: "tx", chain: "near" },
@@ -174,6 +196,7 @@ export const READS: readonly { name: ReadName; kind: "tx" | "view"; chain: "near
   { name: "base", kind: "tx", chain: "base" },
   { name: "config", kind: "view", chain: "near" },
   { name: "key", kind: "view", chain: "near" },
+  { name: "account", kind: "view", chain: "near" },
 ];
 export const READ_NAMES: readonly ReadName[] = READS.map((r) => r.name);
 
@@ -371,14 +394,47 @@ function acceptView(decode: boolean) {
   };
 }
 
-function acceptTx(r: unknown): unknown {
-  if (!isObj(r) || !isObj(r.transaction) || !Array.isArray(r.receipts_outcome))
-    throw new Error("tx");
-  return r;
+/**
+ * An EXPERIMENTAL_tx_status answer for the transaction that was asked, final, with the parts the checks read. Anything
+ * else moves to the next host, so a node's odd answer is never taken for what the chain says.
+ */
+function acceptTx(hash: string) {
+  return (r: unknown): unknown => {
+    if (
+      !isObj(r) ||
+      !isObj(r.transaction) ||
+      r.transaction.hash !== hash ||
+      !isObj(r.transaction_outcome) ||
+      r.transaction_outcome.id !== hash ||
+      !Array.isArray(r.receipts) ||
+      !Array.isArray(r.receipts_outcome) ||
+      !isObj(r.status) ||
+      r.final_execution_status !== "FINAL"
+    ) {
+      throw new Error("tx");
+    }
+    return r;
+  };
+}
+
+/** An `eth_getTransactionReceipt` answer for the transaction that was asked, with a status and its logs. */
+function acceptBase(hash: string) {
+  return (r: unknown): unknown => {
+    if (
+      !isObj(r) ||
+      typeof r.transactionHash !== "string" ||
+      r.transactionHash.toLowerCase() !== hash.toLowerCase() ||
+      typeof r.status !== "string" ||
+      !Array.isArray(r.logs)
+    ) {
+      throw new Error("base");
+    }
+    return r;
+  };
 }
 
 /**
- * The six reads of one payout, started together. Each resolves to a ReadResult and never rejects, except with the
+ * The seven reads of one payout, started together. Each resolves to a ReadResult and never rejects, except with the
  * caller's abort. Transactions come from EXPERIMENTAL_tx_status (receipts and logs), the views are pinned to the
  * spend's block (`block_id`, never `finality`), and Base answers `eth_getTransactionReceipt`.
  */
@@ -401,7 +457,7 @@ export function startReads(
         "EXPERIMENTAL_tx_status",
         { tx_hash: t.hash, sender_account_id: t.sender, wait_until: "NONE" },
         opts,
-        acceptTx,
+        acceptTx(t.hash),
       ),
     );
   const view = (params: Record<string, unknown>, decode: boolean) =>
@@ -418,12 +474,15 @@ export function startReads(
     mandate: tx(p.tx.mandate),
     spend: tx(p.tx.spend),
     anchor: tx(p.tx.anchor),
-    base: settle(rpc(BASE_RPC_URLS, "eth_getTransactionReceipt", [p.tx.base], opts)),
+    base: settle(
+      rpc(BASE_RPC_URLS, "eth_getTransactionReceipt", [p.tx.base], opts, acceptBase(p.tx.base)),
+    ),
     config: view(
       { request_type: "call_function", method_name: "get_config", args_base64: "e30=" },
       true,
     ),
     key: view({ request_type: "view_access_key", public_key: p.agentKey }, false),
+    account: view({ request_type: "view_account" }, false),
   };
 }
 
@@ -445,7 +504,10 @@ export class Mismatch extends Error {
   }
 }
 
-/** The answer is not shaped like the RPC's: no sentence names a field, the row says it could not be checked. */
+/**
+ * The answer is not shaped like the RPC's, so it says nothing about the chain: the check is unread, never a fail. The
+ * accepts in startReads move most such answers to the next host before a check sees them.
+ */
 class Shape extends Error {}
 
 const obj = (v: unknown): Record<string, unknown> => {
@@ -479,11 +541,11 @@ interface Call {
   args: Record<string, unknown>;
 }
 
-/** The transaction's own call: its one action, a FunctionCall. */
-function txCall(tx: unknown): Call {
+/** The transaction's own call: its one action, a FunctionCall. Any other set of actions is what the chain holds. */
+function txCall(tx: unknown, read: ReadName): Call {
   const actions = list(obj(obj(tx).transaction).actions);
   const fc = isObj(actions[0]) ? actions[0].FunctionCall : undefined;
-  if (actions.length !== 1 || !isObj(fc)) throw new Shape();
+  need(actions.length === 1 && isObj(fc), "tx.actions", { read, count: actions.length });
   return { method: str(fc.method_name), args: obj(b64json(str(fc.args))) };
 }
 
@@ -497,7 +559,7 @@ interface ReceiptCall {
 /** Every FunctionCall in the transaction's receipts, with who called whom. */
 function receiptCalls(tx: unknown): ReceiptCall[] {
   const out: ReceiptCall[] = [];
-  for (const r of list(obj(tx).receipts ?? [])) {
+  for (const r of list(obj(tx).receipts)) {
     const a = isObj(r) && isObj(r.receipt) ? r.receipt.Action : undefined;
     if (!isObj(r) || !isObj(a) || !Array.isArray(a.actions)) continue;
     for (const x of a.actions) {
@@ -568,9 +630,150 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return x.every((v, i) => v === y[i]);
 }
 
-/** A value that names an account or address: an EVM address, or a named NEAR account. */
-const looksLikeAddress = (v: string) =>
-  /^0x[0-9a-fA-F]{40}$/.test(v) || /^[a-z0-9_-]+(\.[a-z0-9_-]+)*\.(near|testnet)$/.test(v);
+/**
+ * Text that names an account or address anywhere in it: an EVM address, a named NEAR account, or a withdrawal memo.
+ * A 64-character hex string is an implicit NEAR account too, so `ref`, the one free-text field, may not hold one.
+ */
+const ADDRESS_IN = [
+  /0x[0-9a-fA-F]{40}/,
+  /\b[a-z0-9_-]+(\.[a-z0-9_-]+)*\.(near|testnet)\b/i,
+  /WITHDRAW_TO/i,
+];
+const IMPLICIT_IN = /(^|[^0-9a-fA-F])[0-9a-fA-F]{64}([^0-9a-fA-F]|$)/;
+const HEX32 = /^[0-9a-f]{64}$/;
+
+// --- the ledger's hash chain ----------------------------------------------------------------------
+
+/** The SHA-256 round constants. */
+const K256 = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+const at32 = (a: Uint32Array, i: number) => a[i] as number;
+const rotr = (x: number, n: number) => (x >>> n) | (x << (32 - n));
+
+/**
+ * SHA-256 (FIPS 180-4), synchronous, so the checks stay plain functions: the browser's crypto.subtle is async. The
+ * test holds it to node:crypto.
+ */
+export function sha256(data: Uint8Array): Uint8Array {
+  const h = new Uint32Array([
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+  ]);
+  const n = (((data.length + 8) >> 6) + 1) << 6;
+  const m = new Uint8Array(n);
+  m.set(data);
+  m[data.length] = 0x80;
+  const dv = new DataView(m.buffer);
+  dv.setUint32(n - 8, Math.floor(data.length / 0x20000000));
+  dv.setUint32(n - 4, (data.length * 8) >>> 0);
+  const w = new Uint32Array(64);
+  for (let off = 0; off < n; off += 64) {
+    for (let t = 0; t < 16; t++) w[t] = dv.getUint32(off + t * 4);
+    for (let t = 16; t < 64; t++) {
+      const a = at32(w, t - 15);
+      const b = at32(w, t - 2);
+      const s0 = rotr(a, 7) ^ rotr(a, 18) ^ (a >>> 3);
+      const s1 = rotr(b, 17) ^ rotr(b, 19) ^ (b >>> 10);
+      w[t] = at32(w, t - 16) + s0 + at32(w, t - 7) + s1;
+    }
+    let [a, b, c, d, e, f, g, x] = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => at32(h, i)) as [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ];
+    for (let t = 0; t < 64; t++) {
+      const t1 =
+        (x +
+          (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) +
+          ((e & f) ^ (~e & g)) +
+          at32(K256, t) +
+          at32(w, t)) |
+        0;
+      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      x = g;
+      g = f;
+      f = e;
+      e = (d + t1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) | 0;
+    }
+    [a, b, c, d, e, f, g, x].forEach((v, i) => {
+      h[i] = at32(h, i) + v;
+    });
+  }
+  const out = new Uint8Array(32);
+  const ov = new DataView(out.buffer);
+  for (let i = 0; i < 8; i++) ov.setUint32(i * 4, at32(h, i));
+  return out;
+}
+
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+/** Base58 (the Bitcoin alphabet NEAR uses) to bytes; null for a character outside it. */
+export function base58(s: string): Uint8Array | null {
+  const bytes: number[] = [];
+  for (const ch of s) {
+    let carry = B58.indexOf(ch);
+    if (carry < 0) return null;
+    for (let j = 0; j < bytes.length; j++) {
+      carry += (bytes[j] as number) * 58;
+      bytes[j] = carry & 0xff;
+      carry >>= 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  for (const ch of s) {
+    if (ch !== "1") break;
+    bytes.push(0);
+  }
+  return Uint8Array.from(bytes.reverse());
+}
+
+const hexBytes = (h: string) =>
+  Uint8Array.from(h.match(/../g) ?? [], (b) => Number.parseInt(b, 16));
+const toHex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+
+/**
+ * The link of the last entry, starting from the prev_link of the entry the list opens with: link = sha256(prev_link ||
+ * body_hash || the raw 64-byte signature), as packages/core/src/ledger.ts computeLink has it. Null when the entries do
+ * not follow one another or an entry is malformed.
+ */
+export function chainLinks(links: readonly LedgerLink[]): string | null {
+  let prev: string | null = null;
+  let seq: number | null = null;
+  for (const l of links) {
+    if (prev !== null && l.prevLink !== prev) return null;
+    if (seq !== null && l.seq !== seq + 1) return null;
+    const sig = l.sig.startsWith("ed25519:") ? base58(l.sig.slice("ed25519:".length)) : null;
+    if (!HEX32.test(l.prevLink) || !HEX32.test(l.bodyHash) || sig === null || sig.length !== 64) {
+      return null;
+    }
+    const pre = new Uint8Array(128);
+    pre.set(hexBytes(l.prevLink), 0);
+    pre.set(hexBytes(l.bodyHash), 32);
+    pre.set(sig, 64);
+    prev = toHex(sha256(pre));
+    seq = l.seq;
+  }
+  return prev;
+}
 
 // --- formatting -----------------------------------------------------------------------------------
 
@@ -632,8 +835,8 @@ export type PayoutCheckId = "owner" | "key" | "noaddr" | "memo" | "burn" | "anch
 
 /** Every sentence a check can fail with. MAINNET_PAYOUT.problems has one per code; the test holds the two. */
 export const PROBLEM_CODES = [
-  "shape",
   "tx.failed",
+  "tx.actions",
   "view.pin",
   "view.error",
   "owner.method",
@@ -643,6 +846,7 @@ export const PROBLEM_CODES = [
   "owner.payee",
   "owner.limits",
   "owner.agent",
+  "key.account",
   "key.signer",
   "key.block",
   "key.full",
@@ -652,8 +856,10 @@ export const PROBLEM_CODES = [
   "noaddr.method",
   "noaddr.args",
   "noaddr.fields",
+  "noaddr.type",
   "noaddr.address",
   "noaddr.request",
+  "noaddr.build",
   "memo.none",
   "memo.memo",
   "memo.token",
@@ -668,6 +874,8 @@ export const PROBLEM_CODES = [
   "anchor.key",
   "anchor.method",
   "anchor.event",
+  "anchor.decision",
+  "anchor.link",
   "base.status",
   "base.hash",
   "base.block",
@@ -681,11 +889,14 @@ export interface Problem {
   vars: Record<string, string>;
 }
 
-/** What a check found: the values its rows show, a mismatch, or the reads that did not come back. */
+/**
+ * What a check found: the values its rows show, a mismatch, or no answer it can read: the reads that did not come
+ * back, or (`shape`) answers that came back in a shape the check cannot read, which say nothing about the chain.
+ */
 export type CheckOutcome =
   | { state: "pass"; values: Record<string, string> }
   | { state: "fail"; problem: Problem }
-  | { state: "unread"; missing: { read: ReadName; failures: HostFailure[] }[] };
+  | { state: "unread"; missing: { read: ReadName; failures: HostFailure[] }[]; shape?: true };
 
 export interface PayoutCheck {
   id: PayoutCheckId;
@@ -694,13 +905,14 @@ export interface PayoutCheck {
 }
 
 /** A view read at the spend's block, or a mismatch that names the block it was read at. */
-function pinned(read: unknown, name: "config" | "key", p: Payout): ViewRead {
+function pinned(read: unknown, name: "config" | "key" | "account", p: Payout): ViewRead {
   const v = obj(read) as unknown as ViewRead;
   need(v.block_hash === p.pin.hash, "view.pin", {
     read: name,
     got: str(v.block_hash),
     want: p.pin.hash,
   });
+  need(v.error === undefined, "view.error", { read: name });
   return v;
 }
 
@@ -713,7 +925,7 @@ interface MandateFacts {
 }
 
 function mandateFacts(m: unknown): MandateFacts {
-  const c = txCall(m);
+  const c = txCall(m, "mandate");
   need(c.method === "create_mandate", "owner.method", { method: c.method });
   const t = obj(obj(m).transaction);
   const input = obj(c.args.input);
@@ -726,14 +938,24 @@ function mandateFacts(m: unknown): MandateFacts {
   };
 }
 
-function config(read: unknown, p: Payout): Record<string, unknown> {
-  const v = pinned(read, "config", p);
-  need(v.error === undefined, "view.error", { read: "config" });
-  return obj(v.value);
-}
+/** get_config at the spend's block. The ledger key is read there too: S1 set it before the spend and never rotated it. */
+const config = (read: unknown, p: Payout): Record<string, unknown> =>
+  obj(pinned(read, "config", p).value);
 
 function spendRequest(spend: unknown): Record<string, unknown> {
-  return obj(txCall(spend).args.request);
+  return obj(txCall(spend, "spend").args.request);
+}
+
+/** The request's five fields, each of the type SpendRequest gives it, or a mismatch that names the field. */
+function typedRequest(req: Record<string, unknown>): void {
+  const typed: Record<(typeof SPEND_FIELDS)[number], boolean> = {
+    mandate_id: Number.isSafeInteger(req.mandate_id) && (req.mandate_id as number) >= 0,
+    amount: typeof req.amount === "string" && /^\d+$/.test(req.amount),
+    invoice_hash: typeof req.invoice_hash === "string" && HEX32.test(req.invoice_hash),
+    ref: typeof req.ref === "string",
+    decision_hash: typeof req.decision_hash === "string" && HEX32.test(req.decision_hash),
+  };
+  for (const [field, ok] of Object.entries(typed)) need(ok, "noaddr.type", { field });
 }
 
 export const CHECKS: readonly PayoutCheck[] = [
@@ -777,15 +999,16 @@ export const CHECKS: readonly PayoutCheck[] = [
     needs: ["key", "spend"],
     run: (r, p) => {
       const t = obj(obj(r.spend).transaction);
+      const account = str(t.signer_id);
+      need(account === p.vault, "key.account", { spendId: p.spendId, got: account });
       const pk = str(t.public_key);
       need(pk === p.agentKey, "key.signer", { spendId: p.spendId, got: pk });
       const block = str(obj(obj(r.spend).transaction_outcome).block_hash);
       need(block === p.pin.hash, "key.block", { spendId: p.spendId, got: block, want: p.pin.hash });
       const k = pinned(r.key, "key", p);
-      need(k.error === undefined, "view.error", { read: "key" });
       const perm = (k as unknown as Record<string, unknown>).permission;
-      const fc = isObj(perm) ? perm.FunctionCall : undefined;
-      need(isObj(fc), "key.full", { spendId: p.spendId });
+      need(perm !== "FullAccess", "key.full", { spendId: p.spendId });
+      const fc = obj(obj(perm).FunctionCall);
       const receiver = str(fc.receiver_id);
       need(receiver === p.vault, "key.receiver", { got: receiver });
       const methods = list(fc.method_names).map(str);
@@ -801,21 +1024,24 @@ export const CHECKS: readonly PayoutCheck[] = [
   },
   {
     id: "noaddr",
-    needs: ["spend"],
+    needs: ["spend", "account"],
     run: (r, p) => {
       const t = obj(obj(r.spend).transaction);
       const signer = str(t.signer_id);
       const receiver = str(t.receiver_id);
       need(signer === p.vault && receiver === p.vault, "noaddr.route", { signer, receiver });
-      const c = txCall(r.spend);
+      const c = txCall(r.spend, "spend");
       need(c.method === "spend", "noaddr.method", { method: c.method });
       const argKeys = Object.keys(c.args);
       need(sameSet(argKeys, ["request"]), "noaddr.args", { got: argKeys.join(", ") });
       const req = obj(c.args.request);
       const keys = Object.keys(req);
       need(sameSet(keys, SPEND_FIELDS), "noaddr.fields", { got: keys.join(", ") });
-      for (const k of keys) {
-        need(!looksLikeAddress(String(req[k])), "noaddr.address", { field: k });
+      typedRequest(req);
+      for (const k of SPEND_FIELDS) {
+        const v = String(req[k]);
+        const named = ADDRESS_IN.some((re) => re.test(v)) || (k === "ref" && IMPLICIT_IN.test(v));
+        need(!named, "noaddr.address", { field: k });
       }
       need(
         req.mandate_id === p.mandate.id &&
@@ -824,6 +1050,12 @@ export const CHECKS: readonly PayoutCheck[] = [
         "noaddr.request",
         { mandate: String(req.mandate_id), amount: String(req.amount) },
       );
+      // The contract that read the request: the vault runs the recorded build whose SpendRequest has these five fields.
+      const code = str(obj(pinned(r.account, "account", p)).code_hash);
+      need(code === p.build.codeHash, "noaddr.build", {
+        got: shortHash(code),
+        want: shortHash(p.build.codeHash),
+      });
       return {
         mandate_id: String(req.mandate_id),
         amount: String(req.amount),
@@ -831,6 +1063,7 @@ export const CHECKS: readonly PayoutCheck[] = [
         ref: String(req.ref),
         decision_hash: shortHex(String(req.decision_hash)),
         fields: String(keys.length),
+        code: shortHash(code),
       };
     },
   },
@@ -870,6 +1103,7 @@ export const CHECKS: readonly PayoutCheck[] = [
       const amount = str(b.amount);
       need(owner === p.intents && amount === p.amount, "burn.amount", { amount, owner });
       need(b.memo === `WITHDRAW_TO:${p.payee}`, "burn.memo", { got: String(b.memo) });
+      const token = `nep141:${p.asset}`;
       const mt = ev.find(
         (e) =>
           e.event === "mt_burn" &&
@@ -879,12 +1113,15 @@ export const CHECKS: readonly PayoutCheck[] = [
             (d) =>
               isObj(d) &&
               d.owner_id === p.vault &&
+              Array.isArray(d.token_ids) &&
+              d.token_ids.length === 1 &&
+              d.token_ids[0] === token &&
               Array.isArray(d.amounts) &&
               d.amounts.length === 1 &&
               d.amounts[0] === p.amount,
           ),
       );
-      need(mt, "burn.mt", { amount: p.amount, intents: p.intents });
+      need(mt, "burn.mt", { amount: p.amount, intents: p.intents, asset: shortAddr(p.asset) });
       const sb = ev.find(
         (e) =>
           e.standard === "probarion" &&
@@ -905,16 +1142,18 @@ export const CHECKS: readonly PayoutCheck[] = [
   },
   {
     id: "anchor",
-    needs: ["anchor", "config"],
+    needs: ["anchor", "config", "spend"],
     run: (r, p) => {
       const t = obj(obj(r.anchor).transaction);
       const signer = str(t.signer_id);
       const receiver = str(t.receiver_id);
       need(signer === p.vault && receiver === p.vault, "anchor.route", { signer, receiver });
+      // The ledger key as get_config gives it at the spend's block. The anchor came seconds later: a key set in between
+      // would fail here, and S1 set none.
       const ledgerKey = str(config(r.config, p).ledger_key);
       const pk = str(t.public_key);
       need(pk === ledgerKey, "anchor.key", { got: shortKey(pk), want: shortKey(ledgerKey) });
-      const c = txCall(r.anchor);
+      const c = txCall(r.anchor, "anchor");
       need(c.method === "anchor", "anchor.method", { method: c.method });
       successJson(r.anchor, "anchor");
       const a = events(r.anchor).find(
@@ -922,15 +1161,37 @@ export const CHECKS: readonly PayoutCheck[] = [
           e.standard === "probarion" && e.event === "ledger_anchored" && e.executor === p.vault,
       );
       const d = a && isObj(a.data) ? a.data : null;
+      need(d && d.seq === p.anchor.seq && d.count === p.anchor.count, "anchor.event", {
+        seq: String(d?.seq ?? "none"),
+        count: String(d?.count ?? "none"),
+      });
+      // The spend names its decision by hash, and the ledger file's entries from that decision on hash to the root the
+      // anchor wrote on chain: the decision is inside what the chain holds.
+      const decisionHash = str(spendRequest(r.spend).decision_hash);
+      const first = p.links[0];
       need(
-        d && d.seq === p.anchor.seq && d.count === p.anchor.count && d.root === p.anchor.root,
-        "anchor.event",
-        { seq: String(d?.seq ?? "none"), count: String(d?.count ?? "none") },
+        decisionHash === p.decision.bodyHash && first?.bodyHash === p.decision.bodyHash,
+        "anchor.decision",
+        { got: shortHex(decisionHash), want: shortHex(p.decision.bodyHash), seq: p.decision.seq },
+      );
+      const last = p.links.at(-1);
+      const root = chainLinks(p.links);
+      const onChain = str(d.root);
+      need(
+        root !== null &&
+          root === onChain &&
+          first?.seq === p.decision.seq &&
+          last?.seq === p.anchor.count - 1,
+        "anchor.link",
+        { got: shortHex(root ?? "none"), want: shortHex(onChain) },
       );
       return {
-        seq: String(p.anchor.seq),
-        count: String(p.anchor.count),
-        root: shortHex(p.anchor.root),
+        seq: String(d.seq),
+        count: String(d.count),
+        root: shortHex(onChain),
+        decisionSeq: String(p.decision.seq),
+        decisionHash: shortHex(decisionHash),
+        links: String(p.links.length),
       };
     },
   },
@@ -959,6 +1220,7 @@ export const CHECKS: readonly PayoutCheck[] = [
       need(isObj(log), "base.transfer");
       const got = BigInt(str(log.data)).toString();
       need(got === p.received, "base.amount", { got });
+      const from = `0x${str(list(log.topics)[1]).slice(-40)}`;
       const sent = str(spendRequest(r.spend).amount);
       return {
         block: String(block),
@@ -966,6 +1228,8 @@ export const CHECKS: readonly PayoutCheck[] = [
         usdc: usdc(got),
         token: shortAddr(p.baseToken),
         to: shortAddr(address),
+        from: shortAddr(from),
+        burned: usdc(sent),
         fee: usdc(BigInt(sent) - BigInt(got)),
       };
     },
@@ -976,7 +1240,10 @@ export const CHECKS: readonly PayoutCheck[] = [
 export const checkNumber = (id: PayoutCheckId) =>
   String(CHECKS.findIndex((c) => c.id === id) + 1).padStart(2, "0");
 
-/** Runs one check on the reads it needs. A read that is missing or failed makes it unread, never a fail. */
+/**
+ * Runs one check on the reads it needs. A read that is missing or failed makes it unread, never a fail, and so does an
+ * answer the check cannot read: a fail is a value the chain gave that differs from the page's.
+ */
 export function evaluate(check: PayoutCheck, reads: Reads, p: Payout): CheckOutcome {
   const missing = check.needs.flatMap((read) => {
     const r = reads[read];
@@ -993,7 +1260,7 @@ export function evaluate(check: PayoutCheck, reads: Reads, p: Payout): CheckOutc
     return { state: "pass", values: check.run(values, p) };
   } catch (e) {
     if (e instanceof Mismatch) return { state: "fail", problem: { code: e.code, vars: e.vars } };
-    return { state: "fail", problem: { code: "shape", vars: {} } };
+    return { state: "unread", missing: [], shape: true };
   }
 }
 
@@ -1113,7 +1380,8 @@ function trimTx(v: unknown): unknown {
       block_hash: obj(t.transaction_outcome).block_hash,
     },
     status: t.status,
-    receipts: list(t.receipts ?? [])
+    final_execution_status: t.final_execution_status,
+    receipts: list(t.receipts)
       .filter((r) => {
         const a = isObj(r) && isObj(r.receipt) ? r.receipt.Action : undefined;
         return (
@@ -1164,6 +1432,10 @@ function trimTx(v: unknown): unknown {
  */
 export function trimRead(name: ReadName, value: unknown): unknown {
   if (name === "config" || name === "key") return value;
+  if (name === "account") {
+    const v = obj(value);
+    return { block_hash: v.block_hash, block_height: v.block_height, code_hash: v.code_hash };
+  }
   if (name === "base") {
     const rc = obj(value);
     return {

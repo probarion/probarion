@@ -316,7 +316,7 @@ describe("what an offline run shows", () => {
 
   it("promises only what needs no account today", () => {
     expect(partsText(HERO.fineprint)).toContain(
-      "Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a payout to Base. You need no account to read the chain or run the verifier.",
+      "Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a test payout to Base. You need no account to read the chain or run the verifier.",
     );
   });
 
@@ -695,7 +695,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     );
     expect(HERO.note).toContain("test tokens");
     expect(partsText(HERO.fineprint)).toContain(
-      "one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a payout to Base",
+      "one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a test payout to Base",
     );
   });
 
@@ -2420,7 +2420,7 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
 
   it("says who it is for and what runs where in one line under the buttons", () => {
     expect(partsText(HERO.fineprint)).toBe(
-      "For teams whose AI agent pays supplier invoices, and for developers who want to give an agent money without the keys. Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a payout to Base. You need no account to read the chain or run the verifier.",
+      "For teams whose AI agent pays supplier invoices, and for developers who want to give an agent money without the keys. Testnet today, and one small vault, v0.probarion.near, with a payment on mainnet, a refusal on mainnet and a test payout to Base. You need no account to read the chain or run the verifier.",
     );
     const html = renderToStaticMarkup(createElement(Home));
     const lines = [...html.matchAll(/<p class="[^"]*fineprint[^"]*">([\s\S]*?)<\/p>/g)];
@@ -2500,6 +2500,37 @@ describe("the mainnet payout (#mainnet)", () => {
     );
     expect(RECORDED_RUNS.map((r) => r.tally.state)).toEqual(PAYOUTS.map(() => "pass"));
     expect(RECORDED.payouts.map((r) => r.payout)).toEqual(PAYOUTS);
+  });
+
+  it("drafts no payout to a wallet the deployment record does not list as the owner's, or from a ledger that does not hash", () => {
+    const fails = (edit: (s: ReturnType<typeof readSources>) => void) => {
+      const s = structuredClone(readSources(ROOT));
+      edit(s);
+      return () => draftPayouts(s);
+    };
+    // The stone says "the owner's own Base wallet": a payee the record does not list stops the draft.
+    expect(
+      fails((s) => {
+        s.deployment.owner_wallets = { near: [], base: [] };
+      }),
+    ).toThrow(/owner_wallets in contracts\/deployments\/mainnet\.json does not list/);
+    expect(
+      fails((s) => {
+        const l = s.runs[0]?.ledger[1];
+        if (l) l.body_hash = "0".repeat(64);
+      }),
+    ).toThrow(/link does not recompute/);
+    expect(
+      fails((s) => {
+        const sp = s.runs[0]?.snapshot.chain.spends.find((x) => x.id === P.spendId);
+        if (sp) sp.decision_hash = "0".repeat(64);
+      }),
+    ).toThrow();
+    // Spend 1 of 2026-11-11 went to a NEAR wallet the record lists too.
+    expect(readSources(ROOT).deployment.owner_wallets.near).toContain("probarion-duong.near");
+    expect(text(ROOT, "docs", "evidence", "mainnet-v0", "README.md")).toContain(
+      "spend 1 `paid`, 1 USDC to `probarion-duong.near`",
+    );
   });
 
   it("names the S1 transactions that the proof file and the deployment record hold, on their explorers", () => {
@@ -2600,17 +2631,29 @@ describe("the mainnet payout (#mainnet)", () => {
     const e = verifyJson.checks.find((c) => c.id === "e")?.detail ?? "";
     expect(refusedProposals(P)).toHaveLength(attested);
     expect(e).toContain(`${attested} attested decisions pass`);
-    expect(view.attested).toBe(`${attested} attested decisions, checked A1 to A8.`);
+    expect(view.attested).toBe(
+      `${attested} attested decisions pass A1 to A8. They ran without --online, so O1 and O2 did not check their TEE evidence.`,
+    );
     expect(v.quoteOnline).toBe(false);
     expect(e).toContain("quote not verified offline");
-    expect(view.foot).toBe(MAINNET_PAYOUT.verify.offline);
+    expect(view.foot).toBe(MAINNET_PAYOUT.verify.foot);
     expect(view.link.href).toBe("#verify");
+    expect(view.docs.href).toBe("/docs/start/mainnet-payout");
+    // The output it links is the file this test reads.
+    expect(view.output.href.endsWith(`/blob/main/${S1_DIR.join("/")}/verify-2026-11-13.txt`)).toBe(
+      true,
+    );
+    expect(P.files).toEqual({
+      ledger: `${S1_DIR.join("/")}/ledger-2026-11-13.jsonl`,
+      verify: `${S1_DIR.join("/")}/verify-2026-11-13.txt`,
+      poa: `${S1_DIR.join("/")}/poa-status.json`,
+    });
   });
 
   it("says in the stone that this was a test, and that code rules alone decided it", () => {
     const s = stoneView(P);
     expect(s.label).toBe("A test, not a customer payment");
-    expect(s.test).toBe("A test of the cross-chain path, sent to the owner's own Base wallet.");
+    expect(s.test).toBe("It tried the cross-chain path, sent to the owner's own Base wallet.");
     expect(s.decided).toBe(
       "Decided by the code rules alone, after code refused two attested model proposals.",
     );
@@ -2632,9 +2675,8 @@ describe("the mainnet payout (#mainnet)", () => {
 
   it("draws the trail: the refused proposals on the spur, then the allowed decision and the burn, and the anchors as seals", () => {
     const t = trailView(P);
-    expect(t.intro).toBe(
-      "Twice an attested model on NEAR AI Cloud proposed paying, and twice code refused it before anything was sent. Then the code rules alone allowed the payment. Each step is a signed ledger entry.",
-    );
+    // The trail has no intro: the stone's caveat above says how the payment was decided, on every width.
+    expect(t).not.toHaveProperty("intro");
     expect(t.items.map((i) => [i.label, i.pill, i.tone, i.spur])).toEqual([
       ["Entry 0, 07:17 UTC", "Refused by code", "bad", true],
       ["Entry 1, 07:22 UTC", "Refused by code", "bad", true],
@@ -2642,9 +2684,9 @@ describe("the mainnet payout (#mainnet)", () => {
       ["Entry 3, 07:24 UTC", "Burned, sent to Base", "neutral", false],
     ]);
     expect(t.items.map((i) => partsText(i.text))).toEqual([
-      "z-ai/glm-5.3-flash, an attested model in a TEE on NEAR AI Cloud, proposed pay. The rule mandate.payee_mismatch refused it: the model named the token contract as a NEAR account.",
+      "z-ai/glm-5.3-flash, an attested model on NEAR AI Cloud, proposed pay with the right amount and address. The rule mandate.payee_mismatch refused it: the model also named the token contract as a NEAR account, which the rule, as it ran, took for another payee.",
       "Qwen/Qwen3.8-27B, attested, proposed pay. Code refused it the same way.",
-      "No model this time. The code rules alone decided allow.",
+      "No model this time. The code rules alone decided allow. Its body hash, d64f0de7…a336, is spend 2's decision_hash.",
       "Spend 2: 1.00 USDC burned on NEAR for the Base wallet, BdN7oB76…rSQ9.",
     ]);
     // The models and the rule, as the run's outcome files recorded them.
@@ -2661,14 +2703,17 @@ describe("the mainnet payout (#mainnet)", () => {
       ["Anchor 2 covers entries 0 and 1", "6ULZZvGa…DMqY"],
       ["Anchor 3 covers entries 0 to 3", "65eBfw6v…eA9Q"],
     ]);
-    expect(t.summary).toBe("4 entries, hash-linked and signed, all covered by 3 anchors on chain.");
+    expect(partsText(t.summary)).toBe(
+      "4 entries, hash-linked and signed in the ledger file, all covered by 3 anchors on chain.",
+    );
+    expect(t.sealsLabel).toBe("Anchors on chain");
     expect(partsText(t.setup)).toBe(
-      "Set up the same day: a top-up, 1.50 USDC on NEAR swapped by NEAR Intents 1Click into Base USDC inside intents.near for the vault (DWUMvM58…u6mw); the ledger key (CFhtVrCA…68jb); and mandate 2: the owner's own Base wallet, up to 1.00 USDC, 1 use, until 2026-11-20 (77cC8nMq…483g).",
+      "Set up the same day: a 1Click top-up of 1.50 USDC (DWUMvM58…u6mw), the ledger key (CFhtVrCA…68jb) and mandate 2 (77cC8nMq…483g).",
     );
   });
 
   it("says at rest what was recorded, counting the reads and the checks from the code", () => {
-    expect(READ_COUNTS).toEqual({ txs: 4, views: 2 });
+    expect(READ_COUNTS).toEqual({ txs: 4, views: 3 });
     const run = RECORDED_RUNS[0];
     expect(run?.tally).toEqual({
       total: CHECKS.length,
@@ -2681,17 +2726,19 @@ describe("the mainnet payout (#mainnet)", () => {
     const rest = restVerdict(MAINNET_PAYOUT, run.tally, run.recordedAt);
     expect(rest.title).toBe("Recorded on 2026-11-13: 7 of 7 checks passed.");
     expect(rest.sub).toBe(
-      "Press the button and this page reads the same 4 transactions and 2 views again, in your browser, from public RPC.",
+      "Press the button and this page reads the same 4 transactions and 3 views again, in your browser, from public RPC.",
     );
     expect(checkTitle(MAINNET_PAYOUT, "burn", P)).toBe("1.00 USDC burned on NEAR");
+    expect(checkTitle(MAINNET_PAYOUT, "anchor", P)).toBe(
+      "The spend's decision is in the anchored ledger",
+    );
     expect(checkTitle(MAINNET_PAYOUT, "base", P)).toBe("0.9976 USDC arrived on Base");
     // The hosts the words name are the hosts the code reads.
     const nearHosts = NEAR_RPC_URLS.map((u) => new URL(u).host);
     expect(nearHosts.every((h) => h.endsWith(".fastnear.com"))).toBe(true);
-    for (const line of [MAINNET_PAYOUT.run.readingSub, MAINNET_PAYOUT.run.foot]) {
-      expect(line).toContain("FastNEAR's public nodes");
-      expect(line).toContain(new URL(BASE_RPC_URLS[0] ?? "https://x").host);
-    }
+    // The line under the verdict while it reads names them; the foot stays short on a phone.
+    expect(MAINNET_PAYOUT.run.readingSub).toContain("FastNEAR's public nodes");
+    expect(MAINNET_PAYOUT.run.readingSub).toContain(new URL(BASE_RPC_URLS[0] ?? "https://x").host);
     expect(SPEND_FIELDS).toEqual(SPEND_REQUEST_FIELDS);
   });
 
@@ -2707,7 +2754,7 @@ describe("the mainnet payout (#mainnet)", () => {
     const r = proofTx(refused.tx.hash);
     expect(p).toMatchObject({ kind: "near_payment", spend_id: 1, amount_usdc: "1.00" });
     expect(r).toMatchObject({ kind: "refused_on_chain", error_code: "NoMandate" });
-    expect(paid.text).toBe("Spend 1 paid 1 USDC to a NEAR wallet.");
+    expect(paid.text).toBe("Spend 1 paid 1.00 USDC to the owner's own NEAR wallet.");
     expect(refused.text).toContain(`\`PROBARION:${r?.error_code}\``);
     for (const t of [p, r]) {
       expect(MAINNET_PAYOUT.earlier.title).toBe(
@@ -2735,8 +2782,11 @@ describe("the mainnet payout (#mainnet)", () => {
     const two = sectionHead([P, second]);
     expect(two.eyebrow).toBe("On NEAR mainnet, 2026-11-13 and 2026-11-14");
     expect(two.lede).toBe(
-      "Two payouts left the vault `v0.probarion.near` on NEAR, 1.25 USDC in all, and 1.2452 USDC reached wallets on Base. The agent's calls had no field for an address. The vault took each one from the mandate the owner signed.",
+      "Two payouts left the vault `v0.probarion.near` on NEAR, 1.25 USDC in all, and 1.2452 USDC reached one wallet on Base. The agent's calls had no field for an address. The vault took each one from the mandate the owner signed.",
     );
+    // Wallets are counted, not assumed: a second payee makes it two.
+    const elsewhere = sectionHead([P, { ...second, payee: `0x${"ab".repeat(20)}` }]);
+    expect(elsewhere.lede).toContain("1.2452 USDC reached two wallets on Base.");
     expect(stoneView(second).aria).toBe("The payout of spend 3 to Base, 2026-11-14");
     expect(stoneView(second).near.figure).toBe("0.25");
   });
@@ -2828,7 +2878,7 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
       /<button type="button" class="[^"]*_run_[^"]*" hidden="">Read the chain now<\/button>/,
     );
     expect(section).toContain("<noscript><p class=");
-    expect(section).toMatch(/aria-live="polite" data-tone="ok"/);
+    expect(section).toMatch(/aria-live="polite" aria-atomic="true" data-tone="ok"/);
     const run = RECORDED_RUNS[0];
     expect(run).toBeDefined();
     if (run) expect(words).toContain(restVerdict(C, run.tally, run.recordedAt).title);
@@ -2841,18 +2891,33 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     expect(section).toMatch(/<span class="[^"]*_pill_[^"]*_toneOk_[^"]*">USDC arrived<\/span>/);
   });
 
-  it("links what each check reads: its transactions on their explorer, then its views by name", () => {
+  it("links what each check reads: its transactions on their explorer, then its views by name, then the files", () => {
+    const explorer = (href: string) => /^https:\/\/(nearblocks\.io|basescan\.org)\//.test(href);
+    const more: Record<string, string[]> = {
+      noaddr: [`/blob/${P.build.commit}/contracts/vault/src/types.rs`],
+      anchor: [`/blob/main/${P.files.ledger}`],
+      base: [`/blob/main/${P.files.poa}`],
+    };
     for (const check of CHECKS) {
       const parts = checkSources(P, check.id);
       expect(parts[0]).toBe(C.sourcesLead);
       const links = parts.filter((p) => typeof p !== "string");
+      const txs = links.filter((l) => explorer(l.href));
       const views = parts.filter(isView);
-      expect(links.length + views.length, check.id).toBe(check.needs.length);
+      expect(txs.length + views.length, check.id).toBe(check.needs.length);
+      // Each file link comes last, to the file at its commit.
+      const files = links.filter((l) => !explorer(l.href)).map((l) => l.href);
+      expect(files.length, check.id).toBe(more[check.id]?.length ?? 0);
+      for (const [i, h] of files.entries()) {
+        expect(h.endsWith(more[check.id]?.[i] ?? "?"), check.id).toBe(true);
+      }
       for (const l of links) expect(section, check.id).toContain(`href="${l.href}"`);
       for (const v of views) expect(words, check.id).toContain(v.replace(/`/g, ""));
       // The transactions come before the views.
       const firstView = parts.findIndex(isView);
-      const lastLink = parts.map((p) => typeof p !== "string").lastIndexOf(true);
+      const lastLink = parts
+        .map((p) => typeof p !== "string" && explorer(p.href))
+        .lastIndexOf(true);
       if (firstView > 0 && lastLink > 0) expect(lastLink, check.id).toBeLessThan(firstView);
     }
   });
