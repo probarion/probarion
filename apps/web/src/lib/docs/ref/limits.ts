@@ -909,7 +909,7 @@ const SDK: RefTable = {
       name: "`PAYEE_SIGNALS_TIMEOUT_MS`",
       from: "`@probarion/sdk`",
       value: millis(PAYEE_SIGNALS_TIMEOUT_MS),
-      what: "How long each read of a payee check may take. Each endpoint gets one more try",
+      what: "How long each request of a payee check may take. Each endpoint gets one more try",
     }),
     row("limits-sdk-payee_signals_budget_ms", {
       name: "`PAYEE_SIGNALS_BUDGET_MS`",

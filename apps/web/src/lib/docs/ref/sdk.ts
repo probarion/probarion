@@ -439,7 +439,7 @@ const CHAIN: readonly Export[] = [
   [
     "readPayeeSignals",
     "function",
-    "Reads what `assessPayee` (`@probarion/core`) needs about one payee: a NEAR account at the final block and at a block about 7 days back, a Base address's code and nonce on mainnet, and a vault's mandates and spends when one is given. Solana is not read. Read-only; a failed read leaves its signal `unknown`. `@probarion/sdk/payee` exports it, `readKnownPayees`, the four `PAYEE_` constants and its two types on their own, without the root entry, which loads `node:fs`, so a browser page can import them. In this repository, not in npm 0.1.1.",
+    "Reads what `assessPayee` (`@probarion/core`) needs about one payee: a NEAR account at the final block and at a block about 7 days back, a Base address's code and nonce on mainnet or wherever `baseRpcUrl` points, and a vault's mandates and spends when one is given. Solana is not read. Read-only; a failed read leaves its signal `unknown`. `@probarion/sdk/payee` exports it, `readKnownPayees`, the four `PAYEE_` constants and its two types on their own, without the root entry, which loads `node:fs`, so a browser page can import them. In this repository, not in npm 0.1.1.",
     "None",
   ],
   [
@@ -457,7 +457,7 @@ const CHAIN: readonly Export[] = [
   [
     "PAYEE_BASE_RPC_URLS",
     "constant",
-    "Base JSON-RPC per network for the payee check: `https://mainnet.base.org` on mainnet, `null` on testnet, which leaves a Base payee unread.",
+    "Base JSON-RPC per network for the payee check: `https://mainnet.base.org` on mainnet, `null` on testnet, which leaves a Base payee unread unless `baseRpcUrl` names one.",
     "None",
   ],
   [
@@ -689,7 +689,7 @@ const CHAIN_MEMBERS: readonly (readonly [
   [
     "RpcClient",
     "viewAccount(accountId, blockId?)",
-    "The account's balance, locked balance, code hash, global contract hash and storage use, at the final block or, on an archival node, at `blockId`.",
+    "The account's balance, locked balance, code hash, global contract hash, the account whose global contract it uses when it names that contract by account id, and storage use, at the final block or at `blockId` (an old block needs an archival node).",
     "None",
   ],
   [
