@@ -754,3 +754,76 @@ test("S1 of 2026-11-13: the deployment record, the proof file, the committed led
     assert.ok(gate.includes(part), `the S1 gate lacks: ${part}`);
   }
 });
+
+test("S2 of 2026-11-13: the deployment record, the proof file, the committed ledger and the S2 gate agree", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const record = JSON.parse(read("contracts/deployments/mainnet.json"));
+  const proof = JSON.parse(read("docs/mainnet-proof.json"));
+  const payout = proof.txs.attested_base_payout;
+  // The NEAR spend and the Base transfer are the same in both records, and S1's records stay as they were.
+  assert.equal(record.proof.attested_base_payout_tx, payout.hash);
+  assert.equal(record.proof.attested_base_payout_base_tx, payout.base_tx);
+  assert.equal(record.setup.s2_base_mandate_tx, proof.txs.v0_mandate_base_s2.hash);
+  assert.equal(payout.kind, "base_payout");
+  assert.equal(payout.spend_id, 3);
+  assert.equal(payout.amount_usdc, "0.25");
+  assert.equal(
+    proof.links.attested_base_payout_base,
+    `https://basescan.org/tx/${record.proof.attested_base_payout_base_tx}`,
+  );
+  assert.equal(record.proof.first_base_payout_tx, proof.txs.first_base_payout.hash);
+  // S2's ledger is the whole ledger: S1's committed file, byte for byte, then entries 4 and 5.
+  const s1 = read("docs/evidence/mainnet-v0/s1-2026-11-13/ledger-2026-11-13.jsonl");
+  const dir = "docs/evidence/mainnet-v0/s2-2026-11-13";
+  const s2 = read(`${dir}/ledger-2026-11-13.jsonl`);
+  assert.ok(s2.startsWith(s1), "S1's ledger is not the start of S2's");
+  const entries = s2
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line).body);
+  assert.deepEqual(
+    entries.map((b) => [b.seq, b.kind, b.verdict ?? null, b.decided_by ?? null]),
+    [
+      [0, "decision", "refuse", "model+rules"],
+      [1, "decision", "refuse", "model+rules"],
+      [2, "decision", "allow", "rules-only"],
+      [3, "payment", null, null],
+      [4, "decision", "allow", "model+rules"],
+      [5, "payment", null, null],
+    ],
+  );
+  // Entry 4 is attested, for mandate 3 and 0.25 USDC, and its hint names the Base address and no NEAR account.
+  const decision = entries[4];
+  assert.equal(decision.evidence.provider, "near-ai-cloud");
+  assert.equal(decision.mandate_id, 3);
+  assert.equal(decision.amount, "250000");
+  assert.equal(decision.proposal.payee_hint.address, "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27");
+  assert.equal(decision.proposal.payee_hint.near_account, undefined);
+  assert.ok(decision.rules.every((r) => r.outcome === "pass"));
+  const payment = entries[5];
+  assert.equal(payment.contract.spend_id, 3);
+  assert.equal(payment.contract.status, "burned");
+  assert.equal(payment.contract.tx_hash, payout.hash);
+  // The burn memo is WITHDRAW_TO: plus the Base address of mandate 3, the same address as mandate 2.
+  const burn = JSON.parse(read(`${dir}/burn.json`));
+  assert.equal(burn.memo, "WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27");
+  assert.equal(burn.amount, "250000");
+  // The invoice is the bytes whose sha256 the decision and spend 3 hold.
+  const sha = (path) =>
+    createHash("sha256")
+      .update(readFileSync(new URL(`../${path}`, import.meta.url)))
+      .digest("hex");
+  assert.equal(sha(`${dir}/invoice-INV-M003.txt`), decision.invoice_hash);
+  const gate = runbook.split("\n").find((line) => line.startsWith("- S2 gate (2026-11-13):"));
+  assert.ok(gate, "no S2 gate line");
+  for (const part of [
+    "attested_base_payout_tx",
+    "attested_base_payout_base_tx",
+    "WITHDRAW_TO:",
+    `--ledger ${dir}/ledger-2026-11-13.jsonl`,
+    "decided by code rules alone",
+    "decided by an attested model and the code rules",
+  ]) {
+    assert.ok(gate.includes(part), `the S2 gate lacks: ${part}`);
+  }
+});
