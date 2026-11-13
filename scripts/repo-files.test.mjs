@@ -241,6 +241,7 @@ const FORMS = [
   ".github/ISSUE_TEMPLATE/bug.yml",
   ".github/ISSUE_TEMPLATE/feature.yml",
   ".github/ISSUE_TEMPLATE/pilot.yml",
+  ".github/ISSUE_TEMPLATE/report-payee.yml",
 ];
 
 test("the YAML reader returns what YAML means for the subset it reads", () => {

@@ -44,9 +44,9 @@ describe("the published packages", () => {
     expect(description).toMatch(/near-cli-rs/);
   });
 
-  it("export ./testing from the sdk, and only that, next to the root entry", () => {
+  it("export ./payee and ./testing from the sdk, next to the root entry", () => {
     const sdk = json("packages/sdk/package.json") as { exports: Record<string, unknown> };
-    expect(Object.keys(sdk.exports)).toEqual([".", "./testing"]);
+    expect(Object.keys(sdk.exports)).toEqual([".", "./payee", "./testing"]);
   });
 
   it("are built without source maps, because src/ is not part of the tarball", () => {

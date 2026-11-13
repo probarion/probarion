@@ -149,6 +149,15 @@ The offline checks show that the evidence is consistent. Showing that a quote ca
 hardware is the online check, `verify({ online: true })`, which uses the optional peer dependency
 `@nearai/inference-sdk`.
 
+## Payee check
+
+`readPayeeSignals({ network, payee, vault })` reads what core's `assessPayee` needs to judge a payee
+before a mandate names it: the NEAR account now and at a block about 7 days back (on FastNEAR's
+archival node), `eth_getCode` and the nonce of a Base address on mainnet, and the vault's mandates and
+spends. It signs and sends nothing. A read that fails or times out (3 seconds a request) is
+`"unknown"`, not a value. `@probarion/sdk/payee` exports it alone, for a browser page. It is in this
+repository, not in release 0.1.1 on npm.
+
 ## Testing your integration
 
 `@probarion/sdk/testing` has a fake chain, a fake NEAR JSON-RPC server (`startFakeRpcServer`), a fake
