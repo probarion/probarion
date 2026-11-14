@@ -24,13 +24,17 @@ const SIZES = [LABEL, ...SIGN_IN_LABELS];
 /**
  * Says each step as it happens: "Check your wallet…" (the selector and the signature), "Checking your signature…" (the
  * console), "Opening your console…". While busy it keeps the focus (aria-disabled) and a click does nothing. Its one
- * status region, mounted from the first render, carries the wallet's line, its hint at 20 s and the error.
+ * status region, mounted from the first render, carries the wallet's line, its hint at 20 s and the error. The line
+ * and its clock start when the wallet is asked to sign, not at the click: the console fetches the challenge between.
  */
 export function SignInButton({ next = "/console" }: { next?: string }) {
   const { ready, signIn } = useWallet();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState<SignInPhase>("wallet");
+  // "select" is the click until the wallet is asked to sign: the selector, then the console fetching the challenge. It
+  // reads "Check your wallet…" like the signature, but the wallet's line, clock and hint wait for the signature.
+  const [phase, setPhase] = useState<SignInPhase | "select">("select");
+  const label = SIGN_IN_PHASE_LABEL[phase === "select" ? "wallet" : phase];
   const running = useRef(false); // a busy button still takes clicks: two must not both ask the wallet
   const elapsed = useElapsed(busy, phase);
   const asking = busy && phase === "wallet";
@@ -45,7 +49,7 @@ export function SignInButton({ next = "/console" }: { next?: string }) {
         onClick={async () => {
           if (running.current) return;
           running.current = true;
-          setPhase("wallet");
+          setPhase("select");
           setBusy(true);
           setError(null);
           try {
@@ -63,14 +67,15 @@ export function SignInButton({ next = "/console" }: { next?: string }) {
         }}
       >
         {ready
-          ? busyLabel(LABEL, SIGN_IN_PHASE_LABEL[phase], busy, SIZES)
+          ? busyLabel(LABEL, label, busy, SIZES)
           : busyLabel(SIGN_IN_NOT_READY_LABEL, SIGN_IN_NOT_READY_LABEL, true, SIZES)}
       </button>
       <div role="status">
         {asking ? (
           <p className="mt-2 animate-pending-in text-sm text-mute">
             {SIGN_IN_WALLET_LINE}
-            {elapsedClock(elapsed)}
+            {/* once the hint is there, its clock is the one that runs */}
+            {hint ? null : elapsedClock(elapsed)}
           </p>
         ) : null}
         {hint ? (

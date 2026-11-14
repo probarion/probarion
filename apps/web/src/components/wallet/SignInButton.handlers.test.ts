@@ -105,6 +105,12 @@ describe("SignInButton's steps", () => {
     expect(textOf(button())).toBe("Check your wallet…");
     expect(button().props.disabled).toBe(false);
     expect(button().props["aria-disabled"]).toBe(true);
+    // the selector, then the console fetching the challenge: the wallet's line waits for the wallet's own step
+    expect(lines()).toEqual([]);
+
+    h.calls[0]?.onPhase?.("wallet");
+    view.flush();
+    expect(textOf(button())).toBe("Check your wallet…");
     expect(lines()).toEqual([SIGN_IN_WALLET_LINE]);
 
     h.calls[0]?.onPhase?.("verify");
@@ -139,7 +145,7 @@ describe("SignInButton's steps", () => {
     expect(assign).not.toHaveBeenCalled();
     void click();
     expect(h.calls).toHaveLength(2);
-    expect(lines()).toEqual([SIGN_IN_WALLET_LINE]); // the old error goes when a new attempt starts
+    expect(lines()).toEqual([]); // the old error goes when a new attempt starts
   });
 
   it("a server that did not answer says so in the region", async () => {
@@ -160,13 +166,22 @@ describe("SignInButton's steps", () => {
     });
     const { view, button, lines, click } = open();
     void click();
+    // a slow challenge is the console's wait, not the wallet's: no wallet line, and no wallet clock yet
+    vi.advanceTimersByTime(10_000);
+    view.flush();
+    expect(textOf(button())).toBe("Check your wallet…");
+    expect(lines()).toEqual([]);
+    h.calls[0]?.onPhase?.("wallet");
+    view.flush();
+    expect(lines()).toEqual([SIGN_IN_WALLET_LINE]);
     vi.advanceTimersByTime(19_000);
     view.flush();
     expect(lines()).toEqual([`${SIGN_IN_WALLET_LINE} 0:19`]);
     vi.advanceTimersByTime(1_000);
     view.flush();
+    // the hint's clock is the one that runs
     expect(lines()).toEqual([
-      `${SIGN_IN_WALLET_LINE} 0:20`,
+      SIGN_IN_WALLET_LINE,
       "Still waiting for your wallet (0:20). If you closed its window, check your wallet's activity before you sign again.",
     ]);
     vi.advanceTimersByTime(600_000);
