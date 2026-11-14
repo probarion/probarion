@@ -110,6 +110,63 @@ describe("the scoreboard", () => {
   });
 });
 
+describe("the scoreboard before an outside visitor has tried", () => {
+  const none = (team: number) =>
+    board({
+      browsers: 0,
+      addresses: 0,
+      attempts_external: 0,
+      attempts_team: team,
+      raw_external: 0,
+      techniques: [],
+      contract_codes: [],
+    });
+
+  it("is the one line, and no tile of zeros: the team's 6 rehearsals and a call to try", () => {
+    const html = renderBoard(none(6));
+    const text = visible(html);
+    expect(text).toContain("The team has run 6 rehearsal attempts. Your turn: try to get paid.");
+    expect(text).toContain("Updated every minute.");
+    expect(text).not.toMatch(/At least|\b0\b|visitor|Sent straight to the contract|none yet/);
+    expect(text).not.toMatch(/all by the team|Be the first/);
+    expect(html).not.toContain("<table");
+  });
+
+  it("keeps the line and the freshness note 2.5em apart (WCAG 1.4.8): 20px under the line, over .fresh's 12px", () => {
+    // 17px text at 1.55 is 26.35px a line; 26.35 + 20 = 46.35px from the line's top to the note's is 2.73em.
+    expect(renderBoard(none(6))).toMatch(
+      /<p class="mb-5">The team has run 6 rehearsal attempts\. Your turn: try to get paid\.<\/p><p class="[^"]*">Updated every minute\.<\/p>/,
+    );
+  });
+
+  it("is only the call to try, with no count, when the team has made none either", () => {
+    const text = visible(renderBoard(none(0)));
+    expect(text).toContain("Your turn: try to get paid.");
+    expect(text).not.toMatch(/\b0\b|No attempts|rehearsal/);
+  });
+
+  it("shows the tiles again from the first outside attempt: 1 visitor, then many", () => {
+    const one = visible(
+      renderBoard(
+        board({
+          browsers: 1,
+          addresses: 1,
+          attempts_external: 1,
+          raw_external: 0,
+          attempts_team: 6,
+        }),
+      ),
+    );
+    expect(one).toContain("At least 1 visitor ");
+    expect(one).toContain("Attempts 1");
+    expect(one).toContain("plus 6 by the team, counted apart");
+    expect(one).not.toContain("Your turn");
+    const many = visible(renderBoard(board()));
+    expect(many).toContain("At least 4 visitors");
+    expect(many).not.toContain("Your turn");
+  });
+});
+
 const row = (over: Partial<FeedRow> = {}): FeedRow => ({
   created_at: "2026-11-06T10:15:30.123456+00:00",
   techniques: ["payee_change", "fake_invoice"],
@@ -193,11 +250,12 @@ describe("the latest attempts", () => {
   });
 
   it("tells an empty feed from one that could not be read", () => {
-    expect(visible(renderFeed([]))).toContain("No attempts yet. Be the first.");
+    expect(visible(renderFeed([]))).toContain("Attempts appear here as they come in.");
+    expect(visible(renderFeed([]))).not.toMatch(/No attempts|Be the first/);
     expect(renderFeed([])).not.toContain("<table");
     const unread = visible(renderFeed(null));
     expect(unread).toContain("The latest attempts are not available right now.");
-    expect(unread).not.toContain("No attempts yet");
+    expect(unread).not.toContain("Attempts appear here");
   });
 
   it("scopes every column header of both tables to its column", () => {

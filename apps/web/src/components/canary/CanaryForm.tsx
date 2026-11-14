@@ -27,21 +27,29 @@ const IO: AttemptIo = {
  * JavaScript nothing can put the text in an address. The answer arrives in a live region, so a screen reader hears it.
  * Above the textarea, three chips each fill in a fixed message (chips.ts) and clear the last answer. A chip is pressed
  * while the textarea holds its text unchanged, and the line under the chips then says what that text usually ends as.
+ * Over the chips, the page's one line of how many have tried (tallyLine) shows until the visitor's own attempt is
+ * answered: the line was counted before it, so it would then be out of date ("Your turn: try to get paid.") right
+ * above it.
  */
 export function CanaryForm({
   network,
   mode,
   via = null,
+  tally = null,
 }: {
   network: Network;
   mode: "live" | "code-only";
   /** The source the page's address named (`/canary?via=x`), already checked: sent with each attempt. */
   via?: CanaryVia | null;
+  /** How many have tried, from the board the page read (null when it could not be read: no line). */
+  tally?: string | null;
 }) {
   const id = useId();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<Answer | null>(null);
+  // Set by the first answered attempt and never cleared: a chip clears the answer, not the attempt that was counted.
+  const [tried, setTried] = useState(false);
 
   // One attempt at a time. A press while one runs does nothing (the button is not `disabled`, so that it keeps the
   // keyboard focus, and says it is busy with aria-disabled). A ref, not the state: a second press can come before the
@@ -54,7 +62,9 @@ export function CanaryForm({
     setBusy(true);
     setAnswer(null);
     try {
-      setAnswer(await submitAttempt(text, IO, via));
+      const reply = await submitAttempt(text, IO, via);
+      if (reply.kind === "done") setTried(true);
+      setAnswer(reply);
     } finally {
       running.current = false;
       setBusy(false);
@@ -75,6 +85,7 @@ export function CanaryForm({
 
   return (
     <div>
+      {tally && !tried ? <p className="mb-4">{tally}</p> : null}
       <fieldset className={c.try} aria-labelledby={`${id}-try`}>
         <span id={`${id}-try`} className={c.tryLabel}>
           {F.tryLabel}

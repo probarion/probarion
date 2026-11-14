@@ -602,19 +602,19 @@ describe("a run", () => {
     const r = await judge([], {
       overrides: {
         "@probarion/sdk run test": () =>
-          answer(0, " Test Files  40 passed (40)\n      Tests  801 passed | 2 skipped (803)\n"),
+          answer(0, " Test Files  40 passed (40)\n      Tests  830 passed | 2 skipped (832)\n"),
         "@probarion/core run test": () =>
-          answer(0, " Test Files  40 passed (40)\n      Tests  806 passed (806)\n"),
+          answer(0, " Test Files  40 passed (40)\n      Tests  888 passed (888)\n"),
       },
     });
     assert.equal(row(r, "test-packages-sdk").result, "PASS");
     assert.match(
       row(r, "test-packages-sdk").detail,
-      /README\.md:\d+ \(as of 2026-11-09\) gives 782; 801 pass now, so that dated count has drifted$/,
+      /README\.md:\d+ \(as of 2026-11-13\) gives 824; 830 pass now, so that dated count has drifted$/,
     );
     assert.match(
       row(r, "test-packages-core").detail,
-      /806 passed, the count README\.md:\d+ \(as of 2026-11-09\) gives$/,
+      /888 passed, the count README\.md:\d+ \(as of 2026-11-13\) gives$/,
     );
   });
 

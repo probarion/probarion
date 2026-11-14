@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ALARM,
+  badgeShown,
   connectWithCode,
   type Deps,
   disconnect,
@@ -131,7 +132,7 @@ describe("the badge and its alarm", () => {
     c.badge.text = "3";
     expect(await refresh(deps(offline))).toMatchObject({
       kind: "error",
-      text: "Couldn't reach Probarion. Retry",
+      text: "Couldn't reach Probarion. Try again.",
     });
     expect(c.badge.text).toBe("3");
   });
@@ -201,6 +202,71 @@ describe("the badge and its alarm", () => {
     expect(new Headers(f.calls[1]?.init?.headers).get("authorization")).toBe(`Bearer ${TOKEN_B}`);
     expect(c.badge.text).toBe("3");
     expect(c.alarmsSet.has(ALARM)).toBe(true);
+  });
+
+  it("read the capture after the inbox: one an open popup page showed meanwhile shows no +", async () => {
+    await putConnection(c, ORIGIN, conn());
+    const failed = { state: "error" as const, text: "x" };
+    await setPending(c, { ...failed, seen: false });
+    // The popup page, open in a tab, shows the capture while the worker's inbox read is out.
+    const f = fetchOf(async () => {
+      await setPending(c, { ...failed, seen: true });
+      return json(inboxBody());
+    });
+    await refresh(deps(f.fetch));
+    expect(c.badge.text).toBe("3");
+    // The same while Probarion can't be reached: no "+" is set for a capture already shown.
+    await setPending(c, { ...failed, seen: false });
+    await refresh(
+      deps(async () => {
+        await setPending(c, { ...failed, seen: true });
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    expect(c.badge.text).toBe("3");
+  });
+});
+
+describe("the badge once the popup has shown the capture", () => {
+  const ok = async () => {
+    const s = await refresh(deps(fetchOf(() => json(inboxBody())).fetch));
+    if (s.kind !== "ok") throw new Error("fixture");
+    return s;
+  };
+
+  it("goes from + to the count of the inbox on the popup's screen", async () => {
+    await putConnection(c, ORIGIN, conn());
+    await setPending(c, { state: "error", text: "x", seen: false });
+    const s = await ok();
+    expect(c.badge.text).toBe("+");
+    await setPending(c, { state: "error", text: "x", seen: true });
+    await badgeShown(deps(), s);
+    expect(c.badge.text).toBe("3");
+  });
+
+  it("keeps + while a capture still waits unseen, a newer one say", async () => {
+    await putConnection(c, ORIGIN, conn());
+    await setPending(c, { state: "error", text: "x", seen: false });
+    const s = await ok();
+    await badgeShown(deps(), s);
+    expect(c.badge.text).toBe("+");
+  });
+
+  it("leaves the badge alone when the screen's connection is no longer the chosen live one", async () => {
+    await putConnection(c, ORIGIN, conn());
+    const s = await ok();
+    c.badge.text = "!";
+    await putConnection(c, ORIGIN, conn({ expired: true }));
+    await badgeShown(deps(), s);
+    expect(c.badge.text).toBe("!");
+    await putConnection(c, ORIGIN, conn({ token: TOKEN_B }));
+    await badgeShown(deps(), s);
+    expect(c.badge.text).toBe("!");
+    await putConnection(c, OTHER_ORIGIN, conn());
+    await badgeShown(deps(), s);
+    expect(c.badge.text).toBe("!");
+    await badgeShown(deps(), { kind: "none" });
+    expect(c.badge.text).toBe("!");
   });
 });
 
@@ -466,18 +532,20 @@ describe("the right-click menus", () => {
     ]);
   });
 
-  it("hand selected text to the popup", async () => {
+  it("hand selected text to the popup, unseen until the popup shows it", async () => {
     await handleMenu(deps(), {
       menuItemId: MENU_SELECTION,
       selectionText: "Invoice INV-7 Total 120 USDC",
       pageUrl: "https://billing.example/inv/7",
     });
     expect(c.popupOpens).toBe(1);
+    // Chrome opened the popup, but the popup marks the invoice seen only once its Send section shows it.
     expect(await getPending(c)).toMatchObject({
       state: "ready",
-      seen: true,
+      seen: false,
       item: { name: "selection.txt", type: "text/plain" },
     });
+    expect(c.badge.text).toBe("+");
   });
 
   it("fetch a link on the page's own site", async () => {

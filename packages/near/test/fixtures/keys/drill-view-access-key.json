@@ -1,0 +1,64 @@
+{
+  "_source": "The four raw view_access_key answers for the vault agent (spend) access key of v0.probarion.near, on NEAR mainnet (its public key is in public_key below), copied value for value from the view_access_key lines of docs/evidence/mainnet-v0/drill-2026-11-14/views-archival-2026-11-14.txt: archival reads of 2026-11-14 (02:15 to 02:17 UTC) from https://archival-rpc.mainnet.fastnear.com, method query with request_type view_access_key and a fixed block_id, at four blocks around the drill of 2026-11-14. The allowance goes down as the refused spends A and C burn gas. View queries of public state; nothing was signed or sent.",
+  "network": "mainnet",
+  "account_id": "v0.probarion.near",
+  "public_key": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+  "answers": [
+    {
+      "block_hash": "6im8sBfcWJg4JMvBStLbr1HXy2gtzjHCEoqV5TBkEeMe",
+      "block_height": 224442800,
+      "nonce": 224068463000004,
+      "permission": {
+        "FunctionCall": {
+          "allowance": "246219350238132600000000",
+          "method_names": [
+            "spend"
+          ],
+          "receiver_id": "v0.probarion.near"
+        }
+      }
+    },
+    {
+      "block_hash": "5KfYZcmK38bC3Gt3gjPQ8w5WkCdVvSkgime9c6qoatJS",
+      "block_height": 224443200,
+      "nonce": 224068463000005,
+      "permission": {
+        "FunctionCall": {
+          "allowance": "246045777095666700000000",
+          "method_names": [
+            "spend"
+          ],
+          "receiver_id": "v0.probarion.near"
+        }
+      }
+    },
+    {
+      "block_hash": "FAwNcTYk7WUE3Vnd7FJNUPHMHVrpamdwiFYuKtSi94HT",
+      "block_height": 224443450,
+      "nonce": 224068463000006,
+      "permission": {
+        "FunctionCall": {
+          "allowance": "245880816301566700000000",
+          "method_names": [
+            "spend"
+          ],
+          "receiver_id": "v0.probarion.near"
+        }
+      }
+    },
+    {
+      "block_hash": "FeRHRkfarLL6RwMpcsQ6XiqsmnPzv6Z81YhggnpFnr6a",
+      "block_height": 224443520,
+      "nonce": 224068463000006,
+      "permission": {
+        "FunctionCall": {
+          "allowance": "245880816301566700000000",
+          "method_names": [
+            "spend"
+          ],
+          "receiver_id": "v0.probarion.near"
+        }
+      }
+    }
+  ]
+}

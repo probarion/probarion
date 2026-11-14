@@ -303,3 +303,37 @@ node packages/cli/dist/bin.js verify --network testnet --vault demo.vaults.proba
 
 The second command reads the chain as it is now, so once the vault anchors entries the ledger file does not hold, it
 can stop passing check c. The online checks need Node.js 24.22.1 or newer, which `@nearai/inference-sdk` declares.
+
+## 2026-11-14: mandate 2 and the MCP demo from npm
+
+Mandate 1 had used all 5 of its payments, so `npx -y @probarion/mcp@0.1.1 demo` could only show `UsesExhausted` on it.
+The owner signed mandate 2 in the console's Mandates tab with Meteor Wallet at 01:01 UTC on 2026-11-14:
+[`CJVYcwVyeBbpV4VyDTfQg5yhVZvE7mMMDonNCBwacBDZ`](https://testnet.nearblocks.io/txns/CJVYcwVyeBbpV4VyDTfQg5yhVZvE7mMMDonNCBwacBDZ)
+(`create_mandate`, 0.05 test NEAR attached). It has the same payee and purpose hash as mandate 1:
+
+| Field | Value read back with `get_mandate` at 01:01:57 UTC |
+| --- | --- |
+| Name | `Demo PO-1001, 2026-11-14` |
+| Payee | `probarion-payee.testnet` (USDC on NEAR) |
+| Purpose hash | `30739be9a9186c8884c598e6f46ef54a7ebc14c401548f59b43b512b0496278d`, the sha256 of [`po-PO-1001.txt`](po-PO-1001.txt) |
+| Per payment | 5 USDC (`5000000`), held for an approver above 3 USDC (`3000000`) |
+| In all | 60 USDC (`60000000`), at most 20 payments, 0 used |
+| Expires | 2026-12-31 23:59:59 UTC (`1798761599000000000`) |
+| Agent key | `ed25519:7qyNHfvNm2jpiGUVkmLo9gLWhe3C2XehtzhnKcFvSSuA` (`demo-agent`) |
+| Status | `active` |
+
+No invoice was sent under mandate 2, so the ledger still has 17 entries and 12 anchors, and the vault 5 spends.
+
+[`mcp-demo-2026-11-14.txt`](mcp-demo-2026-11-14.txt) is the full output of the published demo, run from npm at 01:02 UTC
+with no key. Its step 3 is the contract's own `check_spend` on mandate 2, a view call with no transaction: 3.00 USDC is
+`ok` and paid at once, 5.00 USDC is `ok` and held for an approver, and 6.00 USDC is refused with `OverPerPayment`.
+Step 4 shows the tool's input schema refusing an injected `"to"` field, and step 6 runs verify on the public ledger:
+checks a to i pass, 17 entries, 12 anchors. The demo ends `Done: 6 steps, 6 as expected. Nothing was signed or sent.`
+To run it yourself:
+
+```bash
+npx -y @probarion/mcp@0.1.1 demo
+```
+
+Once the vault pays under mandate 2, the counts in steps 2, 5 and 6 change; step 3 keeps its three answers until
+mandate 2 runs out of room.

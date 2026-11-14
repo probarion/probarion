@@ -1,0 +1,23 @@
+{
+  "_source": "The ft_withdraw receipt the vault v0.probarion.near sent to intents.near in mainnet spends 2 and 3: receipt id, predecessor, receiver, method and the base64 FunctionCall.args exactly as NEAR recorded them, copied from payouts[i].reads.spend.receipts[0] of apps/web/src/lib/site/mainnet-payout-recorded.json (EXPERIMENTAL_tx_status from archival-rpc.mainnet.fastnear.com on 2026-11-13T14:09:12.787Z). Reads of public data, nothing signed.",
+  "spends": [
+    {
+      "spendId": 2,
+      "txHash": "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9",
+      "receiptId": "F2BErA5fo6HBPhgwjyER9iiCrs9XHmDHX6dsey1dZmVi",
+      "predecessorId": "v0.probarion.near",
+      "receiverId": "intents.near",
+      "methodName": "ft_withdraw",
+      "args": "eyJ0b2tlbiI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsInJlY2VpdmVyX2lkIjoiYmFzZS0weDgzMzU4OWZjZDZlZGI2ZTA4ZjRjN2MzMmQ0ZjcxYjU0YmRhMDI5MTMub21mdC5uZWFyIiwiYW1vdW50IjoiMTAwMDAwMCIsIm1lbW8iOiJXSVRIRFJBV19UTzoweEIyMkVBY0RmMTExNzdkNkQ2MzVFODk1NkJCYkJkZDU0QjNFNkVCMjciLCJtc2ciOm51bGx9"
+    },
+    {
+      "spendId": 3,
+      "txHash": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH",
+      "receiptId": "2HMqxtTBKuKsmvmFeePXm3eELefEtaVGaDWJVMyGaUHq",
+      "predecessorId": "v0.probarion.near",
+      "receiverId": "intents.near",
+      "methodName": "ft_withdraw",
+      "args": "eyJ0b2tlbiI6ImJhc2UtMHg4MzM1ODlmY2Q2ZWRiNmUwOGY0YzdjMzJkNGY3MWI1NGJkYTAyOTEzLm9tZnQubmVhciIsInJlY2VpdmVyX2lkIjoiYmFzZS0weDgzMzU4OWZjZDZlZGI2ZTA4ZjRjN2MzMmQ0ZjcxYjU0YmRhMDI5MTMub21mdC5uZWFyIiwiYW1vdW50IjoiMjUwMDAwIiwibWVtbyI6IldJVEhEUkFXX1RPOjB4QjIyRUFjRGYxMTE3N2Q2RDYzNUU4OTU2QkJiQmRkNTRCM0U2RUIyNyIsIm1zZyI6bnVsbH0="
+    }
+  ]
+}

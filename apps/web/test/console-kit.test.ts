@@ -146,12 +146,16 @@ describe("the old palette pattern", () => {
 
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const rel = (f: string) => toPosix(relative(SRC, f));
-/** Every console page and component, the wallet buttons, the extension page, the dialog and the frame. */
+/** Every console page and component, the wallet buttons, the pending parts, the extension page, the dialog and the frame. */
 function consoleFiles(): string[] {
   return [
-    ...["app/console", "components/console", "components/wallet", "components/extension"].flatMap(
-      (d) => walk(join(SRC, d)),
-    ),
+    ...[
+      "app/console",
+      "components/console",
+      "components/wallet",
+      "components/pending",
+      "components/extension",
+    ].flatMap((d) => walk(join(SRC, d))),
     join(SRC, "app/extension/page.tsx"),
     join(SRC, "components/ConfirmDialog.tsx"),
     join(SRC, "components/site/Container.tsx"),
@@ -174,6 +178,7 @@ describe("the console uses the tokens, not the old palette", () => {
         "app/console/[vault]/page.tsx",
         "components/wallet/TxButton.tsx",
         "components/console/VaultNav.tsx",
+        "components/pending/busy-label.tsx",
       ]),
     );
     const found = files.flatMap((f) =>

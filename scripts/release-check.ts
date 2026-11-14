@@ -26,6 +26,7 @@ import { gunzipSync } from "node:zlib";
 
 /** In dependency order: a package is published after everything it depends on. */
 export const PUBLISHED_DIRS = [
+  "packages/near",
   "packages/core",
   "packages/sdk",
   "packages/cli",

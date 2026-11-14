@@ -186,3 +186,15 @@ describe("TxResultNote with a wrapper's describe", () => {
     expect(out(restored, signerWording)).toContain("Your account is short of NEAR");
   });
 });
+
+describe("TxResultNote's role", () => {
+  it("is a status region on its own, and has no role inside its widget's region", () => {
+    expect(render(r({}))).toMatch(/^<p class="mt-1 text-xs" role="status">/);
+    const inside = renderToStaticMarkup(
+      createElement(TxResultNote, { result: r({}), network: "testnet", inRegion: true }),
+    );
+    expect(inside).not.toMatch(/role=|aria-live/);
+    // the words and the link are the same either way
+    expect(inside).toBe(render(r({})).replace(' role="status"', ""));
+  });
+});

@@ -1,0 +1,66 @@
+== 2026-11-14 01:02:13 UTC: npx -y @probarion/mcp@0.1.1 demo (Node v24.12.0, from /e/APP2028/probarion-wt/owner-evidence) ==
+probarion-mcp 0.1.1 demo: vault demo.vaults.probarion.testnet on NEAR testnet
+The server runs with no key, so it can sign nothing: every step is a read, a dry run
+or a refusal. Each step says what it expects, then what came back.
+
+Step 1 of 6. tools/list: the five tools and the fields each one takes
+  expect: 5 tools; no field names a recipient; every input refuses fields it does not know
+  list_mandates    (no fields)
+  check_spend      mandate_id, amount, invoice_hash, ref
+  request_spend    mandate_id, amount, invoice_hash, ref, reasoning
+  get_spend_status spend_id
+  verify           (no fields)
+  result: as expected. No tool takes an address
+
+Step 2 of 6. list_mandates: the caps the owner signed, read live from the vault contract
+  expect: read_only true, and each mandate's payee, caps, uses and expiry
+  mandate 1 "Sample PO-1001", exhausted
+    payee        NEAR account probarion-payee.testnet
+    per payment  5.00 USDC, held for an approver above 3.00 USDC
+    total        20.00 USDC: 14.00 spent, 0.00 reserved, 6.00 left
+    uses         5 of 5 used, 0 left
+    expires      2026-12-09T23:59:59.000Z
+  mandate 2 "Demo PO-1001, 2026-11-14", active
+    payee        NEAR account probarion-payee.testnet
+    per payment  5.00 USDC, held for an approver above 3.00 USDC
+    total        60.00 USDC: 0.00 spent, 0.00 reserved, 60.00 left
+    uses         0 of 20 used, 20 left
+    expires      2026-12-31T23:59:59.000Z
+  result: as expected. read_only true, 2 mandates
+
+Step 3 of 6. check_spend on mandate 2: the contract's dry run of spend, a view call with no transaction
+  3.00 USDC (at the approval threshold): expect ok, not held
+    -> ok: true, would_hold: false. As expected.
+  5.00 USDC (the per-payment cap): expect ok, held for an approver
+    -> ok: true, would_hold: true. As expected.
+  6.00 USDC (1.00 USDC over the per-payment cap): expect OverPerPayment
+    -> ok: false, code: OverPerPayment. As expected.
+  result: as expected. The contract answered as the mandate's caps, uses and expiry say
+
+Step 4 of 6. request_spend with an injected "to" field, as a prompt injection would add it
+  expect: refused by the tool's strict input schema, before the tool runs
+  -> refused: MCP error -32602: Input validation error: Invalid arguments for tool request_spend: Unrecognized key: "to"
+  result: as expected. The schema refused the field. This server is read-only as well, so request_spend could not pay anyway
+
+Step 5 of 6. get_spend_status: a paid spend, read from the vault contract
+  expect: a spend with status paid among the vault's first 10
+  spend 1: paid, 2.00 USDC to NEAR account probarion-payee.testnet, mandate 1, ref inv-1de7c11a31f2fe1f24dc950a, created 2026-11-09T11:47:29.652Z
+  result: as expected. A paid spend is final: the vault paid the mandate's payee
+
+Step 6 of 6. verify: Probarion's verifier on the vault's public ledger and the chain
+  ledger: 17 entries from https://probarion.xyz/proof/demo.vaults.probarion.testnet/ledger.jsonl
+  expect: ok true (every check passes, or is skipped with a reason)
+  a ledger-signatures      pass     17 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names f...
+  b hash-links             pass     17 entries: every body_hash and link recomputes, chained from the zero link
+  c anchors                pass     12 anchors match the ledger; 0 entries after the last anchored count (17) are not chain-attested
+  d spends-have-decisions  pass     5 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount)
+  e attestations           pass     5 attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 not run (the request is not che...
+  f vault-locked           pass     no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMv...
+  g intents-keys           pass     no intents public keys; predecessor auth enabled
+  h burn-memos             pass     0 burned spends: no burn to pair
+  i factory-version        pass     created by vaults.probarion.testnet at version 1
+  -> ok: true, 17 entries, 12 anchors
+  result: as expected. The ledger and the chain agree
+
+Done: 6 steps, 6 as expected. Nothing was signed or sent.
+exit 0

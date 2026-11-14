@@ -285,7 +285,7 @@ describe("the CLI reference", () => {
         expect(table.id, path).toBe(`cli-commands-${path.split(" ")[0] ?? ""}`);
         const command = leaves.get(path);
         if (!command) continue; // the first test names it
-        // The page says only `help` takes a positional argument: each cell spells the command's own.
+        // The page says only `help` and `payee check` take a positional argument: each cell spells its own.
         expect(codeSpans(cell(row, "command"))[0], path).toBe(commandTerm(path, command));
       }
     }
@@ -468,7 +468,7 @@ describe("the CLI reference", () => {
     expect(problems).toEqual([]);
   });
 
-  it("lists the exit codes that check and verify give, and the 0 and 1 of every other command", async () => {
+  it("lists the exit codes that check, payee check, account audit, tx prove and verify give, and the 0 and 1 of every other command", async () => {
     const { runCli } = await loadCli();
     const table = tableOf("cli-exit-codes");
     const codeOf = (r: RefRow) => codeSpans(cell(r, "code"))[0] ?? "";
@@ -478,23 +478,33 @@ describe("the CLI reference", () => {
         .filter((r) => cell(r, key) !== "None")
         .map(codeOf)
         .sort();
-    for (const name of ["check", "verify"]) {
+    for (const [key, path] of [
+      ["check", ["check"]],
+      ["payee", ["payee", "check"]],
+      ["account", ["account", "audit"]],
+      ["tx", ["tx", "prove"]],
+      ["verify", ["verify"]],
+    ] as const) {
+      const name = path.join(" ");
       const { io, seen } = recorder(ROOT);
-      expect(await runCli([name, "--help"], io), `${name} --help`).toBe(0);
+      expect(await runCli([...path, "--help"], io), `${name} --help`).toBe(0);
       const codes = helpExitCodes(seen.out);
       expect(codes.length, `${name} --help lists its exit codes`).toBeGreaterThan(0);
-      expect(column(name), name).toEqual([...codes].sort());
+      expect(column(key), name).toEqual([...codes].sort());
     }
-    // Only check and verify set an exit code of their own, or turn a usage error into 64.
+    // Only these five set an exit code of their own, or turn a usage error into 64.
     const own = walkFiles(COMMANDS_DIR, ".ts")
       .filter((f) => /\b(?:setExitCode|usageExitCodes)\(/.test(readFileSync(f, "utf8")))
       .map((f) => basename(f))
       .sort();
-    expect(own).toEqual(["check.ts", "verify.ts"]);
+    expect(own).toEqual(["account.ts", "check.ts", "payee.ts", "tx.ts", "verify.ts"]);
     expect(column("other")).toEqual(["0", "1"]);
-    // A missing required option: 1 for every other command, 64 for check.
+    // A missing required option or argument: 1 for every other command, 64 for the ones above but verify.
     expect(await runCli(["vault", "create"], recorder(ROOT).io)).toBe(1);
     expect(await runCli(["check"], recorder(ROOT).io)).toBe(64);
+    expect(await runCli(["payee", "check"], recorder(ROOT).io)).toBe(64);
+    expect(await runCli(["account", "audit"], recorder(ROOT).io)).toBe(64);
+    expect(await runCli(["tx", "prove"], recorder(ROOT).io)).toBe(64);
   });
 
   it("states the limits the CLI and the vault check, as their source writes them", () => {

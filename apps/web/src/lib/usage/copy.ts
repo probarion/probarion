@@ -1,7 +1,8 @@
-// Every word of the public Usage page, in one module so that its test can hold the copy to the words the page must not
-// use: no promise (a guarantee, "never"), no em dash in a sentence, none of the Canary challenge's words. The counting
-// rules it states are the ones in the spec's honesty rules for metrics (§14.5), and migration 0009 is where each one is
-// carried out. It reaches no server-only module.
+// Every word of the public Usage page's counts, in one module so that its test can hold the copy to the words the page
+// must not use: no promise (a guarantee, "never"), no em dash in a sentence, none of the Canary challenge's words. The
+// counting rules it states are the ones in the spec's honesty rules for metrics (§14.5), and migration 0009 is where each
+// one is carried out. It reaches no server-only module. The words of the two cards read from the committed evidence (the
+// mainnet record and what it costs) live in components/usage/MainnetSections.tsx, and MainnetSections.test.ts holds them.
 
 import { thousands, utcMinute } from "@/lib/canary/format";
 import type { Network } from "@/lib/config";
@@ -20,7 +21,7 @@ export const USAGE_COPY = {
   },
   head: {
     title: "Usage, counted apart",
-    lede: "Team vaults, external owners and Canary participants are counted separately. These are counts, not dollar volumes, so nothing here comes from the team paying itself. Every payment is on chain.",
+    lede: "Team vaults, external owners and Canary participants are counted separately. These are counts, not dollar volumes, so the team paying itself adds no volume to them. Every payment is on chain.",
     definitions: "Definitions",
     canary: "Canary",
     testnetPill: "Testnet: test tokens, no value",
@@ -56,6 +57,8 @@ export const USAGE_COPY = {
   },
   pilots: {
     title: "Pilots, by cohort",
+    /** The title while no cohort has a pilot: the card then offers the form, with no count. */
+    titleNone: "Pilots",
     named: "Named with written consent:",
   },
   definitions: {
@@ -86,12 +89,29 @@ export const tokensCell = (tokens: number | null): string =>
 export const priceLine = (price: { model: string; source: string }): string =>
   `Price: ${price.model}, ${price.source}`;
 
-export const pilotsLine = (c: SegmentCounts): string =>
-  `External ${thousands(c.external)} · Team ${thousands(c.team)} · Canary ${thousands(c.canary)}`;
+/**
+ * The pilots of each cohort that has one: "External 2 · Team 1". A cohort with none is left out, and with none at all
+ * there is no line (null), so that no pilot count is drawn as a zero.
+ */
+export const pilotsLine = (c: SegmentCounts): string | null => {
+  const cohorts = (
+    [
+      ["External", c.external],
+      ["Team", c.team],
+      ["Canary", c.canary],
+    ] as const
+  ).filter(([, n]) => n > 0);
+  return cohorts.length === 0
+    ? null
+    : cohorts.map(([name, n]) => `${name} ${thousands(n)}`).join(" · ");
+};
 
-/** Which network the page counts. The other one is named by what it is, so that a testnet page does not talk of mainnet. */
+/**
+ * Which network the live counts are for. The other one is named by what it is, so that a testnet page's counts do not
+ * talk of mainnet. The mainnet record above them is not a live count, and says itself that it is not added in.
+ */
 export const networkSentence = (network: Network): string =>
-  `This page counts NEAR ${network} only${network === "testnet" ? ", with test tokens" : ""}. Activity on the other NEAR network is counted apart and is not added in.`;
+  `The live counts are for NEAR ${network} only${network === "testnet" ? ", with test tokens" : ""}. Activity on the other NEAR network is counted apart and is not added in.`;
 
 /** One entry of "How each number is counted": a sentence, with the name of the figure first where it is about one row. */
 export interface Definition {
@@ -105,13 +125,16 @@ export function definitions(network: Network): readonly Definition[] {
       text: "Team vaults, external owners and Canary participants are counted apart. A vault is team when we run it, and external when its owner registered it themselves. Canary participants are people who tried the public Canary and are not on the team.",
     },
     {
+      text: "The team's counts are always shown. External owners, Canary participants and pilots, with their columns and tiles, appear once their count is above zero. The Canary vault and its mandate, which the team set up, do not show the Canary column on their own.",
+    },
+    {
       text: "Canary participants come only from Canary attempts by people who are not on the team. A team member's Canary attempts are counted under team. The Canary's own vault is left out of every figure taken from a ledger, so an attempt is not counted twice.",
     },
     {
       text: "In the Canary column, vaults, mandates, payments and held spends are the Canary vault's own on-chain events. Refusals, attempts and model decisions come from the attempts instead, because the Canary's ledger is private.",
     },
     {
-      text: "These are counts, not dollar volumes. Amounts are not added up, so nothing here comes from the team paying itself.",
+      text: "These are counts, not dollar volumes. Amounts are not added up, so the team paying itself adds no volume to them.",
     },
     {
       lead: "External owners:",
@@ -121,7 +144,10 @@ export function definitions(network: Network): readonly Definition[] {
       lead: "Canary participants:",
       text: "shown as at least that many people. It is the smaller of the distinct browsers and the distinct network addresses of people who are not on the team.",
     },
-    { lead: "Vaults:", text: "a vault counts on the day it was registered." },
+    {
+      lead: "Vaults:",
+      text: 'a vault counts on the day it was registered in the console. The card "How far it is tested" reads the team\'s testnet vaults from the chain, registered here or not, so its counts differ from these.',
+    },
     {
       text: "Payments and mandates come from on-chain events our watcher records. Payments made includes the cross-chain payouts to Base, which are also shown on their own row.",
     },

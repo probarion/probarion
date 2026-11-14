@@ -83,9 +83,14 @@ describe("the page's settings", () => {
 describe("the page with its numbers", () => {
   it("shows the sections in the owner's order", async () => {
     const t = visible(await page());
+    // How far it is tested, the mainnet record and the costs come first: what has happened leads, and the database's
+    // counts follow.
     const order = [
       "Usage · NEAR mainnet",
       "Usage, counted apart",
+      "How far it is tested",
+      "Mainnet (v0.probarion.near)",
+      "What it costs",
       "External owners 3",
       "Canary participants: at least 7",
       "Team vaults 1",
@@ -116,7 +121,7 @@ describe("the page with its numbers", () => {
     const t = visible(await page());
     expect(t).not.toContain("Testnet: test tokens");
     expect(t).not.toContain("test tokens");
-    expect(t).toContain("This page counts NEAR mainnet only.");
+    expect(t).toContain("The live counts are for NEAR mainnet only.");
   });
 
   it("has the tiles, the table with +N for the week, the unit costs and the pilots", async () => {
@@ -127,8 +132,51 @@ describe("the page with its numbers", () => {
     expect(t).toContain("Payments made 0 12 +5");
     expect(t).toContain("NEAR AI tokens per decision — 1,000 —");
     expect(t).toContain("USD per decision price not set yet");
-    expect(t).toContain("External 2 · Team 1 · Canary 0");
+    expect(t).toContain("External 2 · Team 1");
+    expect(t).not.toContain("Canary 0");
     expect(t).toContain("Named with written consent: Acme Design");
+  });
+
+  it("draws no outside figure while it is zero: no tile, no column and no pilot count, and keeps the team's and the record", async () => {
+    mocks.load.mockResolvedValue(
+      parseUsage(
+        {
+          ...RAW,
+          totals: [
+            { segment: "team", metric: "vaults", value: 2 },
+            { segment: "team", metric: "canary_attempts", value: 6 },
+            { segment: "canary", metric: "vaults", value: 1 },
+            { segment: "canary", metric: "mandates", value: 1 },
+          ],
+          recent: [],
+          canary_participants: 0,
+          external_owners: 0,
+          team_vaults: 2,
+          pilots: [],
+          pilot_names: [],
+        },
+        "mainnet",
+      ),
+    );
+    const html = await page();
+    const t = visible(html);
+    // The figures, above the definitions: the definitions name each segment, as they always do.
+    const counts = t.slice(0, t.indexOf("How each number is counted"));
+    expect(counts.length).toBeGreaterThan(0);
+    expect(counts).not.toMatch(/External owners|Canary participants: at least|Pilots, by cohort/);
+    expect(t).not.toMatch(/\b0 (external|visitors?|pilots|Canary participants)\b/i);
+    expect(t).toContain("Team vaults 2 ours, counted apart");
+    expect(t).toContain("Canary attempts 6");
+    expect(t).toContain("Mainnet (v0.probarion.near)");
+    expect(t).toContain("How far it is tested");
+    // The two tables of counts have the team's column alone.
+    const heads = [...html.matchAll(/<th scope="col"[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+    expect(heads.filter((h) => h === "External" || h === "Canary")).toEqual([]);
+    expect(heads.filter((h) => h === "Team")).toHaveLength(2);
+    // The method stays, with no zero in it.
+    expect(t).toContain(
+      "Team vaults, external owners and Canary participants are counted separately.",
+    );
   });
 
   it("leaves the names out when no pilot agreed to one", async () => {
@@ -139,14 +187,28 @@ describe("the page with its numbers", () => {
   it("puts every table in a panel that can scroll on a phone", async () => {
     const html = await page();
     const panels = [...html.matchAll(/<section[^>]*aria-label="([^"]*)"/g)].map((m) => m[1]);
-    expect(panels).toEqual(["Usage by segment", "Unit costs by segment"]);
-    expect([...html.matchAll(/<table/g)]).toHaveLength(2);
+    expect(panels).toEqual([
+      "Mainnet payments and refusals",
+      "What a spend costs",
+      "Usage by segment",
+      "Unit costs by segment",
+    ]);
+    expect([...html.matchAll(/<table/g)]).toHaveLength(4);
   });
 
-  it("links only the definitions and the Canary, and no page that is not built", async () => {
+  it("links on the page only to its own sections and the Canary, and out only to the chain, the evidence, the CI runs and the pilot form", async () => {
     const links = hrefs(await page());
-    expect(links).toEqual(["#definitions", "/canary?via=usage"]);
-    for (const l of links) expect(PLANNED_ROUTES).not.toContain(l);
+    const own = links.filter((l) => l?.startsWith("/") || l?.startsWith("#"));
+    // The Canary twice: the header's pill, and the live feed the testing card cites.
+    expect(own).toEqual(["#definitions", "/canary?via=usage", "/canary?via=usage", "#costs"]);
+    for (const l of own) expect(PLANNED_ROUTES).not.toContain(l);
+    const out = links.filter((l) => !own.includes(l));
+    expect(out.length).toBeGreaterThan(10);
+    for (const l of out) {
+      expect(l, l).toMatch(
+        /^https:\/\/(nearblocks\.io\/txns\/|basescan\.org\/tx\/0x|github\.com\/probarion\/probarion\/(blob\/main\/|actions\/runs\/\d+(\/job\/\d+)?$|issues\/new\?template=pilot\.yml$))/,
+      );
+    }
   });
 
   it("has a target for the Definitions pill", async () => {
@@ -155,12 +217,35 @@ describe("the page with its numbers", () => {
 
   it("uses none of the words the page must not use", async () => {
     const t = visible(await page());
-    expect(t).not.toMatch(/\bnever\b|guarantee|100\s?%|bounty|prize|reward|attested|open metrics/i);
+    expect(t).not.toMatch(/\bnever\b|guarantee|100\s?%|bounty|prize|reward|open metrics/i);
+  });
+
+  it("says attested only of the mainnet vault's decisions, with the caveat, and of no database count", async () => {
+    const html = await page();
+    const start = html.indexOf('<section id="mainnet"');
+    const end = html.indexOf('<section id="costs"');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const tested = html.indexOf('<section id="tested"');
+    expect(tested).toBeGreaterThan(-1);
+    expect(tested).toBeLessThan(start);
+    const record = visible(html.slice(start, end));
+    const card = visible(html.slice(tested, start));
+    const rest = visible(html.slice(0, tested) + html.slice(end));
+    // The database's model decisions (a Canary answer among them) are not called attested anywhere.
+    expect(rest).not.toMatch(/attested/i);
+    // The testing card says attested of recorded decisions, each time with the caveat.
+    expect(card).toMatch(/attested decisions/);
+    expect(card.match(/[Tt]he TEE measurement is not pinned/g)).toHaveLength(2);
+    expect(record).toMatch(/attested/i);
+    expect(record).toContain(
+      "The TEE measurement is not pinned, so this does not show which model image ran.",
+    );
   });
 });
 
 describe("the page when the numbers are not available", () => {
-  it("says so, keeps the header and the definitions, and draws no figure", async () => {
+  it("says so, keeps the header, the mainnet record and the definitions, and draws no database figure", async () => {
     mocks.load.mockResolvedValue(null);
     const html = await page();
     const t = visible(html);
@@ -168,7 +253,11 @@ describe("the page when the numbers are not available", () => {
     expect(t).toContain("Usage, counted apart");
     expect(t).toContain("How each number is counted");
     expect(html).toMatch(/id="definitions"/);
-    expect(html).not.toContain("<table");
+    // The record and the costs come from committed files, so they stay; the database's tables do not.
+    expect(t).toContain("Mainnet (v0.probarion.near)");
+    expect(t).toContain("What it costs");
+    const panels = [...html.matchAll(/<section[^>]*aria-label="([^"]*)"/g)].map((m) => m[1]);
+    expect(panels).toEqual(["Mainnet payments and refusals", "What a spend costs"]);
     expect(t).not.toContain("Canary participants: at least");
     expect(t).not.toContain("ours, counted apart");
     expect(t).not.toContain("Unit costs");

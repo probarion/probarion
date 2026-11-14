@@ -23,6 +23,15 @@ const MODULES: Readonly<Record<string, string>> = {
   docs: "src/components/docs/docs.module.css",
   canary: "src/components/site/canary.module.css",
   usage: "src/components/site/usage.module.css",
+  head: "src/components/site/head.module.css",
+  journey: "src/components/site/journey.module.css",
+  integrate: "src/components/site/integrate.module.css",
+  console: "src/components/site/console.module.css",
+  hero: "src/components/site/hero.module.css",
+  tamper: "src/components/site/tamper.module.css",
+  live: "src/components/site/live.module.css",
+  footer: "src/components/site/footer.module.css",
+  parts: "src/components/site/parts.module.css",
   mainnet: "src/components/site/mainnet.module.css",
   status: "src/components/site/status.module.css",
 };
@@ -319,7 +328,7 @@ describe("text contrast at WCAG AAA (1.4.6), from the tokens and the CSS modules
 
   it("keeps gold-small off small text: only the 42px step numbers, a large text, use it as a text colour", () => {
     const uses = MODULE_RULES.filter((r) => r.decls.color === "var(--color-gold-small)");
-    expect(uses.map(where)).toEqual(["site: .stepN"]);
+    expect(uses.map(where)).toEqual(["parts: .stepN"]);
     for (const r of uses) expect(minPx(r.decls["font-size"]), where(r)).toBeGreaterThanOrEqual(24);
     const tsx = walk(SRC).filter((f) => f.endsWith(".tsx") && !isTestFile(f));
     const found = tsx.filter((f) =>
@@ -401,7 +410,7 @@ describe("text contrast at WCAG AAA (1.4.6), from the tokens and the CSS modules
 
   it("keeps an input's edge at 3:1 on the panel it sits on (WCAG 1.4.11)", () => {
     for (const [file, selector] of [
-      ["site", ".field select"],
+      ["live", ".field select"],
       ["site", ".accountInput"],
       ["canary", ".textarea"],
     ] as const) {
@@ -438,10 +447,9 @@ describe("text contrast at WCAG AAA (1.4.6), from the tokens and the CSS modules
 // --- Visual presentation (1.4.8), sizes and weights ------------------------------------------------------------------
 
 /**
- * Selectors that set a tight line for one line of text, not a block: the logo, a button's label, a one-glyph mark, and
- * `.boName`, the Built on section's `h3` ("NEAR AI Cloud"), set as tall as NEAR's logo beside it.
+ * Selectors that set a tight line for one line of text, not a block: the logo, a button's label and a one-glyph mark.
  */
-const TIGHT_LINE_OK = new Set([".brand", ".scenario", ".pick", ".tipMark", ".boName"]);
+const TIGHT_LINE_OK = new Set([".brand", ".scenario", ".pick", ".tipMark"]);
 const HEADING = /(?:^|[\s>+~])h[1-6]\b|title|Title|\.h[12]\b/;
 
 describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
@@ -462,7 +470,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["site", ".site"],
       ["site", ".lede"],
       ["site", ".proofIntro"],
-      ["site", ".checkHint"],
+      ["tamper", ".checkHint"],
+      ["tamper", ".plain"],
       ["canary", ".lede"],
       ["canary", ".tip"],
       ["docs", ".prose"],
@@ -502,33 +511,40 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["status", ".limit", "margin-top", 15, "site", ".site"],
       ["status", ".where", "margin-top", 15, "site", ".site"],
       ["status", ".note + .note", "margin-top", 15, "site", ".site"],
-      ["site", ".whoControl", "margin-top", 14, "site", ".site"],
-      ["site", ".whoProof", "margin-top", 14, "site", ".site"],
-      ["site", ".codeNote", "margin-top", 14, "site", ".site"],
-      // The Built on footer's blocks, where they stack (a tablet's lead over its notices, a phone).
-      ["ships", ".legal", "row-gap", 13, "ships", ".legal"],
-      // The two entries of the stack note, where they stack (below 1101px).
-      ["ships", ".stackList", "row-gap", 15, "site", ".site"],
-      ["site", ".shot .shotMeta", "margin-top", 15, "site", ".site"],
+      // What it rests on: a row's link to the docs under its sentences.
+      ["ships", ".stackLink", "margin-top", 16, "ships", ".stackLink"],
+      // The compact status board: a row's Where line under its Not yet line.
+      ["status", ".cWhere", "margin-top", 15, "site", ".site"],
       ["canary", ".column p + p", "margin-top", 17, "site", ".site"],
       ["canary", ".line", "margin-top", 17, "site", ".site"],
       ["canary", ".steps", "gap", 16, "site", ".site"],
       ["canary", ".rules", "gap", 16, "site", ".site"],
       ["canary", ".reading :where(p + p)", "margin-top", 17, "site", ".site"],
       ["usage", ".defs", "gap", 16, "site", ".site"],
+      // The shared parts: a record of terms under a section's lede, and its terms where they wrap onto a second row.
+      ["parts", ".record", "margin-top", 17, "site", ".site"],
+      ["parts", ".record", "row-gap", 15, "site", ".site"],
+      // The journey: a step's note under its text, the note's lines, an invoice's asked, happened and evidence stacked
+      // on a tablet or a phone, a second run of an attested check, and the two lines under the attested decisions.
+      ["journey", ".note", "margin-top", 15, "journey", ".note"],
+      ["journey", ".noteLine + .noteLine", "margin-top", 15, "journey", ".note"],
+      ["journey", ".resultLine + .resultLine", "margin-top", 15, "journey", ".matrix"],
+      ["journey", ".invRow", "row-gap", 15, "site", ".site"],
+      ["journey", ".attFoot", "gap", 15, "journey", ".attFoot"],
+      // The use cases: the blocks of a use's card.
+      ["integrate", ".use", "gap", 15, "site", ".site"],
+      // The console's shot: its record under the caption's sentence.
+      ["console", ".record", "margin-top", 15, "site", ".site"],
+      // The live check: the lines of a hijack's invoice text under its quote.
+      ["live", ".injLine", "margin-top", 15, "live", ".inj"],
+      // The site footer, outside .site: its base row's note over the legal links, once the row stacks at 960px and below.
+      ["footer", ".base", "row-gap", 14, "footer", ".footer"],
     ];
     for (const [file, selector, prop, px, lhFile, lhSelector] of cases) {
       const lh = Number(decl(lhFile, lhSelector, "line-height"));
       const total = lh + em(decl(file, selector, prop), px);
       expect(total + 1e-9, `${file} ${selector}`).toBeGreaterThanOrEqual(2.5);
     }
-    // A story card's two paragraphs: the card's flex gap and the second one's margin, which do not collapse.
-    const story =
-      em(decl("site", ".storyCard", "gap"), 15) +
-      em(decl("site", ".storyAsks + p", "margin-top"), 15);
-    expect(Number(decl("site", ".site", "line-height")) + story + 1e-9).toBeGreaterThanOrEqual(2.5);
-    // The footer is outside .site: its line height is the page's 1.5.
-    expect(1.5 + em(decl("site", ".footNote", "margin-top"), 14)).toBeGreaterThanOrEqual(2.5);
   });
 
   it("caps reading text at about 71 characters a line on average, from Hanken Grotesk's own average width", () => {
@@ -550,7 +566,10 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
     );
     const capped: [string, string][] = [
       ["site", ".lede"],
-      ["site", ".storyIntro"],
+      ["parts", ".stepBody"],
+      ["parts", ".partNote"],
+      ["journey", ".note"],
+      ["journey", ".attFoot p"],
       ["status", ".note"],
       ["status", ".what"],
       ["status", ".limit"],
@@ -560,14 +579,27 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["status", ".gapsHead p"],
       ["status", ".gaps"],
       ["site", ".closeNote"],
-      ["site", ".codeNote"],
-      ["site", ".duelNote"],
+      ["integrate", ".useBody"],
+      ["integrate", ".waysSub"],
+      ["console", ".body"],
+      ["hero", ".cap"],
+      // The payee panel's body, on the ink panel at the end of the problem.
+      ["site", ".payeeBody"],
+      // The ledger test: the verdict's sentence, the run note and a press that did not finish.
+      ["tamper", ".plain"],
+      ["tamper", ".note"],
+      ["tamper", ".runError"],
       ["site", ".proofIntro"],
-      ["site", ".compareMore"],
+      ["live", ".hint"],
+      ["live", ".inj"],
+      ["live", ".why"],
+      ["live", ".noScript"],
+      ["head", ".lede"],
       ["ships", ".stackBody"],
-      ["ships", ".shipBody"],
-      ["ships", ".legalLead"],
-      ["ships", ".legalNotices"],
+      ["ships", ".stackLink"],
+      ["ships", ".tokensNote"],
+      ["ships", ".legal"],
+      ["tamper", ".realData"],
       ["docs", ".prose > :is(p, ul, ol, blockquote)"],
       ["docs", ".prose li > :is(p, ul, ol)"],
       ["docs", ".check > p"],
@@ -689,22 +721,19 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     expect(search.outline).toBe("2px solid var(--color-gold-small)");
     expect(search["box-shadow"]).toBeUndefined();
     // Rings that a clipping box would cut are drawn inside it.
-    for (const s of [
-      ".codeBody:focus-visible",
-      ".shotImage:focus-visible",
-      ".scroll:focus-visible",
-    ]) {
+    for (const s of [".scroll:focus-visible"]) {
       expect(decl("site", s, "outline-offset"), s).toBe("-3px");
     }
-    // Scrollers with links at their edges (the Canary tables, the landing's screenshot row on a phone) leave 6px of
+    // The console's captures sit in no scroller, so their links keep the ring 3px outside, as every other link does.
+    expect(
+      MODULE_RULES.filter((r) => r.file === "console" && r.decls["outline-offset"]).map(where),
+    ).toEqual([]);
+    // Scrollers with links at their edges (the Canary tables) leave 6px of
     // room each side for the 2px ring, 3px out, and take it back with their margin.
     expect(read("src", "components", "site", "ScrollRegion.tsx")).toContain(
       'target.scrollIntoView({ block: "nearest", inline: "nearest" })',
     );
-    for (const [file, selector] of [
-      ["canary", ".scroll"],
-      ["site", ".shotRow"],
-    ] as const) {
+    for (const [file, selector] of [["canary", ".scroll"]] as const) {
       expect(decl(file, selector, "padding-inline"), selector).toBe("6px");
       expect(decl(file, selector, "margin-inline"), selector).toBe("-6px");
       // ScrollRegion scrolls a link that a keyboard focuses into view; it stops 6px in, so its ring shows whole.
@@ -717,13 +746,18 @@ describe("text spacing, reflow, focus and colour schemes", () => {
       RULES.filter((r) => r.file === file && forced(r) && r.selectors.includes(selector)).map(
         (r) => r.decls,
       );
-    expect(inForced("site", '.scenario[aria-pressed="true"]')[0]?.["border-color"]).toBe(
+    expect(inForced("live", '.scenario[aria-pressed="true"]')[0]?.["border-color"]).toBe(
       "Highlight",
     );
-    expect(decl("site", '.scenario[aria-pressed="true"]', "border-width")).toBe("2px");
-    for (const s of [".netPillCurrent", ".pill", ".state", ".payeeLock"]) {
+    expect(decl("live", '.scenario[aria-pressed="true"]', "border-width")).toBe("2px");
+    // The red rule of the live check's hijack note takes the forced text colour, so it shows on a dark Canvas.
+    expect(inForced("live", ".inj")[0]?.["border-left-color"]).toBe("CanvasText");
+    for (const s of [".netPillCurrent", ".pill"]) {
       expect(inForced("site", s)[0]?.border, s).toBe("1px solid CanvasText");
     }
+    // An outcome's mark (bits.tsx Outcome) takes the forced text colour; its word says the same.
+    expect(inForced("parts", ".fill")[0]?.fill).toBe("CanvasText");
+    expect(inForced("parts", ".ring")[0]?.stroke).toBe("CanvasText");
     expect(inForced("site", ".gold")[0]?.color).toBe("CanvasText");
     expect(inForced("docs", ".gold")[0]?.color).toBe("CanvasText");
     expect(inForced("docs", ".chipDot")[0]?.background).toBe("CanvasText");
@@ -753,5 +787,44 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     expect(content.length).toBeGreaterThan(10);
     const found = content.filter((f) => /^\s*```diff\b/m.test(readFileSync(f, "utf8")));
     expect(found.map((f) => toPosix(relative(WEB, f)))).toEqual([]);
+  });
+});
+
+describe("one small label (parts.module.css .label)", () => {
+  it("sets every column head, group label and run-in label of the redesigned tables in the label's own type", () => {
+    // Sentence case, 13px, 500, a hair of tracking, in mute: gold stays for the section's eyebrow.
+    const token = [
+      "font-size",
+      "font-weight",
+      "letter-spacing",
+      "text-transform",
+      "color",
+    ] as const;
+    const label = Object.fromEntries(token.map((p) => [p, decl("parts", ".label", p)]));
+    expect(label).toEqual({
+      "font-size": "13px",
+      "font-weight": "500",
+      "letter-spacing": "0.01em",
+      "text-transform": "none",
+      color: "var(--color-mute)",
+    });
+    for (const [file, selector] of [
+      ["site", ".table th"],
+      ["parts", ".partLabel"],
+    ] as const) {
+      for (const p of token) {
+        if (selector === ".partLabel" && (p === "letter-spacing" || p === "text-transform"))
+          continue;
+        expect(decl(file, selector, p), `${file} ${selector} ${p}`).toBe(label[p]);
+      }
+    }
+    // No uppercase label is left in the sections that use it.
+    for (const file of ["integrate", "journey", "console", "hero", "tamper", "parts"])
+      expect(
+        MODULE_RULES.filter(
+          (r) => r.file === file && r.decls["text-transform"] === "uppercase",
+        ).map(where),
+        file,
+      ).toEqual([]);
   });
 });

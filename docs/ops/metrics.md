@@ -1,6 +1,6 @@
 # The usage numbers (`/usage`)
 
-OWNER only. The public page `/usage` shows counts of vaults, payments, refusals and model decisions, with team vaults, external owners and Canary participants kept in separate columns. This page is about keeping those numbers fresh, running them hourly if you want that, and setting the price that turns tokens into dollars.
+OWNER only. The public page `/usage` shows counts of vaults, payments, refusals and model decisions, with team vaults, external owners and Canary participants kept in separate columns. An outside count (external owners, Canary participants, pilots) and its column are drawn once the count is above zero and left out until then (`shownSegments` in `apps/web/src/lib/usage/view.ts`); the team's counts are always drawn. This page is about keeping those numbers fresh, running them hourly if you want that, and setting the price that turns tokens into dollars.
 
 ## Where the numbers come from
 
@@ -76,6 +76,7 @@ A link of ours names where it was posted: `https://probarion.xyz/canary?via=x`. 
 | `x` | a post on X (@probarionhq). Every post that links the Canary uses `?via=x` |
 | `readme` | the Canary row of the repository's README |
 | `usage` | the Canary pill on `/usage` |
+| `tg` | a link the team sends by hand on Telegram (`https://probarion.xyz/canary?via=tg`) |
 | `home` | the landing page (not linked with it yet) |
 | `tamper` | the "break a signed record" demo (not linked with it yet) |
 | `proof` | a proof page (not linked with it yet) |

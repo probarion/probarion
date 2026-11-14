@@ -1,0 +1,96 @@
+/*
+ * The console's one screenshot (ConsoleShots.tsx ConsoleShot), in the use cases after the three uses: the invoice's
+ * page, framed (24px radius, a hairline, 10px of white round it) and never drawn wider than its 856px file. From
+ * 1100px the caption sits beside it; below, under it. Nothing scrolls sideways and nothing moves. Every colour is a
+ * token from app/globals.css.
+ */
+
+.figure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 24px;
+  margin-top: var(--space-block);
+}
+
+/* The frame: 856px of capture plus 10px of padding and 1px of border each side, so the image is never drawn larger
+   than the file. A narrower column draws it smaller; "Open full size" opens the file. */
+.frame {
+  max-width: 878px;
+  padding: 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 24px;
+  background: var(--color-surface);
+  box-shadow: 0 40px 80px -40px color-mix(in srgb, var(--color-ink) 25%, transparent);
+}
+.frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 16px;
+}
+
+.cap {
+  min-width: 0;
+}
+.title {
+  margin-top: 10px;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.body {
+  margin-top: 10px;
+  max-width: 26em;
+  font-size: 15px;
+  color: var(--color-mute);
+}
+
+/* What the shot was taken under: a term and its value on each ruled line. */
+.record {
+  display: grid;
+  margin-top: 18px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.record > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 8px;
+  border-top: 1px solid var(--color-line);
+}
+.record dt {
+  color: var(--color-mute);
+}
+.record dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+/* A class and two elements: it beats .site code's 0.86em, so the vault reads at the page's 13px floor for mono. */
+.record dd code {
+  font-size: 13px;
+}
+
+/* The file and the console, each a 44px tap target (WCAG 2.5.5). */
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 20px;
+  margin-top: 8px;
+}
+.link {
+  padding-block: 11px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+@media (min-width: 1100px) {
+  .figure {
+    grid-template-columns: minmax(0, 878px) minmax(17rem, 1fr);
+    column-gap: clamp(32px, 4vw, 56px);
+    align-items: center;
+  }
+}

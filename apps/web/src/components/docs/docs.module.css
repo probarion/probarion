@@ -75,6 +75,14 @@
 .prose strong {
   font-weight: 600;
 }
+/* A Markdown image, such as a console screenshot: drawn at its own size, or narrower to fit the column. */
+.prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+}
 /* Before the inline-code rule: rules that end in the same selector rise in specificity. */
 .pre code {
   font-family: inherit;

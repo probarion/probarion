@@ -1,35 +1,37 @@
 import Link from "next/link";
-import { ExternalLink } from "@/components/ui";
-import { CHAIN, CLOSING, EVALUATE_ROUTE, LINKS } from "@/lib/site/facts";
+import { CLOSING } from "@/lib/site/facts";
 import { NEXT_STEP } from "@/lib/site/next-step";
+import { GetProbarion, TrademarkLead } from "./BuiltOn";
+import { KeepRich, LIST } from "./bits";
 import { NextStep } from "./NextStep";
-import { Rich } from "./Rich";
+import { Away } from "./parts";
+import sh from "./ships.module.css";
 import s from "./site.module.css";
 
-export function ChainList() {
-  return (
-    <section className={`${s.section} ${s.flush}`} id="chain">
-      <div className={s.wrap}>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{CHAIN.title}</h2>
-          <p>{CHAIN.intro}</p>
-        </div>
-        {CHAIN.rows.map(({ title, body, tx }) => (
-          <div key={tx.hash} className={s.tx}>
-            <h3>{title}</h3>
-            <p>
-              <Rich text={body} />
-            </p>
-            <ExternalLink className={`${s.link} ${s.txHash}`} href={tx.url}>
-              {tx.label}
-            </ExternalLink>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
+/** A link of the closing: `#id` stays on this page, a path of this site opens in this tab, a full URL in a new one. */
+function CloseLink({ href, label, className }: { href: string; label: string; className: string }) {
+  if (href.startsWith("#")) {
+    return (
+      <a className={className} href={href}>
+        {label}
+      </a>
+    );
+  }
+  if (href.startsWith("/")) {
+    return (
+      <Link className={className} href={href}>
+        {label}
+      </Link>
+    );
+  }
+  return <Away className={className} href={href} label={label} />;
 }
 
+/**
+ * The page's end statement, then one action per audience: the evaluation (solid), the live check the hero opens with,
+ * and the source. Under them the quiet links (the docs, the spec, the demo video), where to get Probarion as a row of
+ * text links, the trademark lead, and last the way into the product.
+ */
 export function Closing() {
   return (
     <section className={s.close}>
@@ -39,16 +41,27 @@ export function Closing() {
         </h2>
         <p className={s.closeNote}>{CLOSING.sub}</p>
         <p className={s.closeNote}>
-          <Rich text={CLOSING.live} />
+          <KeepRich text={CLOSING.live} />
         </p>
         <div className={s.cta}>
-          <Link className={`${s.btn} ${s.solid} ${s.big}`} href={EVALUATE_ROUTE}>
-            {CLOSING.evaluate}
-          </Link>
-          <ExternalLink className={`${s.btn} ${s.big}`} href={LINKS.spec}>
-            {CLOSING.spec}
-          </ExternalLink>
+          {CLOSING.buttons.map((b) => (
+            <CloseLink
+              key={b.label}
+              href={b.href}
+              label={b.label}
+              className={b.solid ? `${s.btn} ${s.solid} ${s.big}` : `${s.btn} ${s.big}`}
+            />
+          ))}
         </div>
+        <ul className={sh.quiet} {...LIST}>
+          {CLOSING.quiet.map((q) => (
+            <li key={q.label}>
+              <CloseLink href={q.href} label={q.label} className={`${s.link} ${sh.quietLink}`} />
+            </li>
+          ))}
+        </ul>
+        <GetProbarion />
+        <TrademarkLead />
         <NextStep step={NEXT_STEP.closing} className={s.closeNext} linkClassName={s.link} />
       </div>
     </section>

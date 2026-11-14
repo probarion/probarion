@@ -22,7 +22,9 @@ export interface RowChange {
 export interface TamperEdit {
   id: TamperEditId;
   label: string;
-  /** One sentence on what changed, shown above the table. */
+  /** What the button will do, in one line under it, before anyone presses it. */
+  effect: string;
+  /** One sentence on what changed, shown above the table once the edit is the one shown. */
   summary: string;
   seq: number;
   /** The word on the row, because colour is not the only signal. */
@@ -34,6 +36,7 @@ export const TAMPER_EDITS: readonly TamperEdit[] = [
   {
     id: "amount",
     label: "Change an amount",
+    effect: "Entry 2: 40 USDC becomes 0.000001 USDC.",
     summary: "Entry 2 edited: 40 USDC became 0.000001 USDC",
     seq: 2,
     rowNote: "amount edited",
@@ -42,6 +45,7 @@ export const TAMPER_EDITS: readonly TamperEdit[] = [
   {
     id: "erase",
     label: "Erase a refusal",
+    effect: "Entry 4 is erased from the ledger.",
     summary: "Entry 4 erased from the ledger",
     seq: 4,
     rowNote: "erased",
@@ -50,6 +54,7 @@ export const TAMPER_EDITS: readonly TamperEdit[] = [
   {
     id: "verdict",
     label: "Turn a refusal into an approval",
+    effect: "Entry 4: refuse becomes allow.",
     summary: "Entry 4 edited: refuse became allow",
     seq: 4,
     rowNote: "verdict edited",

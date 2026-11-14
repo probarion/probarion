@@ -1,64 +1,63 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ExternalLink } from "@/components/ui";
-import { CONSOLE_SHOTS, type ConsoleShot } from "@/lib/site/facts";
-import { Rich } from "./Rich";
-import { ScrollRegion } from "./ScrollRegion";
+import { CONSOLE_SHOTS } from "@/lib/site/facts";
+import { KeepRich } from "./bits";
+import c from "./console.module.css";
 import s from "./site.module.css";
 
-/** Real testnet screenshots of the console, after the ink band (audit P1-23). On a phone they scroll sideways. */
-export function ConsoleShots() {
+const NBSP = " ";
+
+/**
+ * The console's one screenshot on the landing, in the use cases (Integrate.tsx): the invoice's page of the testnet
+ * demo vault, in a frame never wider than the file, so it is drawn at its own 856px at most and never larger. `sizes`
+ * asks for the 856px file wherever the frame has room for it, not the ~420px variant. Beside it from 1100px, under it
+ * below: what it shows, the record it was taken under, the file itself and the console. The section is far down the
+ * page, so the image loads lazily, as next/image does by default.
+ */
+export function ConsoleShot() {
+  const L = CONSOLE_SHOTS.landing;
+  const shot = CONSOLE_SHOTS.shots.find((x) => x.id === L.shot);
+  if (shot === undefined) return null;
   return (
-    <section className={`${s.section} ${s.shots}`} id="console">
-      <div className={s.wrap}>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{CONSOLE_SHOTS.title}</h2>
-          <p>{CONSOLE_SHOTS.intro}</p>
-        </div>
-        <ScrollRegion className={s.shotRow} label="Console screenshots">
-          {CONSOLE_SHOTS.shots.map((shot: ConsoleShot) => (
-            <figure key={shot.id} className={s.shot}>
-              <a className={s.shotImage} href={shot.src}>
-                <Image
-                  src={shot.src}
-                  width={shot.width}
-                  height={shot.height}
-                  alt={shot.alt}
-                  sizes="(max-width: 760px) 86vw, 420px"
-                />
-              </a>
-              <figcaption>
-                <h3>{shot.title}</h3>
-                <p>
-                  <Rich text={shot.body} />
-                </p>
-                <p className={s.shotMeta}>
-                  {shot.meta}
-                  {shot.link ? (
-                    <>
-                      {" · "}
-                      <ExternalLink className={s.link} href={shot.link.url}>
-                        {shot.link.label}
-                      </ExternalLink>
-                    </>
-                  ) : null}
-                </p>
-              </figcaption>
-            </figure>
+    <figure className={c.figure}>
+      <div className={c.frame}>
+        <Image
+          src={shot.src}
+          width={shot.width}
+          height={shot.height}
+          alt={shot.alt}
+          sizes="(min-width: 900px) 856px, 100vw"
+        />
+      </div>
+      <figcaption className={c.cap}>
+        <p className={s.eyebrow}>{L.eyebrow}</p>
+        {/* A heading of the use cases, between the uses' h3s and the ways' h3: what the shot shows. */}
+        <h3 className={c.title}>{shot.title}</h3>
+        <p className={c.body}>
+          <KeepRich text={shot.body} />
+        </p>
+        <dl className={c.record}>
+          {CONSOLE_SHOTS.record.map((r) => (
+            <div key={r.term}>
+              <dt>{r.term}</dt>
+              <dd>
+                <KeepRich text={r.value} />
+              </dd>
+            </div>
           ))}
-        </ScrollRegion>
-        <p className={s.shotProof}>
-          {CONSOLE_SHOTS.proof.text}{" "}
-          <Link className={s.link} href={CONSOLE_SHOTS.proof.href}>
-            {CONSOLE_SHOTS.proof.label}
+        </dl>
+        <p className={c.links}>
+          <a className={`${s.link} ${c.link}`} href={shot.src}>
+            {CONSOLE_SHOTS.fullSize}
+            <span className="sr-only">: {shot.title}</span>
+          </a>
+          <Link className={`${s.link} ${c.link}`} href={CONSOLE_SHOTS.open.href}>
+            {CONSOLE_SHOTS.open.label}
+            {NBSP}
+            <span aria-hidden="true">→</span>
           </Link>
         </p>
-        <div className={s.cta}>
-          <Link className={`${s.btn} ${s.solid}`} href={CONSOLE_SHOTS.open.href}>
-            {CONSOLE_SHOTS.open.label}
-          </Link>
-        </div>
-      </div>
-    </section>
+      </figcaption>
+    </figure>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   checkSpendArgs,
   expiryDate,
@@ -29,16 +29,22 @@ import {
   amountLine,
   answerFromRecorded,
   failureKind,
-  hintText,
+  hintParts,
   type LiveCopy,
+  labelled,
   lastAnswer,
   nextAnswer,
   payeeShown,
+  rawPieces,
   type Shown,
   sentenceText,
+  type Tone,
+  utcTime,
   verdictText,
   verdictTone,
 } from "@/lib/site/live-check-view";
+import { Keep, KeepRich, Mark, type OutcomeTone } from "./bits";
+import lc from "./live.module.css";
 import { ScrollRegion } from "./ScrollRegion";
 import s from "./site.module.css";
 
@@ -48,21 +54,103 @@ export interface LiveCheckProps {
   mandates: readonly { id: number; label: string }[];
   copy: LiveCopy;
   codes: Readonly<Record<string, string>>;
-  /** Server-rendered: the explorer link, so that lib/config stays out of this file's first load. */
+  /**
+   * Server-rendered: the explorer link, so that lib/config stays out of this file's first load. It opens the links
+   * under the mandate.
+   */
   explorer: ReactNode;
+  /** The panels' heading level: h3 under a section's h2, h4 inside a block whose head is an h3 (LiveCheck embedded). */
+  level?: 3 | 4;
 }
 
-interface Controls {
+interface Fields {
   mandateId: number;
   amount: string;
   key: KeyChoice;
 }
 
+interface Controls extends Fields {
+  /**
+   * The scenario these fields are: its button sets it, and an edit matches the fields again. The hijack sends the normal
+   * invoice's request, so only its button picks it.
+   */
+  scenario: ScenarioId | null;
+}
+
 const DEFAULT: ScenarioId = "normal";
+/** The signing keys the toggle offers, in its order: the mandate's agent key, then one the vault does not know. */
+const KEYS: readonly KeyChoice[] = ["agent", "other"];
 const asControls = (id: ScenarioId): Controls => {
   const s = SCENARIO_INPUTS.find((x) => x.id === id) ?? SCENARIO_INPUTS[0];
-  return { mandateId: s?.mandateId ?? 1, amount: s?.amount ?? "2", key: s?.key ?? "agent" };
+  return {
+    mandateId: s?.mandateId ?? 1,
+    amount: s?.amount ?? "2",
+    key: s?.key ?? "agent",
+    scenario: s?.id ?? null,
+  };
 };
+/** Fields changed by hand, with the scenario they now match, if any. */
+const edited = ({ mandateId, amount, key }: Fields): Controls => ({
+  mandateId,
+  amount,
+  key,
+  scenario: matchScenario({ mandateId, amount, key }),
+});
+
+/** The answer box's colours by tone: the page's pairs for allowed, refused and held, and a neutral one for none. */
+const TONE_CLASS: Readonly<Record<Tone, string | undefined>> = {
+  pay: lc.pay,
+  hold: lc.hold,
+  refuse: lc.refuse,
+  none: lc.none,
+};
+
+/** Each verdict's tone as the page's outcome mark draws it (bits.tsx Mark). */
+const MARK_TONE: Readonly<Record<Exclude<Tone, "none">, OutcomeTone>> = {
+  pay: "paid",
+  refuse: "refused",
+  hold: "held",
+};
+
+/**
+ * The verdict's mark, the page's outcome shapes: a dot for would pay, a struck circle for refused, a half-filled
+ * circle for held. It is drawn in currentColor, the verdict's own colour, so forced colours reach it too. The word
+ * says it, so the mark is hidden from a screen reader; with no verdict to show (asking, no answer, not an amount)
+ * there is none.
+ */
+function VerdictMark({ tone }: { tone: Tone }) {
+  if (tone === "none") return null;
+  return <Mark tone={MARK_TONE[tone]} className={lc.mark} />;
+}
+
+/** The raw answer as code, with a line break offered after each comma between its members and nowhere else. */
+function Raw({ raw }: { raw: string }) {
+  // Each piece is keyed by where it starts in the answer, which no other piece shares.
+  let start = 0;
+  const pieces = rawPieces(raw).map((piece) => {
+    const at = start;
+    start += piece.length;
+    return (
+      <Fragment key={at}>
+        {at === 0 ? null : <wbr />}
+        {piece}
+      </Fragment>
+    );
+  });
+  return <code>{pieces}</code>;
+}
+
+/** A line of the request preview whose comment, after its last "  // ", is set quieter than the code. */
+function Commented({ line }: { line: string }) {
+  const at = line.lastIndexOf("  // ");
+  if (at < 0) return line;
+  return (
+    <>
+      {line.slice(0, at + 2)}
+      <span className={lc.comment}>{line.slice(at + 2)}</span>
+    </>
+  );
+}
 
 export function LiveCheckClient({
   recorded,
@@ -71,7 +159,9 @@ export function LiveCheckClient({
   copy,
   codes,
   explorer,
+  level = 3,
 }: LiveCheckProps) {
+  const H = level === 4 ? "h4" : "h3";
   const [controls, setControls] = useState<Controls>(asControls(DEFAULT));
   const [shown, setShown] = useState<Shown>({
     kind: "answer",
@@ -122,7 +212,7 @@ export function LiveCheckClient({
         if (checked.status === "rejected") throw checked.reason;
         const check = checked.value;
         const answer: Answer = {
-          request: { mandateId: c.mandateId, units, key: c.key, scenario: matchScenario(c) },
+          request: { mandateId: c.mandateId, units, key: c.key, scenario: c.scenario },
           verdict: parseVerdict(check.value),
           raw: check.value,
           // A mandate that could not be read does not take the verdict down with it: it is shown as unread.
@@ -137,8 +227,7 @@ export function LiveCheckClient({
         );
       } catch (e) {
         if (ctl.signal.aborted || (e instanceof DOMException && e.name === "AbortError")) return;
-        const id = matchScenario(c);
-        const fallback = id === null ? null : answerFromRecorded(recorded, id);
+        const fallback = c.scenario === null ? null : answerFromRecorded(recorded, c.scenario);
         setShown((cur) =>
           nextAnswer(cur, seq.current, {
             seq: mine,
@@ -170,48 +259,36 @@ export function LiveCheckClient({
     else void ask(next);
   };
 
-  const active = matchScenario(controls);
+  const active = controls.scenario;
   const injected = scenarios.find((x) => x.id === active)?.injected;
   const answer = lastAnswer(shown);
   // The panel describes the answer with the request it answers; the controls only drive the request preview.
   const m = answer?.mandate;
   const payee = payeeShown(recorded, controls.mandateId, answer);
   const signerPk = controls.key === "agent" ? agentKeyFor(recorded, controls.mandateId) : OTHER_PK;
-  // The request preview follows the controls, quoting a text that is not an amount as it was typed.
-  const requestHead = [
-    "check_spend({",
-    "  request: {",
-    `    mandate_id: ${controls.mandateId},`,
-    `    ${amountLine(controls.amount, copy)}`,
-    `    ${copy.requestFields},`,
-    "    ",
-  ].join("\n");
-  const requestTail = [
-    `  // ${copy.noRecipient}`,
-    "  },",
-    `  signer_pk: "${signerPk.slice(0, 14)}…"  // ${controls.key === "agent" ? copy.agentKeyNote : copy.otherKeyNote}`,
-    "})",
-  ].join("\n");
   const injectedIds = new Set(scenarios.filter((x) => x.injected !== undefined).map((x) => x.id));
   const badAmount = shown.kind === "failed" && shown.reason === "badAmount";
-  const verdictClass = {
-    pay: s.livePay,
-    hold: s.liveHold,
-    refuse: s.liveRefuse,
-    none: s.liveNone,
-  }[verdictTone(shown)];
+  const tone = verdictTone(shown);
+  const source = hintParts(shown, copy, LIVE_VAULT, utcTime);
+  const method = labelled(copy.method);
+  const rpc = answer?.rpcHost ? labelled(fill(copy.rpc, { host: answer.rpcHost })) : null;
+  // A live answer settles into place once, as the hero's cards do (live.module.css .settle, only under no-preference):
+  // not the recorded answer the page opens with, nor the line while asking. Its own key mounts a new verdict line per
+  // answer, so the animation runs again; the live region around it stays mounted, as a screen reader needs.
+  const settles = shown.kind === "answer" && !shown.answer.recorded;
+  const verdictKey = shown.kind === "answer" ? shown.answer.at : shown.kind;
 
   return (
-    <div className={s.liveGrid}>
-      <div className={s.livePanel}>
-        <h3>{copy.formTitle}</h3>
-        <p className={s.liveHint}>{copy.formHint}</p>
-        <fieldset className={s.scenarios} aria-label={copy.scenariosLabel}>
+    <div className={lc.grid}>
+      <div className={lc.panel}>
+        <H className={lc.title}>{copy.formTitle}</H>
+        <p className={lc.hint}>{copy.formHint}</p>
+        <fieldset className={lc.scenarios} aria-label={copy.scenariosLabel}>
           {scenarios.map((x) => (
             <button
               key={x.id}
               type="button"
-              className={s.scenario}
+              className={lc.scenario}
               aria-pressed={active === x.id}
               onClick={() => change(asControls(x.id as ScenarioId), false)}
             >
@@ -220,143 +297,226 @@ export function LiveCheckClient({
             </button>
           ))}
         </fieldset>
-        <label className={s.field}>
-          <span>{copy.mandateLabel}</span>
-          <select
-            value={controls.mandateId}
-            onChange={(e) => change({ ...controls, mandateId: Number(e.target.value) }, false)}
+
+        {/* The answer, in its tone's own pair of colours: allowed, refused, held, or none yet. */}
+        <div className={`${lc.answer} ${TONE_CLASS[tone]}`}>
+          <H className={lc.answerTitle}>{copy.answerTitle}</H>
+          {/* While a request is out, the region is busy and its last sentence is dimmed: it is not the answer yet. */}
+          <div
+            aria-live="polite"
+            aria-busy={shown.kind === "loading"}
+            className={shown.kind === "loading" ? lc.busy : undefined}
           >
-            {mandates.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className={s.field}>
-          <label htmlFor="live-amount">{copy.amountLabel}</label>
-          <div className={s.amountRow}>
-            <input
-              type="range"
-              min="0.5"
-              max="60"
-              step="0.5"
-              aria-label={copy.amountSlider}
-              value={parseUsdc(controls.amount) === null ? 0 : Number(controls.amount)}
-              onChange={(e) => change({ ...controls, amount: e.target.value }, true)}
-            />
-            <input
-              id="live-amount"
-              inputMode="decimal"
-              aria-invalid={badAmount}
-              aria-describedby={badAmount ? "live-why" : undefined}
-              value={controls.amount}
-              onChange={(e) => change({ ...controls, amount: e.target.value }, true)}
-            />
-            <span>{copy.unit}</span>
+            <p key={verdictKey} className={settles ? `${lc.verdict} ${lc.settle}` : lc.verdict}>
+              <VerdictMark tone={tone} />
+              <span className={lc.word}>{verdictText(shown, copy, injectedIds)}</span>
+            </p>
+            <p id="live-why" className={lc.why}>
+              <Keep text={sentenceText(shown, copy, codes, injectedIds)} />
+            </p>
           </div>
-        </div>
-        <div className={s.field}>
-          <span>{copy.payeeLabel}</span>
-          <div className={s.payee}>
-            <code>
-              {payee === undefined
-                ? copy.payeeUnread
-                : payee === null
-                  ? copy.noPayee
-                  : payeeText(payee)}
-            </code>
-            <span className={s.payeeLock}>{copy.payeeLock}</span>
-          </div>
-        </div>
-        <label className={s.field}>
-          <span>{copy.keyLabel}</span>
-          <select
-            value={controls.key}
-            onChange={(e) => change({ ...controls, key: e.target.value as KeyChoice }, false)}
-          >
-            <option value="agent">{copy.keyAgent}</option>
-            <option value="other">{copy.keyOther}</option>
-          </select>
-        </label>
-        {injected === undefined ? null : (
-          <p className={s.injected}>
-            <b>{copy.injectedLead}</b> "{injected}" {copy.injectedTail} {copy.injectedCanary}{" "}
-            <Link className={s.link} href={copy.injectedCanaryLink.href}>
-              {copy.injectedCanaryLink.label} <span aria-hidden="true">→</span>
-            </Link>
+          {injected === undefined ? null : (
+            <div className={lc.inj}>
+              <p className={lc.injLabel}>{copy.injectedLead}</p>
+              <blockquote className={lc.injQuote}>
+                <p>"{injected}"</p>
+              </blockquote>
+              <p className={lc.injLine}>{copy.injectedTail}</p>
+              <p className={lc.injLine}>{copy.injectedCanary}</p>
+            </div>
+          )}
+          <p className={lc.source}>
+            {source.lead}
+            {source.raw === null ? null : <Raw raw={source.raw} />}
+            {source.tail}
           </p>
-        )}
+          {shown.kind === "failed" && shown.reason !== "badAmount" ? (
+            <button type="button" className={lc.retry} onClick={() => void ask(controls)}>
+              {copy.retry}
+            </button>
+          ) : null}
+        </div>
+
+        {/* The request folds: a native details, so it stays in the page with no JavaScript, under a 44px summary. */}
+        <details className={lc.fold}>
+          <summary id="live-request-cap" className={lc.foldSummary}>
+            {copy.requestLabel}
+          </summary>
+          <div className={lc.foldBody}>
+            <ScrollRegion className={lc.request} labelledBy="live-request-cap">
+              <pre>
+                {"check_spend({\n  request: {\n"}
+                {`    mandate_id: ${controls.mandateId},\n    `}
+                <Commented line={amountLine(controls.amount, copy)} />
+                {`\n    ${copy.requestFields},\n    `}
+                <del className={lc.gone}>{copy.recipientField}</del>
+                {"  "}
+                <span className={lc.comment}>{`// ${copy.noRecipient}`}</span>
+                {`\n  },\n  signer_pk: "${signerPk.slice(0, 14)}…"  `}
+                <span className={lc.comment}>
+                  {`// ${controls.key === "agent" ? copy.agentKeyNote : copy.otherKeyNote}`}
+                </span>
+                {"\n})"}
+              </pre>
+            </ScrollRegion>
+            <dl className={lc.footList}>
+              <div className={lc.footRow}>
+                <dt>{method.label}</dt>
+                <dd>
+                  <KeepRich text={method.value} />
+                </dd>
+              </div>
+              {rpc === null ? null : (
+                <div className={lc.footRow}>
+                  <dt>{rpc.label}</dt>
+                  <dd>{rpc.value}</dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        </details>
       </div>
 
-      <div className={`${s.livePanel} ${s.liveAnswer}`}>
-        <h3>{copy.answerTitle}</h3>
-        <p className={s.liveHint}>
-          {hintText(shown, copy, LIVE_VAULT, (iso) => new Date(iso).toLocaleTimeString())}
-        </p>
-        {/* While a request is out, the region is busy and its last sentence is dimmed: it is not the answer yet. */}
-        <div
-          aria-live="polite"
-          aria-busy={shown.kind === "loading"}
-          className={shown.kind === "loading" ? s.liveBusy : undefined}
-        >
-          <p className={`${s.liveVerdict} ${verdictClass}`}>{verdictText(shown, copy)}</p>
-          <p id="live-why" className={s.liveWhy}>
-            {sentenceText(shown, copy, codes, injectedIds)}
-          </p>
+      <div className={lc.panel}>
+        <div>
+          <label className={lc.field}>
+            <span className={lc.label}>{copy.mandateLabel}</span>
+            <select
+              value={controls.mandateId}
+              onChange={(e) =>
+                change(edited({ ...controls, mandateId: Number(e.target.value) }), false)
+              }
+            >
+              {mandates.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className={lc.field}>
+            <label className={lc.label} htmlFor="live-amount">
+              {copy.amountLabel}
+            </label>
+            <div className={lc.amountRow}>
+              <input
+                type="range"
+                min="0.5"
+                max="60"
+                step="0.5"
+                aria-label={copy.amountSlider}
+                value={parseUsdc(controls.amount) === null ? 0 : Number(controls.amount)}
+                onChange={(e) => change(edited({ ...controls, amount: e.target.value }), true)}
+              />
+              <input
+                id="live-amount"
+                inputMode="decimal"
+                aria-invalid={badAmount}
+                aria-describedby={badAmount ? "live-why" : undefined}
+                value={controls.amount}
+                onChange={(e) => change(edited({ ...controls, amount: e.target.value }), true)}
+              />
+              <span>{copy.unit}</span>
+            </div>
+          </div>
+          <div className={lc.field}>
+            <span className={lc.label}>{copy.payeeLabel}</span>
+            <div>
+              <code className={lc.payee}>
+                {payee === undefined
+                  ? copy.payeeUnread
+                  : payee === null
+                    ? copy.noPayee
+                    : payeeText(payee)}
+              </code>
+              <span className={lc.lockNote}>{copy.payeeLock}</span>
+            </div>
+          </div>
+          {/* Which key signs: one of two, as a pair of pressed buttons, like the scenarios above. */}
+          <div className={lc.field}>
+            <span className={lc.label} id="live-key-label">
+              {copy.keyLabel}
+            </span>
+            <fieldset className={lc.keys} aria-labelledby="live-key-label">
+              {KEYS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={lc.key}
+                  aria-pressed={controls.key === k}
+                  onClick={() => change(edited({ ...controls, key: k }), false)}
+                >
+                  {k === "agent" ? copy.keyAgent : copy.keyOther}
+                </button>
+              ))}
+            </fieldset>
+          </div>
         </div>
-        {shown.kind === "failed" && shown.reason !== "badAmount" ? (
-          <button type="button" className={s.liveRetry} onClick={() => void ask(controls)}>
-            {copy.retry}
-          </button>
-        ) : null}
-        <ScrollRegion className={s.liveRequest} label={copy.requestLabel}>
-          <pre>
-            {requestHead}
-            <del className={s.liveGone}>{copy.recipientField}</del>
-            {requestTail}
-          </pre>
-        </ScrollRegion>
-        <p className={s.liveMeta}>
-          <span>{copy.method.replace(/`/g, "")}</span>
-          {answer?.rpcHost ? <span>{fill(copy.rpc, { host: answer.rpcHost })}</span> : null}
+
+        <div className={lc.mandate}>
+          <H className={lc.mandateTitle}>
+            {fill(copy.mandateTitle, { id: answer?.request.mandateId ?? controls.mandateId })}
+          </H>
+          <p className={lc.mandateHint}>{copy.mandateHint}</p>
+          {m === undefined ? (
+            <p className={lc.empty}>{copy.mandateUnread}</p>
+          ) : m === null ? (
+            <p className={lc.empty}>{copy.noMandate}</p>
+          ) : (
+            // Who is paid and how much first, then how often, until when, with which key and in what state.
+            <dl className={lc.facts}>
+              <div>
+                <dt>{copy.fields.payee}</dt>
+                <dd className={lc.id}>{payeeText(m.payee)}</dd>
+              </div>
+              <div>
+                <dt>{copy.fields.maxPerPayment}</dt>
+                <dd>
+                  {formatUsdc(m.maxPerPayment)} {copy.unit}
+                </dd>
+              </div>
+              <div>
+                <dt>{copy.fields.maxTotal}</dt>
+                <dd>
+                  {fill(copy.left, {
+                    total: formatUsdc(m.maxTotal),
+                    left: formatUsdc(remaining(m)),
+                  })}
+                </dd>
+              </div>
+              <div>
+                <dt>{copy.fields.approvalAbove}</dt>
+                <dd>
+                  {formatUsdc(m.approvalAbove)} {copy.unit}
+                </dd>
+              </div>
+              <div>
+                <dt>{copy.fields.uses}</dt>
+                <dd>{fill(copy.usesOf, { uses: m.uses, max: m.maxUses })}</dd>
+              </div>
+              <div>
+                <dt>{copy.fields.expires}</dt>
+                <dd>{expiryDate(m)}</dd>
+              </div>
+              <div>
+                <dt>{copy.fields.agentPk}</dt>
+                <dd className={lc.id}>{`${m.agentPk.slice(0, 18)}…`}</dd>
+              </div>
+              <div>
+                <dt>{copy.fields.status}</dt>
+                <dd className={lc.id}>{m.status}</dd>
+              </div>
+            </dl>
+          )}
+        </div>
+
+        {/* Where to look further: the vault on the explorer, and the Canary, where a visitor tries to make it pay them. */}
+        <p className={lc.links}>
           {explorer}
+          <Link className={`${s.link} ${lc.liveLink}`} href={copy.injectedCanaryLink.href}>
+            {copy.injectedCanaryLink.label} <span aria-hidden="true">→</span>
+          </Link>
         </p>
-      </div>
-
-      <div className={`${s.livePanel} ${s.liveMandate}`}>
-        <h3>{fill(copy.mandateTitle, { id: answer?.request.mandateId ?? controls.mandateId })}</h3>
-        <p className={s.liveHint}>{copy.mandateHint}</p>
-        {m === undefined ? (
-          <p>{copy.mandateUnread}</p>
-        ) : m === null ? (
-          <p>{copy.noMandate}</p>
-        ) : (
-          <dl className={s.mandateFacts}>
-            <dt>{copy.fields.payee}</dt>
-            <dd>{payeeText(m.payee)}</dd>
-            <dt>{copy.fields.maxPerPayment}</dt>
-            <dd>
-              {formatUsdc(m.maxPerPayment)} {copy.unit}
-            </dd>
-            <dt>{copy.fields.maxTotal}</dt>
-            <dd>
-              {fill(copy.left, { total: formatUsdc(m.maxTotal), left: formatUsdc(remaining(m)) })}
-            </dd>
-            <dt>{copy.fields.uses}</dt>
-            <dd>{fill(copy.usesOf, { uses: m.uses, max: m.maxUses })}</dd>
-            <dt>{copy.fields.approvalAbove}</dt>
-            <dd>
-              {formatUsdc(m.approvalAbove)} {copy.unit}
-            </dd>
-            <dt>{copy.fields.expires}</dt>
-            <dd>{expiryDate(m)}</dd>
-            <dt>{copy.fields.agentPk}</dt>
-            <dd>{`${m.agentPk.slice(0, 18)}…`}</dd>
-            <dt>{copy.fields.status}</dt>
-            <dd>{m.status}</dd>
-          </dl>
-        )}
       </div>
     </div>
   );

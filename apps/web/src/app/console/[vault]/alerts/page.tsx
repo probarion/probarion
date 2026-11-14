@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { AddEmailForm } from "@/components/console/AddEmailForm";
+import { textButtonClass } from "@/components/console/form-look";
 import { TelegramConnect } from "@/components/console/TelegramConnect";
 import { VaultNav } from "@/components/console/VaultNav";
 import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
+import { SubmitButton } from "@/components/pending/SubmitButton";
 import { Badge, Card, Notice } from "@/components/ui";
 import { kindsInWords } from "@/lib/alerts/kinds";
 import { requireMember } from "@/lib/auth/guard";
@@ -95,9 +97,11 @@ export default async function AlertsPage({
                   )}
                   {canChange ? (
                     <form action={removeSubscriptionAction.bind(null, vault, s.id)}>
-                      <button type="submit" className="text-xs text-mute underline">
-                        Remove
-                      </button>
+                      <SubmitButton
+                        label="Remove"
+                        busy="Removing…"
+                        className={`text-xs text-mute ${textButtonClass}`}
+                      />
                     </form>
                   ) : null}
                 </li>

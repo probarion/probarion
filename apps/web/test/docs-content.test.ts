@@ -326,6 +326,9 @@ const CLI_TREE: Readonly<Record<string, readonly string[]>> = {
   ledger: ["set-key", "export"],
   spend: ["approve", "reject"],
   check: [],
+  payee: ["check"],
+  account: ["audit"],
+  tx: ["prove"],
   verify: [],
 };
 

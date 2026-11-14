@@ -1,66 +1,94 @@
 import Link from "next/link";
 import { RouteLink } from "@/components/RouteLink";
-import { ExternalLink } from "@/components/ui";
-import { type CopyPart, HERO, NUMBERS, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
-import { Rich } from "./Rich";
+import { HERO, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
+import { type HeroMainnetView, heroMainnet } from "@/lib/site/hero-mainnet";
+import { KeepLast, KeepRich, Outcome, type OutcomeTone } from "./bits";
+import h from "./hero.module.css";
+import { InkBand } from "./InkBand";
+import { Away, Parts } from "./parts";
+import { ReadChainLink } from "./ReadChainLink";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
-function TxRow({ tx }: { tx: TxFact }) {
+/** A card's transaction: the page's evidence label for its network, then the short hash in mono and its arrow. */
+function TxRow({ tx, label = HERO.txLabel }: { tx: TxFact; label?: string }) {
   return (
     <div>
-      <dt>Tx</dt>
+      <dt>{label}</dt>
       <dd>
-        <ExternalLink className={`${s.link} ${s.cardHash}`} href={tx.url}>
-          {tx.label}
-        </ExternalLink>
+        <Away className={`${s.link} ${s.cardHash}`} href={tx.url} tx={tx.label} />
       </dd>
     </div>
   );
 }
 
-/** A line of copy with links in it: a link to a place on this page stays in the tab, any other opens a new one. */
-function Parts({ parts }: { parts: readonly CopyPart[] }) {
-  return parts.map((p) =>
-    typeof p === "string" ? (
-      <Rich key={p} text={p} />
-    ) : p.href.startsWith("#") ? (
-      <a key={p.href} className={s.link} href={p.href}>
-        {p.label}
-      </a>
-    ) : (
-      <ExternalLink key={p.href} className={s.link} href={p.href}>
-        {p.label}
-      </ExternalLink>
-    ),
+/** A card's label, its last part (a date, an invoice number) kept whole, so that it never breaks at its hyphen. */
+function CardLabel({ text }: { text: string }) {
+  return (
+    <span className={h.cardLabel}>
+      <KeepLast text={text} />
+    </span>
   );
 }
 
-function PaidCard() {
-  const c = HERO.paid;
+/** A card's state, said as every outcome on the page is: its mark and its word, on the card's own ground. */
+function CardState({ tone, children }: { tone: OutcomeTone; children: string }) {
   return (
-    <article className={`${s.card} ${s.metal}`} aria-label={c.aria}>
+    <Outcome tone={tone} className={h.state}>
+      {children}
+    </Outcome>
+  );
+}
+
+/*
+ * Each card has four parts, in this order: its label and state, the amount, the rows, the link. The mainnet card adds a
+ * fifth, its foot line. From 621px the two cards share those rows of the pair's grid, so that their labels, amounts,
+ * rows and links line up.
+ */
+
+/**
+ * The mainnet payout an attested model proposed (HERO.s2), from the recorded payouts. Its link scrolls to #mainnet and,
+ * with JavaScript, reads that payout's chain there. Its foot is the online check of the model's TEE evidence, and its
+ * limit.
+ */
+function MainnetCard({ c }: { c: HeroMainnetView }) {
+  const R = HERO.s2.rows;
+  return (
+    <article className={`${s.card} ${s.metal} ${h.paid}`} aria-label={c.aria}>
       <div className={s.cardTop}>
-        <span>{c.label}</span>
-        <span className={s.state}>{c.state}</span>
+        <CardLabel text={c.label} />
+        <CardState tone="paid">{c.state}</CardState>
       </div>
       <div className={s.cardBig}>{c.big}</div>
-      <dl className={s.rows}>
+      <dl className={`${s.rows} ${h.cardRows}`}>
         <div>
-          <dt>Vault</dt>
+          <dt>{R.vault}</dt>
           <dd>{c.vault}</dd>
         </div>
         <div>
-          <dt>Payee</dt>
+          <dt>{R.payee}</dt>
           <dd>{c.payee}</dd>
         </div>
         <div>
-          <dt>Event</dt>
-          <dd>
-            <code>{c.event}</code>
-          </dd>
+          <dt>{R.arrived}</dt>
+          <dd>{c.arrived}</dd>
         </div>
-        <TxRow tx={c.tx} />
+        <div>
+          <dt>{R.model}</dt>
+          <dd>{c.model}</dd>
+        </div>
+        <TxRow tx={c.tx} label={R.tx} />
       </dl>
+      <ReadChainLink
+        payoutId={c.payoutId}
+        href={c.read.href}
+        className={`${s.link} ${s.cardLink} ${h.cardEnd}`}
+      >
+        {c.read.label} <span aria-hidden="true">→</span>
+      </ReadChainLink>
+      <p className={h.cardFoot}>
+        <Parts parts={c.tee} />
+      </p>
     </article>
   );
 }
@@ -68,13 +96,13 @@ function PaidCard() {
 function RefusedCard() {
   const c = HERO.refused;
   return (
-    <article className={`${s.card} ${s.obsidian}`} aria-label={c.aria}>
+    <article className={`${s.card} ${s.obsidian} ${h.canary}`} aria-label={c.aria}>
       <div className={s.cardTop}>
-        <span>{c.label}</span>
-        <span className={s.state}>{c.state}</span>
+        <CardLabel text={c.label} />
+        <CardState tone="refused">{c.state}</CardState>
       </div>
       <div className={s.cardBig}>{c.big}</div>
-      <dl className={s.rows}>
+      <dl className={`${s.rows} ${h.cardRows}`}>
         <div>
           <dt>Vault</dt>
           <dd>{c.vault}</dd>
@@ -95,7 +123,7 @@ function RefusedCard() {
         </div>
         <TxRow tx={c.tx} />
       </dl>
-      <Link className={`${s.link} ${s.cardLink}`} href={c.tryIt.href}>
+      <Link className={`${s.link} ${s.cardLink} ${h.cardEnd}`} href={c.tryIt.href}>
         {c.tryIt.label} <span aria-hidden="true">→</span>
       </Link>
     </article>
@@ -103,15 +131,20 @@ function RefusedCard() {
 }
 
 export function Hero() {
+  const s2 = heroMainnet();
   return (
-    <section className={s.hero}>
+    <section className={h.hero}>
       <div className={s.wrap}>
         <p className={`${s.eyebrow} ${s.heroEyebrow}`}>{HERO.eyebrow}</p>
         <h1 className={s.h1}>
           <span>{HERO.line1}</span> <span className={s.gold}>{HERO.line2}</span>
         </h1>
-        <div className={s.heroGrid}>
-          <div>
+        {/*
+         * Two parts: the lede, its two buttons and the quiet line under them, then the cards. On one column (1100px and
+         * below) a phone reaches the mainnet card right after the quiet line; from 1101px the cards sit beside the lede.
+         */}
+        <div className={h.heroGrid}>
+          <div className={h.leadCol}>
             <p className={s.lede}>{HERO.lede}</p>
             <div className={s.cta}>
               <a className={`${s.btn} ${s.solid} ${s.big}`} href="#try">
@@ -120,20 +153,23 @@ export function Hero() {
               <RouteLink route={HERO.docs.route} className={`${s.btn} ${s.big}`}>
                 {HERO.docs.label}
               </RouteLink>
-              <Link className={`${s.link} ${s.ctaLink}`} href={STORY.proof.href}>
+            </div>
+            <p className={h.quiet}>
+              <Link className={`${s.link} ${h.quietLink}`} href={STORY.proof.href}>
                 {HERO.verify} <span aria-hidden="true">→</span>
               </Link>
-            </div>
-            <p className={s.fineprint}>
-              <Parts parts={HERO.fineprint} />
+              <Away
+                className={`${s.link} ${h.quietLink}`}
+                href={HERO.demo.href}
+                label={HERO.demo.label}
+              />
             </p>
           </div>
-          <div className={s.duel}>
-            <PaidCard />
+          {/* The caption is first in the source and above both cards at every width. */}
+          <div className={h.duel}>
+            <p className={h.cap}>{HERO.both.lead}</p>
+            {s2 === null ? null : <MainnetCard c={s2} />}
             <RefusedCard />
-            <p className={s.duelNote}>
-              <Rich text={HERO.note} />
-            </p>
           </div>
         </div>
       </div>
@@ -141,59 +177,55 @@ export function Hero() {
   );
 }
 
+/**
+ * The problem: an agent with its own key beside one with a mandate, the line that says why a cap is not enough (its
+ * docs page carries the comparison table), then the payee panel (#payee), the one place the payee is told at length.
+ */
 export function Problem() {
   return (
-    <section className={s.section} id="problem">
-      <div className={s.wrap}>
-        <p className={s.eyebrow}>{PROBLEM.eyebrow}</p>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{PROBLEM.title}</h2>
-          <p>{PROBLEM.sub}</p>
+    <LandingSection
+      id="problem"
+      head={{ eyebrow: PROBLEM.eyebrow, title: PROBLEM.title, lede: PROBLEM.sub }}
+    >
+      <div className={s.vs}>
+        <div className={s.vsCol}>
+          <h3>{PROBLEM.withoutTitle}</h3>
+          <ul>
+            {PROBLEM.without.map((line) => (
+              <li key={line}>
+                <span className={s.vsNo} role="img" aria-label={PROBLEM.noLabel}>
+                  ✕
+                </span>
+                <span>
+                  <KeepRich text={line} />
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
-        <div className={s.vs}>
-          <div className={s.vsCol}>
-            <h3>{PROBLEM.withoutTitle}</h3>
-            <ul>
-              {PROBLEM.without.map((line) => (
-                <li key={line}>
-                  <span className={s.vsNo} role="img" aria-label={PROBLEM.noLabel}>
-                    ✕
-                  </span>
-                  <span>
-                    <Rich text={line} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className={`${s.vsCol} ${s.vsWith}`}>
-            <h3>{PROBLEM.withTitle}</h3>
-            <ul>
-              {PROBLEM.with.map((line) => (
-                <li key={line}>
-                  <span className={s.vsYes} role="img" aria-label={PROBLEM.yesLabel}>
-                    ✓
-                  </span>
-                  <span>
-                    <Rich text={line} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-        <div className={s.numbers}>
-          {NUMBERS.map(({ name, value, rest }) => (
-            <div key={name}>
-              <b>{value}</b>
-              <p>
-                <strong>{name}</strong>
-                <Rich text={rest} />
-              </p>
-            </div>
-          ))}
+        <div className={`${s.vsCol} ${s.vsWith}`}>
+          <h3>{PROBLEM.withTitle}</h3>
+          <ul>
+            {PROBLEM.with.map((line) => (
+              <li key={line}>
+                <span className={s.vsYes} role="img" aria-label={PROBLEM.yesLabel}>
+                  ✓
+                </span>
+                <span>
+                  <KeepRich text={line} />
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
-    </section>
+      <div className={s.pull}>
+        <p className={s.pullLine}>{PROBLEM.pull.text}</p>
+        <Link className={`${s.link} ${s.pullLink}`} href={PROBLEM.pull.link.href}>
+          {PROBLEM.pull.link.label} <span aria-hidden="true">→</span>
+        </Link>
+      </div>
+      <InkBand />
+    </LandingSection>
   );
 }

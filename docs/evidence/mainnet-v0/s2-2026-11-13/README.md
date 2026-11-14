@@ -19,8 +19,9 @@ that names the mandate's Base address and no NEAR account. All 16 code rules pas
 decision, plus `model.refused` and `model.low_confidence`. Before the SDK counted the answer, it checked the model's
 evidence with A1 to A7 (the signature, the response, the recorded proposal and the attestation report agree with
 each other and with ledger position 4) and with A8 (the request rebuilt from the invoice text). The TDX quote and the
-GPU evidence are checked by `verify --online` (O1 and O2), which has not run on this decision, and the TEE
-measurement is not pinned, so this does not show which model image ran.
+GPU evidence are checked by `verify --online` (O1 and O2), which had not run on this decision when this record was
+written ([it passed later that day](#the-online-check-2026-11-13)), and the TEE measurement is not pinned, so this
+does not show which model image ran.
 
 **The payee rule's later changes were not exercised.** Round 1's refusals came from a NEAR account in the model's payee
 hint ([why round 1 was rules-only](../s1-2026-11-13/README.md#why-the-payout-was-decided-rules-only)). This hint
@@ -117,6 +118,7 @@ Spend 3 burned 15.36 Tgas, 0.001424 NEAR, summed over the transaction and its re
 | [`ledger-2026-11-13.jsonl`](ledger-2026-11-13.jsonl) | The vault's signed ledger, entries 0 to 5, byte for byte as the run wrote it |
 | [`snapshot-2026-11-13.json`](snapshot-2026-11-13.json) | The chain data and ledger the verifier read at 11:41:25 UTC |
 | [`verify-2026-11-13.txt`](verify-2026-11-13.txt), [`verify-2026-11-13.json`](verify-2026-11-13.json) | The verifier's output with the ledger and the two invoice texts: as text, the live run at 11:41:26 UTC, and as JSON, the kit's offline report on the snapshot that run wrote, at 11:41:27 UTC. The invoices line names the files' paths on the owner's machine; the committed copies are [`../s1-2026-11-13/invoice-INV-M002.txt`](../s1-2026-11-13/invoice-INV-M002.txt) and [`invoice-INV-M003.txt`](invoice-INV-M003.txt), with the same sha256 (`bd45f232…` and `c2461348…`) |
+| [`verify-online-2026-11-13.txt`](verify-online-2026-11-13.txt) | The verifier's output of a later read-only run with `--online`, at 17:52 UTC on 2026-11-13 ([the online check](#the-online-check-2026-11-13)) |
 | [`invoice-INV-M003.txt`](invoice-INV-M003.txt), [`po-PO-M003.txt`](po-PO-M003.txt) | The invoice and the purchase order, whose sha256 are on chain |
 | [`outcome-20261113T114028Z.json`](outcome-20261113T114028Z.json) | What the kit recorded for the cycle: `burned`, the model's proposal, its tokens and attempts, and the model rules |
 | [`spend-decision-20261113T114124Z.json`](spend-decision-20261113T114124Z.json) | The decision behind spend 3, as the kit read it: entry 4, `allow`, `model+rules`, attested |
@@ -189,3 +191,14 @@ near contract call-function as-read-only v0.probarion.near get_mandate json-args
 The transactions are also in [`contracts/deployments/mainnet.json`](../../../../contracts/deployments/mainnet.json)
 (mandate 3, spend 3 and the Base transfer) and in [`docs/mainnet-proof.json`](../../../mainnet-proof.json) (the three
 NEAR ones, with the Base transfer as spend 3's `base_tx`).
+
+## The online check, 2026-11-13
+
+On 2026-11-13 at 17:52 UTC a later read-only run of the command in [Check it](#check-it), with `--online` added and
+`--snapshot` to a scratch file, passed O1 and O2 for all three attested decisions, entries 0, 1 and 4
+([output](verify-online-2026-11-13.txt)). It printed `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`.
+Check e: the three pass A1 to A7 and A8, and online it found 3 DCAP-genuine TDX quotes bound to their requests (O1:
+debug off, an accepted TCB status, report_data matches) and 3 GPU payloads bound to the request nonce and verified by
+NVIDIA NRAS (O2). The measurement is not pinned, so O1 does not show which image ran, and `quote_verified` stays false.
+That run's snapshot is not committed. The CLI runs O1 and O2 in a live run with `--online`, and its `verify --offline`
+refuses `--online`, so the offline command above checks the recorded snapshot of 11:41:25 UTC without them.

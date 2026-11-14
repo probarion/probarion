@@ -1,0 +1,150 @@
+/*
+ * The hero (Hero.tsx): the headline, then the lede, its two buttons and a quiet line under them (the demo vault's proof
+ * page, the demo video); beside them the caption and the two cards. On one column (1100px and below) the cards come
+ * right after the quiet line. The cards' own look (.card, .metal, .obsidian, .rows, .cardLink) stays in
+ * site.module.css; this module lays the section out and lines the two cards up. Every colour is a token from
+ * app/globals.css, and nothing moves on scroll.
+ */
+
+/*
+ * Like every section, it owns G (--space-section) of paper below itself. Less paper above the eyebrow and under the
+ * headline than a section has (at most 44px each), so that the cards start near the first screen.
+ */
+.hero {
+  padding-block: clamp(24px, 3.2vw, 44px) var(--space-section);
+}
+/*
+ * Two columns from 1101px: the lede on the left, the cards on two thirds of the row, so that the Canary card, the
+ * narrower of the two, holds "50 test USDC" and its vault on one line each. The lede keeps 340px, the width of its two
+ * buttons on one row. At 1100px and below, one column: the cards then take the whole row, under the quiet line.
+ */
+.heroGrid {
+  display: grid;
+  grid-template-columns: minmax(340px, 4fr) minmax(0, 8fr);
+  column-gap: clamp(32px, 5vw, 72px);
+  margin-top: clamp(28px, 3vw, 44px);
+  align-items: start;
+}
+.leadCol {
+  min-width: 0;
+}
+/*
+ * The quiet line under the buttons: two light links, each a 44px touch target. Each is a flex item, so its words keep
+ * their spaces, and its padding makes it as tall as the target.
+ */
+.quiet {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 24px;
+  margin-top: 10px;
+}
+.quietLink {
+  padding-block: 11px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.quietLink:hover {
+  color: var(--color-ink);
+}
+
+/* A card's state: the page's outcome (bits.tsx Outcome), its mark in the card's own tone. Two classes, so that the
+   card's tone wins over the mark's default whatever order the modules load in. */
+.paid .state,
+.canary .state {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-fg);
+}
+.canary .state {
+  --mark: var(--color-band-bad);
+}
+/* A card's new-tab arrow (bits.tsx NewTab) in the card's own mute, which reads on its gold or obsidian ground. */
+.paid,
+.canary {
+  --ext: var(--c-mute);
+}
+/* The mainnet card's foot: the online check of the model's TEE evidence, and its limit, under a rule of its own. */
+.cardFoot {
+  padding-top: 12px;
+  border-top: 1px solid var(--c-line);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--c-mute);
+  text-wrap: pretty;
+}
+
+/*
+ * The pair. The shared caption is first in the source and sits above both cards at every width. From 621px the two
+ * cards sit side by side on one grid, the mainnet card on about 7/12 of it: each card's parts (label and state, amount,
+ * rows, link, then the mainnet card's foot) take the same rows (subgrid), so the labels, the amounts, the rows and the
+ * links line up.
+ */
+.duel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+}
+.cardLabel {
+  min-width: 0;
+}
+.cap {
+  max-width: var(--container-measure);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.55;
+  color: var(--color-ink);
+}
+
+/*
+ * Two classes in each selector that overrides a card rule of site.module.css (.card's flex column, .cardLink's
+ * alignment), so it wins whatever order the two modules load in. Below 621px the cards stay the flex columns they are.
+ */
+@media (min-width: 621px) {
+  .duel {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    grid-template-rows: auto repeat(5, auto);
+    grid-template-areas: "cap cap" "paid canary" "paid canary" "paid canary" "paid canary" "paid canary";
+    column-gap: 14px;
+    row-gap: 0;
+  }
+  .duel > .paid,
+  .duel > .canary {
+    display: grid;
+    grid-template-rows: subgrid;
+    row-gap: 18px;
+    align-content: start;
+  }
+  /* The Canary card has a 1px edge; the paid card gets a clear one, so their rows start at the same height. */
+  .duel > .paid {
+    grid-area: paid;
+    border: 1px solid transparent;
+  }
+  .duel > .canary {
+    grid-area: canary;
+  }
+  .duel > .cap {
+    grid-area: cap;
+    margin-bottom: 14px;
+    padding-inline: 4px;
+  }
+  .duel .cardRows {
+    align-self: start;
+  }
+  .duel .cardEnd {
+    align-self: end;
+    justify-self: start;
+  }
+}
+@media (max-width: 1100px) {
+  .heroGrid {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: clamp(32px, 5vw, 72px);
+  }
+}
+@media (max-width: 620px) {
+  .duel {
+    gap: 12px;
+  }
+}

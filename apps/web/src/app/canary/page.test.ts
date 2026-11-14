@@ -195,12 +195,20 @@ describe("the live page", () => {
     const html = await page();
     const text = visible(html);
     expect(text).toContain("Public challenge · NEAR testnet");
-    expect(html).toMatch(/<h1[^>]*>Make the agent pay you<\/h1>/);
     expect(text).toContain(
       "The Canary's model believes what you write and is told to pay. It only proposes. Code rules and a NEAR contract decide what moves. Try to get a payment to anyone other than its one payee.",
     );
     expect(html).toMatch(/<a[^>]*href="\/canary\/rules"[^>]*>Rules<\/a>/);
     expect(text).toContain("Testnet: test tokens, no value");
+  });
+
+  it("titles the contract in live mode, and the code in code-only mode, where nothing reaches the contract", async () => {
+    mocks.env.mockReturnValue(env({ CANARY_MODE: "live" }));
+    expect(await page()).toMatch(/<h1[^>]*>Fool the model\. Watch the contract say no\.<\/h1>/);
+    mocks.env.mockReturnValue(env({ CANARY_MODE: "code-only" }));
+    const html = await page();
+    expect(html).toMatch(/<h1[^>]*>Fool the model\. Watch the code say no\.<\/h1>/);
+    expect(visible(html)).toContain("Code only today");
   });
 
   it("has no link to a proof page: the Canary's ledger is private, so a visitor would get a 404", async () => {
@@ -212,15 +220,16 @@ describe("the live page", () => {
     expect([...pills.matchAll(/<a\b/g)]).toHaveLength(1);
   });
 
-  it("shows the sections in the owner's order", async () => {
+  it("shows the sections in the owner's order: the attempt first, right under the title", async () => {
     const text = visible(await page());
     const order = [
-      "Make the agent pay you",
-      "The vault, read from the chain",
-      "Paid to an attacker: 0, by construction",
+      "Fool the model. Watch the code say no.",
       "Your attempt",
+      "At least 4 visitors have made 31 attempts so far, plus 3 by the team.",
       "Try one:",
       "Your message to the agent",
+      "The vault, read from the chain",
+      "Paid to an attacker: 0, by construction",
       "Replay · 2026-11-10 · our own attempt on NEAR testnet",
       "The model was fooled. Nothing moved.",
       "Scoreboard",
@@ -230,6 +239,51 @@ describe("the live page", () => {
     ].map((t) => text.indexOf(t));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it("has the attempt as the first card after the header, with nothing between the title and it", async () => {
+    const html = await page();
+    const afterHeader = html.slice(html.indexOf("</header>") + "</header>".length);
+    expect(afterHeader).toMatch(/^<section[^>]*><h2[^>]*>Your attempt<\/h2>/);
+  });
+
+  it("puts one line over the form, from the board it reads: the team's rehearsals, then 1 and many visitors, the team apart", async () => {
+    const cases: [Record<string, number>, string][] = [
+      [
+        { browsers: 0, addresses: 0, attempts_external: 0, attempts_team: 6, raw_external: 0 },
+        "The team has run 6 rehearsal attempts. Your turn: try to get paid.",
+      ],
+      [
+        { browsers: 0, addresses: 0, attempts_external: 0, attempts_team: 0, raw_external: 0 },
+        "Your turn: try to get paid.",
+      ],
+      [
+        { browsers: 1, addresses: 1, attempts_external: 2, attempts_team: 6, raw_external: 1 },
+        "At least 1 visitor has made 2 attempts so far, plus 6 by the team.",
+      ],
+      [
+        { browsers: 40, addresses: 25, attempts_external: 90, attempts_team: 6, raw_external: 7 },
+        "At least 25 visitors have made 90 attempts so far, plus 6 by the team.",
+      ],
+    ];
+    for (const [counts, line] of cases) {
+      mocks.board.mockResolvedValue(parseBoard({ ...counts, techniques: [], contract_codes: [] }));
+      const text = visible(await page());
+      const at = text.indexOf(line);
+      expect(at, line).toBeGreaterThan(text.indexOf("Your attempt"));
+      expect(at, line).toBeLessThan(text.indexOf("Try one:"));
+      expect(text, line).not.toMatch(/\b0 visitors?\b|Be the first|all by the team/);
+      // The form draws it, so that it can drop it once the visitor's own attempt is answered (CanaryForm).
+      expect(form.props.at(-1)?.tally, line).toBe(line);
+    }
+  });
+
+  it("puts no line over the form, and guesses no count, when the board cannot be read", async () => {
+    mocks.board.mockResolvedValue(null);
+    const text = visible(await page());
+    expect(text).not.toMatch(/so far|rehearsal attempts?\.|Your turn/);
+    expect(text).toContain("Your message to the agent");
+    expect(form.props.at(-1)?.tally).toBeNull();
   });
 
   it("shows the replay of 2026-11-10 under the form in live mode and in code-only mode, on both networks", async () => {
@@ -412,9 +466,11 @@ describe("the live page when something cannot be read", () => {
     expect(text).toContain("Your message to the agent");
   });
 
-  it("says there are no attempts yet when the feed is empty", async () => {
+  it("says where attempts appear when the feed is empty, with no zero", async () => {
     mocks.feed.mockResolvedValue([]);
-    expect(visible(await page())).toContain("No attempts yet. Be the first.");
+    const text = visible(await page());
+    expect(text).toContain("Attempts appear here as they come in.");
+    expect(text).not.toMatch(/No attempts yet|Be the first/);
   });
 });
 
@@ -518,7 +574,7 @@ describe("the replay states", () => {
     const html = await page();
     const text = visible(html);
     expect(text).toContain("The live Canary is not open yet.");
-    expect(text).toContain("Make the agent pay you");
+    expect(text).toContain("Fool the model. Watch the contract say no.");
     expect(text).toContain("Public challenge · NEAR testnet");
     expect(html).toMatch(/<a[^>]*href="\/canary\/rules"/);
     for (const t of NOT_HERE) expect(text).not.toContain(t);

@@ -14,7 +14,8 @@ yoctoNEAR, the printed command carries it.
 
 Three commands only read: `check` dry-runs a spend against the vault's own rules, `verify` checks a
 vault's ledger against the chain (or a saved snapshot, with no network at all), and `ledger export`
-copies the ledger. They do not sign or send anything either.
+copies the ledger. They do not sign or send anything either. Nor do `payee check`, `account audit` and
+`tx prove`, which are in the CLI built from this repository and not in release 0.1.1 on npm.
 
 ## Install
 
@@ -245,3 +246,97 @@ The flags:
 
 `ledger export --out <file>` writes the ledger as JSONL, one entry per line. It reads the same
 `--ledger` file as verify. It refuses an `--out` file that already exists, and the ledger itself.
+
+## Check a payee
+
+`payee check` is in the CLI built from this repository; release 0.1.1 on npm does not have it. It
+reads the chain and prints `ALLOW`, `WARN` or `BLOCK` for one payee, with one reason per check. Run
+it before you write a payee into a mandate: the agent's `spend` call has no address field, so a
+mandate is where a payee enters.
+
+```text
+node packages/cli/dist/bin.js payee check near:vendor.testnet --vault <vault>
+node packages/cli/dist/bin.js payee check base:0x... --network mainnet --vault <vault> --json
+```
+
+| Check | Finding | Level |
+|---|---|---|
+| exists | no NEAR account by that name | block |
+| exists | an implicit account (64 hex, or `0x` and 40 hex) with no funds yet (a transfer creates it) | warn |
+| blocklist | on the seed list, `packages/core/src/payee-blocklist.json` | block |
+| lookalike | looks like a payee of `--vault`: the same first 4 and last 4 characters (Base and implicit NEAR hex, lowercased; Solana in exact case), one or two edits apart (account ids of 6 characters or more, counting the `.near` or `.testnet` ending, so nearly every named account), or the same after reading rn as m, l as 1 and o as 0 | block |
+| contract | the NEAR code hash is not `1111…1`, or Base `eth_getCode` is not `0x` (a Safe is a contract too) | warn |
+| new | NEAR: no account at a block about 7 days back, on FastNEAR's archival node. Base: nonce 0, a weaker sign (no transaction sent yet; a nonce does not show age) | warn |
+| code changed | NEAR: the code differs from the block about 7 days back | warn |
+| past payments | the vault has not paid it before: set `--approval-above 0` on its mandate | warn |
+
+- A check that passes adds an info line, so the output says what was read. A read that fails or
+  times out (3 seconds a request, 15 seconds in all) is unknown, and an unknown is a warning: the
+  check does not answer `ALLOW` on a read it could not make.
+- Without `--vault` (or `PROBARION_VAULT_ID`), past payments and lookalikes are not checked, and
+  that is a warning too. Solana payees are not read, and Base is read on mainnet only (a testnet
+  vault pays Base through a stub), so those checks are unknown there.
+- Two payees of one vault that look alike block each other. The owner can still sign the mandate:
+  the check changes nothing on chain.
+- The blocklist is a seed. Today it holds two testnet names that Probarion's own eval cases and
+  test fixtures use as the attacker's account. Probarion does not hold them, neither had an account
+  on testnet on 2026-11-13 UTC, and neither has a report of wrongdoing. To add a payee, open a pull
+  request to that file with public evidence (the "Report a payee" issue form says what to include).
+- The verdict is advice for the owner and changes nothing on chain. `--archival-rpc` and
+  `--base-rpc` choose the nodes it reads.
+
+| Exit code | `payee check` |
+|---|---|
+| 0 | allow: every check passed |
+| 2 | warn: confirm something with the payee first, or a signal could not be read |
+| 1 | block, or the check could not run (`error:` on stderr) |
+| 64 | usage error: a malformed payee or flag |
+
+## Audit an account, prove a transaction
+
+`account audit` and `tx prove` are in the CLI built from this repository; release 0.1.1 on npm does
+not have them. They run the NEAR primitives of
+[`@probarion/near`](https://github.com/probarion/probarion/tree/main/packages/near) on any NEAR account
+or transaction, read views and proofs over JSON-RPC, and sign nothing.
+
+```text
+node packages/cli/dist/bin.js --network mainnet account audit v0.probarion.near --vault-policy
+node packages/cli/dist/bin.js --network mainnet tx prove BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9 --signer v0.probarion.near
+```
+
+`account audit <account>` reads `view_account` at the final block and `view_access_key_list` at that
+block, and says what each access key can do if it leaks: full access, receiver and methods, the
+allowance for gas, and gas keys. A permission it cannot read counts as full access. It also reads the
+account's code identity (its own code, or a NEP-591 global contract by hash or by publisher account)
+and, with `--builds <file>` (a code-hashes record such as `contracts/code-hashes.json`, or a list),
+whether the code is a recorded build. The output names the block it read.
+
+- `--vault-policy` holds the account to a Probarion vault's keys: function-call keys on the account
+  itself for `spend` or `anchor`, each with a limited allowance and no gas key, and the code to the
+  recorded vault builds (`KNOWN_VAULT_CODE_HASHES` of `@probarion/core`; for a factory vault on a
+  factory version outside that list, pass the factory's builds with `--builds`). It does not pin the
+  anchor key to the vault's ledger key, and says so: `probarion verify` (check f) does.
+- `--json` prints the report, with amounts as decimal strings.
+
+`tx prove <tx-hash> --signer <account>` reads the head block on one RPC origin and matches its hash,
+height and `block_merkle_root` on another, reads the transaction, then fetches a `light_client_proof`
+for it and for every receipt it led to, and verifies each one under that head. It prints each proven
+outcome (id, executor, the block that commits it, status) with the NEP-297 events it logged. A failed
+receipt is proven too, as a failure. A `tx` answer that leaves out a receipt a proven outcome created is
+refused.
+
+- `--head-rpc <urls>` takes URLs on at least two origins (default: `--rpc`, `NEAR_RPC_URLS`, then the
+  network defaults); testnet's defaults are on one origin, so give two there.
+- `--archival-rpc <urls>` chooses the archival nodes for the transaction and its proofs (default:
+  `NEAR_ARCHIVAL_RPC_URLS`, then FastNEAR's archival node).
+- The head is trusted, not proven: validator signatures are not checked. Two providers run by
+  different operators lower that trust; they do not remove it. The output names the origins it read.
+- An event speaks for a token when its executor is that token's contract; the output says so.
+- `--json` prints the head, the origins and the proven outcomes, with amounts as decimal strings.
+
+| Exit code | `account audit` | `tx prove` |
+|---|---|---|
+| 0 | locked, and the policy and the recorded build match when given | proven: the transaction and every receipt it led to |
+| 2 | locked, with a warning to read (a key for any method, an unlimited allowance) | |
+| 1 | not locked, a blocking finding, or the account could not be read (`error:` on stderr) | not proven (a proof did not verify, or the `tx` answer left out a receipt), the two head providers disagree, or a read failed (`error:` on stderr) |
+| 64 | usage error: a malformed account or flag, or a `--builds` file that cannot be read | usage error: a malformed hash, account or flag, or head URLs on fewer than two origins |

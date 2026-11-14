@@ -44,9 +44,9 @@ describe("the published packages", () => {
     expect(description).toMatch(/near-cli-rs/);
   });
 
-  it("export ./testing from the sdk, and only that, next to the root entry", () => {
+  it("export ./payee and ./testing from the sdk, next to the root entry", () => {
     const sdk = json("packages/sdk/package.json") as { exports: Record<string, unknown> };
-    expect(Object.keys(sdk.exports)).toEqual([".", "./testing"]);
+    expect(Object.keys(sdk.exports)).toEqual([".", "./payee", "./testing"]);
   });
 
   it("are built without source maps, because src/ is not part of the tarball", () => {
@@ -342,6 +342,12 @@ const PACKAGE_PINNED: Record<string, PinnedScripts> = {
     typecheck: "tsc -p tsconfig.json",
     lint: null,
   },
+  "packages/near/package.json": {
+    test: "vitest run",
+    build: PACKAGE_BUILD,
+    typecheck: "tsc -p tsconfig.json",
+    lint: null,
+  },
   "apps/extension/package.json": {
     test: "vitest run",
     build: "node scripts/build.mjs",
@@ -362,10 +368,11 @@ const PACKAGE_PINNED: Record<string, PinnedScripts> = {
   },
 };
 
-/** The one script allowed to use `||`: the publish guard of the four published packages, exactly. */
+/** The one script allowed to use `||`: the publish guard of the five published packages, exactly. */
 const PREPUBLISH_GUARD =
   "node -e \"if(process.env.CI!=='true'||process.env.GITHUB_WORKFLOW!=='release'){console.error('Refusing to publish: only the GitHub release workflow publishes. Push a tag such as sdk-v0.1.0 instead.');process.exit(1)}\"";
 const GUARDED = [
+  "packages/near/package.json",
   "packages/core/package.json",
   "packages/sdk/package.json",
   "packages/cli/package.json",
@@ -485,7 +492,7 @@ function gateProblems(repo: Repo): string[] {
       for (const [pattern, label] of SWALLOWS) {
         if (pattern.test(script)) {
           fail(
-            `${file}: scripts["${name}"] contains ${label}, which lets a failure pass; review the change (only the four pinned prepublishOnly guards may use "||")`,
+            `${file}: scripts["${name}"] contains ${label}, which lets a failure pass; review the change (only the five pinned prepublishOnly guards may use "||")`,
           );
         }
       }
@@ -700,7 +707,7 @@ const GATE_MUTATIONS: Array<[string, (r: Repo) => void, string[]]> = [
     ],
   ],
   [
-    "the guard copied into a package that is not one of the four",
+    "the guard copied into a package that is not one of the five",
     (r) => {
       scriptsIn(r, "apps/web/package.json").prepublishOnly = PREPUBLISH_GUARD;
     },

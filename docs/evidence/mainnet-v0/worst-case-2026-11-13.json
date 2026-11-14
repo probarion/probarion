@@ -1,0 +1,91 @@
+{
+  "what": "The worst case on v0.probarion.near, read live with read-only view calls. Nothing was signed or sent.",
+  "network": "mainnet",
+  "vault": "v0.probarion.near",
+  "read_at_utc": "2026-11-13T19:01:50Z",
+  "block_height": 224404547,
+  "finality": "final",
+  "rpc": "https://rpc.mainnet.fastnear.com",
+  "how_to_read_again": [
+    "curl -s https://rpc.mainnet.fastnear.com -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"call_function\",\"finality\":\"final\",\"account_id\":\"v0.probarion.near\",\"method_name\":\"list_mandates\",\"args_base64\":\"eyJmcm9tX2luZGV4IjowLCJsaW1pdCI6MTB9\"}}'",
+    "curl -s https://rpc.mainnet.fastnear.com -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"view_access_key_list\",\"finality\":\"final\",\"account_id\":\"v0.probarion.near\"}}'"
+  ],
+  "excerpt": "Fields the worst case does not depend on are left out: mandates 2 and 3, mandate 1 and get_config are abridged. The how_to_read_again commands, and get_config called the same way, return the full answers.",
+  "note": "A call_function result is the JSON answer as a byte array; decode it as UTF-8 to read it. Allowances are in yoctoNEAR (10^24 per NEAR); USDC amounts in its 6-decimal base units.",
+  "get_config": {
+    "owner": "probarion.near",
+    "approvers": ["probarion-duong.near"],
+    "usdc": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+    "daily_backstop": "500000000",
+    "frozen": false,
+    "factory": null,
+    "ledger_key": "ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK"
+  },
+  "list_mandates": [
+    {
+      "id": 1,
+      "payee": { "type": "near", "account_id": "probarion-duong.near" },
+      "max_per_payment": "1000000",
+      "max_total": "2000000",
+      "spent": "1000000",
+      "reserved": "0",
+      "max_uses": 2,
+      "uses": 1,
+      "expires_at_ns": "1801353600000000000",
+      "approval_above": "1000000",
+      "agent_pk": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+      "status": "active"
+    },
+    {
+      "id": 2,
+      "payee": { "type": "intents", "chain": "base", "address": "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27" },
+      "max_total": "1000000",
+      "spent": "1000000",
+      "max_uses": 1,
+      "uses": 1,
+      "status": "exhausted"
+    },
+    {
+      "id": 3,
+      "payee": { "type": "intents", "chain": "base", "address": "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27" },
+      "max_total": "250000",
+      "spent": "250000",
+      "max_uses": 1,
+      "uses": 1,
+      "status": "exhausted"
+    }
+  ],
+  "get_mandate_4": null,
+  "view_access_key_list": [
+    {
+      "public_key": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+      "method_names": ["spend"],
+      "receiver_id": "v0.probarion.near",
+      "allowance": "246219350238132600000000"
+    },
+    {
+      "public_key": "ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK",
+      "method_names": ["anchor"],
+      "receiver_id": "v0.probarion.near",
+      "allowance": "249188678733602700000000"
+    }
+  ],
+  "full_access_keys": 0,
+  "usdc_ft_balance_of": "2000000",
+  "intents_mt_balance_of": {
+    "read_at_utc": "2026-11-13T19:08:20Z",
+    "block_height": 224405198,
+    "token_id": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+    "balance": "249823",
+    "note": "Base USDC inside intents.near. No active mandate pays an Intents payee, so spend cannot move it."
+  },
+  "view_account": {
+    "amount": "3005311481325344299999999",
+    "storage_usage": 252878,
+    "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1"
+  },
+  "worst_case": {
+    "agent_key_public": "At most 1 USDC (mandate 1: 1 USDC and 1 payment left, not above its approval_above of 1 USDC), to probarion-duong.near, the owner's own wallet, plus at most 0.2462 NEAR of the vault's NEAR burned as gas, the agent key's allowance. Mandates 2 and 3 have nothing left, and there is no mandate 4.",
+    "ledger_key_public": "No USDC: the key can call anchor only. At most 0.2492 NEAR burned as gas, its allowance, and forged ledger entries."
+  }
+}

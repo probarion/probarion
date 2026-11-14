@@ -8,11 +8,14 @@ today.
 NEAR testnet with test tokens. Since 2026-11-11 one mainnet vault, `v0.probarion.near`, holds a small
 amount of real USDC. Its owner signed every transaction that created or configured it and every
 transfer that funded it; on 2026-11-13 1Click settled a swap into the vault's Intents balance with its
-own `intents.near` transaction. The vault has made one NEAR payment and one refusal ([the run](README.md#near-mainnet-2026-11-11)). On
+own `intents.near` transaction. On 2026-11-11 the vault made one NEAR payment and one refusal ([the run](README.md#near-mainnet-2026-11-11)). On
 2026-11-13 it made two Base payouts through NEAR Intents, both tests to the owner's own Base address: 1.00 USDC
 decided by code rules alone ([the run](README.md#near-mainnet-2026-11-13-s1-a-base-payout)), then 0.25 USDC decided
 by an attested model and the code rules ([the run](README.md#near-mainnet-2026-11-13-s2-an-attested-base-payout)).
-Since the 1.00 USDC run its decisions are in a signed ledger anchored on the vault.
+Since the 1.00 USDC run its decisions are in a signed ledger anchored on the vault. On 2026-11-14, in a drill the team
+rehearsed, it refused two more spends on chain, one over mandate 1's 1 USDC cap and one sent while the owner had
+frozen it, also over that cap, so neither could have paid even if the vault had not been frozen; no USDC moved
+([the drill](docs/evidence/mainnet-v0/drill-2026-11-14/README.md)).
 
 ## Supported versions
 
@@ -201,8 +204,9 @@ snapshot of the ledger and the chain:
   ([evidence of the second](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)).
   On NEAR mainnet, the ledger of `v0.probarion.near` holds 3 attested decisions of 2026-11-13,
   which pass A1 to A7 and, with the two invoice texts, A8 offline
-  ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)). `verify --online` has
-  not run on them, so O1 and O2 have not checked their TDX quotes or GPU evidence. Code refused the
+  ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)). A later live run with
+  `--online` the same day, at 17:52 UTC, passed O1 and O2 on all three
+  ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)). Code refused the
   two of S1, and the third, entry 4, led to a payment in real USDC: spend 3, a 0.25 USDC test to the
   owner's own Base address, of which 0.2476 USDC arrived after the bridge fee
   ([the run](docs/evidence/mainnet-v0/s2-2026-11-13/README.md)).

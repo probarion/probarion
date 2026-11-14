@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Network } from "@/lib/config";
+import { TESTED } from "@/lib/site/tested";
 import {
   definitions,
   deltaText,
@@ -36,7 +37,8 @@ function allCopy(): string[] {
     updatedLine("2026-11-06T10:15:30.123456+00:00"),
     deltaText(3),
     deltaText(1234),
-    pilotsLine({ external: 2, team: 1, canary: 0 }),
+    pilotsLine({ external: 2, team: 1, canary: 3 }) ?? "",
+    pilotsLine({ external: 2, team: 1, canary: 0 }) ?? "",
     USAGE_COPY.pilots.named,
     priceLine({ model: "m", source: "price list read on 2026-11-06" }),
     tokensCell(1234.4),
@@ -99,7 +101,7 @@ describe("the header, as the owner approved it", () => {
   it("has the title and the lede word for word", () => {
     expect(USAGE_COPY.head.title).toBe("Usage, counted apart");
     expect(USAGE_COPY.head.lede).toBe(
-      "Team vaults, external owners and Canary participants are counted separately. These are counts, not dollar volumes, so nothing here comes from the team paying itself. Every payment is on chain.",
+      "Team vaults, external owners and Canary participants are counted separately. These are counts, not dollar volumes, so the team paying itself adds no volume to them. Every payment is on chain.",
     );
   });
 
@@ -194,10 +196,18 @@ describe("the unit costs", () => {
 });
 
 describe("the pilots", () => {
-  it("counts each cohort, external first, as the owner approved", () => {
-    expect(pilotsLine({ external: 2, team: 1, canary: 0 })).toBe("External 2 · Team 1 · Canary 0");
+  it("counts each cohort that has a pilot, external first, as the owner approved, and leaves out a cohort with none", () => {
+    expect(pilotsLine({ external: 2, team: 1, canary: 3 })).toBe("External 2 · Team 1 · Canary 3");
+    expect(pilotsLine({ external: 2, team: 1, canary: 0 })).toBe("External 2 · Team 1");
+    expect(pilotsLine({ external: 0, team: 1, canary: 0 })).toBe("Team 1");
+    expect(pilotsLine({ external: 1234, team: 0, canary: 0 })).toBe("External 1,234");
     expect(USAGE_COPY.pilots.title).toBe("Pilots, by cohort");
     expect(USAGE_COPY.pilots.named).toBe("Named with written consent:");
+  });
+
+  it("has no line, and so no zero, while no cohort has a pilot", () => {
+    expect(pilotsLine({ external: 0, team: 0, canary: 0 })).toBeNull();
+    expect(USAGE_COPY.pilots.titleNone).toBe("Pilots");
   });
 });
 
@@ -214,7 +224,7 @@ describe("how each number is counted", () => {
     for (const n of NETWORKS) {
       const s = sentences(n);
       expect(s).toContain(
-        "These are counts, not dollar volumes. Amounts are not added up, so nothing here comes from the team paying itself.",
+        "These are counts, not dollar volumes. Amounts are not added up, so the team paying itself adds no volume to them.",
       );
       expect(
         s.some((x) =>
@@ -223,13 +233,27 @@ describe("how each number is counted", () => {
           ),
         ),
       ).toBe(true);
-      expect(s).toContain("Vaults: a vault counts on the day it was registered.");
+      expect(s).toContain(
+        'Vaults: a vault counts on the day it was registered in the console. The card "How far it is tested" reads the team\'s testnet vaults from the chain, registered here or not, so its counts differ from these.',
+      );
+      // The card it names is the one on this page, by its title.
+      expect(s.join(" ")).toContain(`"${TESTED.cardTitle}"`);
       expect(
         s.some((x) =>
           x.startsWith("Refused on chain: a spend the contract refused, with its transaction."),
         ),
       ).toBe(true);
       expect(text(n)).toContain("has no transaction and is not counted here");
+    }
+  });
+
+  it("says that an outside count appears once it is above zero, and that the team's counts are always shown", () => {
+    for (const n of NETWORKS) {
+      expect(sentences(n)).toContain(
+        "The team's counts are always shown. External owners, Canary participants and pilots, with their columns and tiles, appear once their count is above zero. The Canary vault and its mandate, which the team set up, do not show the Canary column on their own.",
+      );
+      // The method is stated with no zero in it.
+      expect(text(n)).not.toMatch(/\b0\b/);
     }
   });
 
@@ -259,15 +283,17 @@ describe("how each number is counted", () => {
 
   it("says which network the page counts, and that the other one is counted apart", () => {
     expect(networkSentence("testnet")).toBe(
-      "This page counts NEAR testnet only, with test tokens. Activity on the other NEAR network is counted apart and is not added in.",
+      "The live counts are for NEAR testnet only, with test tokens. Activity on the other NEAR network is counted apart and is not added in.",
     );
     expect(networkSentence("mainnet")).toBe(
-      "This page counts NEAR mainnet only. Activity on the other NEAR network is counted apart and is not added in.",
+      "The live counts are for NEAR mainnet only. Activity on the other NEAR network is counted apart and is not added in.",
     );
     for (const n of NETWORKS) expect(sentences(n)).toContain(networkSentence(n));
   });
 
-  it("does not mention mainnet in a testnet build", () => {
+  // A testnet page also shows the mainnet record and what it costs, from the committed evidence: their words are in
+  // components/usage/MainnetSections.tsx, and MainnetSections.test.ts holds them.
+  it("keeps mainnet out of the counts' copy of a testnet build", () => {
     expect(allCopy().length).toBeGreaterThan(20);
     const testnet = [
       eyebrow("testnet"),

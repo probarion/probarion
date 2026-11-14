@@ -128,3 +128,12 @@ Read on 2026-11-12, public material only:
   release `os-image-mr`.
 - The KMS contracts, <https://github.com/nearai/near-kms>.
 - The third-party review, <https://github.com/teemoonai/audits/tree/main/manifests/measured>.
+
+## Update, 2026-11-13: the landing row's new words
+
+Since the landing change of 2026-11-13 (CHANGELOG, Unreleased), the landing page row reads "Checked online on
+testnet and mainnet, image not pinned". It names mainnet because, at 17:52 UTC that day, a read-only
+`verify --online` passed O1 and O2 on the 3 attested decisions of `v0.probarion.near`
+([output](evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)). The finding above is unchanged: no
+measurement register records the model's images, so this does not show which model image ran. The row's words are
+live on probarion.xyz only after the next deploy.

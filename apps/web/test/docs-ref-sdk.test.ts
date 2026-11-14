@@ -514,6 +514,30 @@ const VALUE_CHECKS: readonly (readonly [
       return ["FastNEAR", "for mainnet and for testnet"];
     },
   ],
+  [
+    "sdk-payee_archival_rpc_urls",
+    (m) => {
+      const all = record(m.PAYEE_ARCHIVAL_RPC_URLS);
+      expect(Object.keys(all).sort(), "the payee archival networks").toEqual([
+        "mainnet",
+        "testnet",
+      ]);
+      for (const url of Object.values(all).flatMap(strs)) {
+        expect(new URL(url).hostname, "a payee archival RPC host").toMatch(/\.fastnear\.com$/);
+      }
+      return ["FastNEAR's archival node per network"];
+    },
+  ],
+  [
+    "sdk-payee_base_rpc_urls",
+    (m) => {
+      const all = record(m.PAYEE_BASE_RPC_URLS);
+      expect(all.testnet, "no Base RPC for testnet").toBeNull();
+      return [`${code(str(all.mainnet))} on mainnet`, "`null` on testnet"];
+    },
+  ],
+  ["sdk-payee_signals_timeout_ms", (m) => [`${num(m.PAYEE_SIGNALS_TIMEOUT_MS)}: `]],
+  ["sdk-payee_signals_budget_ms", (m) => [`${num(m.PAYEE_SIGNALS_BUDGET_MS)}: `]],
   ["sdk-testing-scenario_vault", (_, t) => [code(str(t.SCENARIO_VAULT))]],
   ["sdk-testing-createscenariochain", (_, t) => [code(str(t.SCENARIO_VAULT))]],
   ["sdk-testing-scenario_approver", (_, t) => [code(str(t.SCENARIO_APPROVER))]],

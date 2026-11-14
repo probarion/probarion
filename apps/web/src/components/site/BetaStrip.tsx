@@ -8,7 +8,9 @@ import { useBrowserNetwork } from "./useBrowserNetwork";
 /**
  * What the strip says for a network, or only what is true on both while `network` is null (the server render and the
  * first paint: the network is named once the address bar has been read). Wide screens get one row; a phone gets the
- * first sentence, which opens to the rest with no JavaScript (audit P1-10). CSS shows one of the two.
+ * first sentence, which opens to the rest with no JavaScript (audit P1-10). CSS shows one of the two. On testnet the
+ * mainnet vault's sentence follows the first one: a link on a wide screen, and text in a phone's summary (a summary holds
+ * no link), whose opened part starts with the link.
  */
 export function BetaStripView({ network }: { network: Network | null }) {
   const copy = betaStrip(network);
@@ -18,6 +20,16 @@ export function BetaStripView({ network }: { network: Network | null }) {
       {copy.first.slice(copy.bold.length)}
     </>
   );
+  const vault = copy.mainnet;
+  const mainnet = (label: string) =>
+    vault === null ? null : (
+      <>
+        <a className={s.betaLink} href={vault.href}>
+          {label}
+        </a>
+        .
+      </>
+    );
   const rest = (
     <>
       {copy.custody}{" "}
@@ -29,12 +41,21 @@ export function BetaStripView({ network }: { network: Network | null }) {
   return (
     <aside className={s.beta} aria-label="Beta notice">
       <div className={`${s.wrap} ${s.betaRow} ${s.betaWide}`}>
-        <span>{first}</span>
+        <span>
+          {first}
+          {vault === null ? null : <> {mainnet(vault.label)}</>}
+        </span>
         <span>{rest}</span>
       </div>
       <details className={`${s.wrap} ${s.betaNarrow}`}>
-        <summary>{first}</summary>
-        <p>{rest}</p>
+        <summary>
+          {first}
+          {vault === null ? null : ` ${vault.label}.`}
+        </summary>
+        <p>
+          {vault === null ? null : <>{mainnet(vault.open)} </>}
+          {rest}
+        </p>
       </details>
     </aside>
   );

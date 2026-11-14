@@ -381,6 +381,8 @@ export interface VerifyView {
   tone: Tone;
   counts: string;
   attested: string | null;
+  /** A later run of the same ledger with --online, dated, with its output: null for the runs it did not repeat. */
+  later: CopyPart[] | null;
   foot: string;
   /** The run's text output in the evidence folder; `sr` names the payout for a screen reader. */
   output: { label: string; href: string; sr: string };
@@ -424,6 +426,10 @@ export function verifyView(p: Payout, payouts: readonly Payout[]): VerifyView {
       skipped: v.skipped,
     }),
     attested: attested === 0 ? null : fill(attested === 1 ? A.one : A.many, { attested }),
+    later:
+      p.vault === C.verify.later.vault && v.entries === C.verify.later.entries
+        ? [...C.verify.later.parts]
+        : null,
     foot: C.verify.foot,
     output: { label: C.verify.output, href: repoFileUrl(p.files.verify), sr: ownName(p) },
     link: C.verify.link,

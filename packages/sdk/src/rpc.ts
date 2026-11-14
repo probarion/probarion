@@ -32,6 +32,11 @@ export interface ViewAccountResult {
    * `code_hash` and its real code identity here.
    */
   global_contract_hash: string | null;
+  /**
+   * NEP-591: the account whose global contract this account uses, when it names one by account id
+   * instead of by hash. Present only then (RPC omits the field otherwise).
+   */
+  global_contract_account_id?: string;
   storage_usage: number;
 }
 
@@ -295,6 +300,11 @@ function isMissingTarget(error: unknown, causes: readonly string[]): boolean {
   if (!(error instanceof RpcError) || !isRecord(error.rpcError)) return false;
   const cause = error.rpcError.cause;
   return isRecord(cause) && typeof cause.name === "string" && causes.includes(cause.name);
+}
+
+/** True when `error` is the node's answer that the account is not there, in either answer form (see `viewAccount`). */
+export function isUnknownAccountError(error: unknown): boolean {
+  return isMissingTarget(error, ["UNKNOWN_ACCOUNT"]);
 }
 
 /** R6 (NEP-591): an account's code identity is its global contract hash when it has one, else its code hash. */
@@ -626,10 +636,15 @@ export class RpcClient {
     return { public_key: publicKey, permission: parsed.permission };
   }
 
-  async viewAccount(accountId: string): Promise<ViewAccountResult> {
+  /**
+   * The account at final, or at block `blockId` (an archival node answers for old blocks). A missing account is an
+   * `RpcError` that `isUnknownAccountError` recognises; a block height with no block is one whose `rpcError.cause`
+   * names `UNKNOWN_BLOCK`.
+   */
+  async viewAccount(accountId: string, blockId?: number): Promise<ViewAccountResult> {
     const result = await this.call<unknown>("query", {
       request_type: "view_account",
-      finality: "final",
+      ...(blockId === undefined ? { finality: "final" } : { block_id: blockId }),
       account_id: accountId,
     });
     if (MISSING_ACCOUNT_RE.test(legacyErrorText(result) ?? "")) {
@@ -657,11 +672,22 @@ export class RpcClient {
     ) {
       throw new RpcMalformedError(`view_account ${accountId}: malformed global_contract_hash`);
     }
+    const globalAccount = result.global_contract_account_id;
+    if (
+      globalAccount !== undefined &&
+      globalAccount !== null &&
+      (typeof globalAccount !== "string" || globalAccount.length === 0)
+    ) {
+      throw new RpcMalformedError(
+        `view_account ${accountId}: malformed global_contract_account_id`,
+      );
+    }
     return {
       amount,
       locked,
       code_hash: result.code_hash,
       global_contract_hash: globalHash ?? null,
+      ...(typeof globalAccount === "string" ? { global_contract_account_id: globalAccount } : {}),
       storage_usage: storage,
     };
   }

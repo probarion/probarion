@@ -59,7 +59,8 @@ export function manifestFor({ version, dev }) {
     host_permissions: hosts,
     content_scripts: [
       {
-        matches: hosts.map((h) => `${h.slice(0, -2)}/extension*`),
+        // The /extension page, with or without a query: `/extension*` would also match /extensions or /extension/x.
+        matches: hosts.map((h) => `${h.slice(0, -2)}/extension`).flatMap((p) => [p, `${p}?*`]),
         js: ["content.js"],
         run_at: "document_idle",
       },

@@ -61,6 +61,9 @@ import AlertsPage, { metadata } from "./page";
 
 const logs = quietLogs();
 
+/** A Remove button: its label is the last text in it, inside its busy label's spans (components/pending). */
+const REMOVE = />Remove(?:<\/span>)*<\/button>/;
+
 const V = "acme.vaults.probarion.near";
 const OTHER = "other.vaults.probarion.near";
 const CANARY = "canary.vaults.probarion.near";
@@ -248,7 +251,7 @@ describe("the alerts page", () => {
     expect(out).toContain(">Telegram</span>");
     expect((out.match(/>on<\/span>/g) ?? []).length).toBe(2);
     expect(out).toContain(">waiting for confirmation</span>");
-    expect((out.match(/>Remove<\/button>/g) ?? []).length).toBe(3);
+    expect((out.match(new RegExp(REMOVE, "g")) ?? []).length).toBe(3);
     expect(out).toContain(
       "a spend waits for approval, the contract refuses a spend, a spend is paid",
     );
@@ -300,7 +303,7 @@ describe("the alerts page", () => {
     expect(out).toContain("Alerts · you are approver");
     expect(out).toContain("Send confirmation");
     expect(out).toContain("Create a Telegram link");
-    expect(out).toContain(">Remove</button>");
+    expect(out).toMatch(REMOVE);
   });
 
   it("shows a viewer a masked target and an owner or approver the whole one: an address as its first letter and domain, a chat as its last 2 digits", async () => {
@@ -353,7 +356,7 @@ describe("the alerts page", () => {
     expect(out).toContain("Only the vault's owners and approvers can add or remove alerts.");
     expect(out).not.toContain("Send confirmation");
     expect(out).not.toContain("Create a Telegram link");
-    expect(out).not.toContain(">Remove</button>");
+    expect(out).not.toMatch(REMOVE);
     expect(out).not.toContain("<form");
   });
 

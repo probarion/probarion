@@ -1,0 +1,20 @@
+{
+  "_source": "Reference logs, not chain data: the expected log strings of the unit tests in near-contract-standards 5.29.1 (crates.io, MIT OR Apache-2.0, https://github.com/near/near-sdk-rs), src/non_fungible_token/events.rs (NEP-171 nft_mint, nft_burn, nft_transfer, single and batch) and src/fungible_token/events.rs (NEP-141 ft_mint, ft_burn, ft_transfer), each copied byte for byte on 2026-11-14 from the crate source in the local cargo registry (no network) and keyed by its Rust test function name. These are the logs the reference Rust implementation writes; the NEP-171 text itself was not re-read for this fixture. The repository has no NFT transaction of its own.",
+  "crate": "near-contract-standards 5.29.1",
+  "nep171": {
+    "nft_mint": "EVENT_JSON:{\"standard\":\"nep171\",\"version\":\"1.0.0\",\"event\":\"nft_mint\",\"data\":[{\"owner_id\":\"bob\",\"token_ids\":[\"0\",\"1\"]}]}",
+    "nft_mints": "EVENT_JSON:{\"standard\":\"nep171\",\"version\":\"1.0.0\",\"event\":\"nft_mint\",\"data\":[{\"owner_id\":\"bob\",\"token_ids\":[\"0\",\"1\"]},{\"owner_id\":\"alice\",\"token_ids\":[\"2\",\"3\"],\"memo\":\"has memo\"}]}",
+    "nft_burn": "EVENT_JSON:{\"standard\":\"nep171\",\"version\":\"1.0.0\",\"event\":\"nft_burn\",\"data\":[{\"owner_id\":\"bob\",\"token_ids\":[\"0\",\"1\"]}]}",
+    "nft_burns": "EVENT_JSON:{\"standard\":\"nep171\",\"version\":\"1.0.0\",\"event\":\"nft_burn\",\"data\":[{\"owner_id\":\"alice\",\"token_ids\":[\"2\",\"3\"],\"authorized_id\":\"bob\",\"memo\":\"has memo\"},{\"owner_id\":\"bob\",\"token_ids\":[\"0\",\"1\"]}]}",
+    "nft_transfer": "EVENT_JSON:{\"standard\":\"nep171\",\"version\":\"1.0.0\",\"event\":\"nft_transfer\",\"data\":[{\"old_owner_id\":\"bob\",\"new_owner_id\":\"alice\",\"token_ids\":[\"0\",\"1\"]}]}",
+    "nft_transfers": "EVENT_JSON:{\"standard\":\"nep171\",\"version\":\"1.0.0\",\"event\":\"nft_transfer\",\"data\":[{\"old_owner_id\":\"alice\",\"new_owner_id\":\"bob\",\"token_ids\":[\"2\",\"3\"],\"authorized_id\":\"bob\",\"memo\":\"has memo\"},{\"old_owner_id\":\"bob\",\"new_owner_id\":\"alice\",\"token_ids\":[\"0\",\"1\"]}]}"
+  },
+  "nep141": {
+    "ft_mint": "EVENT_JSON:{\"standard\":\"nep141\",\"version\":\"1.0.0\",\"event\":\"ft_mint\",\"data\":[{\"owner_id\":\"bob\",\"amount\":\"100\"}]}",
+    "ft_mints": "EVENT_JSON:{\"standard\":\"nep141\",\"version\":\"1.0.0\",\"event\":\"ft_mint\",\"data\":[{\"owner_id\":\"bob\",\"amount\":\"100\"},{\"owner_id\":\"alice\",\"amount\":\"200\",\"memo\":\"has memo\"}]}",
+    "ft_burn": "EVENT_JSON:{\"standard\":\"nep141\",\"version\":\"1.0.0\",\"event\":\"ft_burn\",\"data\":[{\"owner_id\":\"bob\",\"amount\":\"100\"}]}",
+    "ft_burns": "EVENT_JSON:{\"standard\":\"nep141\",\"version\":\"1.0.0\",\"event\":\"ft_burn\",\"data\":[{\"owner_id\":\"alice\",\"amount\":\"200\",\"memo\":\"has memo\"},{\"owner_id\":\"bob\",\"amount\":\"100\"}]}",
+    "ft_transfer": "EVENT_JSON:{\"standard\":\"nep141\",\"version\":\"1.0.0\",\"event\":\"ft_transfer\",\"data\":[{\"old_owner_id\":\"bob\",\"new_owner_id\":\"alice\",\"amount\":\"100\"}]}",
+    "ft_transfers": "EVENT_JSON:{\"standard\":\"nep141\",\"version\":\"1.0.0\",\"event\":\"ft_transfer\",\"data\":[{\"old_owner_id\":\"alice\",\"new_owner_id\":\"bob\",\"amount\":\"200\",\"memo\":\"has memo\"},{\"old_owner_id\":\"bob\",\"new_owner_id\":\"alice\",\"amount\":\"100\"}]}"
+  }
+}

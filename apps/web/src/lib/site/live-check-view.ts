@@ -60,7 +60,19 @@ export type LiveCopy = typeof LIVE_CHECK.copy;
 
 export type LiveCopyShape = Pick<
   LiveCopy,
-  "wouldPay" | "wouldPayUnknownPayee" | "held" | "hijackTail" | "unknownCode"
+  | "wouldPay"
+  | "wouldPayUnknownPayee"
+  | "held"
+  | "hijackTail"
+  | "unknownCode"
+  | "injectedPaid"
+  | "injectedPaidUnknownPayee"
+>;
+
+/** The words that name a verdict: allow, warn, block, and the hijack's allow. */
+export type VerdictCopy = Pick<
+  LiveCopy,
+  "verdictPay" | "verdictHold" | "verdictBlock" | "verdictInjected"
 >;
 
 /** The payee the panel shows for the chosen mandate. A payee never changes on chain, so the recorded one is right. */
@@ -127,6 +139,12 @@ export function explain(
   const amount = formatUsdc(a.request.units);
   if (a.verdict.ok) {
     if (a.verdict.wouldHold) return copy.held;
+    // A hijacked prompt the contract allows still pays only the mandate's payee: the sentence says who gets nothing.
+    if (injected) {
+      return a.mandate == null
+        ? fill(copy.injectedPaidUnknownPayee, { amount })
+        : fill(copy.injectedPaid, { amount, payee: payeeText(a.mandate.payee) });
+    }
     return a.mandate == null
       ? fill(copy.wouldPayUnknownPayee, { amount })
       : fill(copy.wouldPay, { amount, payee: payeeText(a.mandate.payee) });
@@ -141,10 +159,19 @@ export function explain(
   return `${said} ${fill(copy.hijackTail, { max, payee: payeeText(a.mandate.payee) })}`;
 }
 
-/** The verdict as one word: what the contract said, or the pay and held words. */
-export function verdictWord(a: Answer, copy: Pick<LiveCopy, "verdictPay" | "verdictHold">): string {
-  if (!a.verdict.ok) return a.verdict.code ?? "";
-  return a.verdict.wouldHold ? copy.verdictHold : copy.verdictPay;
+/**
+ * The verdict in a few words: allow, warn (an approver decides) or block with the contract's code. An allow for a
+ * hijacked prompt (`injected`) says the attacker gets nothing, so it never reads as the attack going through.
+ */
+export function verdictWord(a: Answer, copy: VerdictCopy, injected = false): string {
+  if (!a.verdict.ok) return fill(copy.verdictBlock, { code: a.verdict.code ?? "" });
+  if (a.verdict.wouldHold) return copy.verdictHold;
+  return injected ? copy.verdictInjected : copy.verdictPay;
+}
+
+/** Whether an answer is to a scenario whose invoice text carries a hijack. */
+export function isInjected(a: Answer, injectedIds: ReadonlySet<string>): boolean {
+  return a.request.scenario !== null && injectedIds.has(a.request.scenario);
 }
 
 export type Tone = "pay" | "hold" | "refuse" | "none";
@@ -155,13 +182,14 @@ export type Tone = "pay" | "hold" | "refuse" | "none";
  */
 export function verdictText(
   shown: Shown,
-  copy: Pick<LiveCopy, "verdictPay" | "verdictHold" | "noAnswer" | "notAmountTitle" | "waiting">,
+  copy: VerdictCopy & Pick<LiveCopy, "noAnswer" | "notAmountTitle" | "waiting">,
+  injectedIds: ReadonlySet<string> = new Set(),
 ): string {
   if (shown.kind === "failed" && shown.reason === "badAmount") return copy.notAmountTitle;
   if (shown.kind === "loading") return copy.waiting;
   const a = lastAnswer(shown);
   if (a === null) return copy.noAnswer;
-  return verdictWord(a, copy);
+  return verdictWord(a, copy, isInjected(a, injectedIds));
 }
 
 export function verdictTone(shown: Shown): Tone {
@@ -192,34 +220,94 @@ export function sentenceText(
       ? copy.failedAnswerNoRecord
       : copy.failedNoRecord;
   }
-  const said = explain(
-    a,
-    a.request.scenario !== null && injectedIds.has(a.request.scenario),
-    copy,
-    codes,
-  );
+  const said = explain(a, isInjected(a, injectedIds), copy, codes);
   if (shown.kind !== "failed") return said;
   return `${shown.reason === "answer" ? copy.failedAnswer : copy.failed} ${said}`;
 }
 
-/** The line above the headline: where the answer came from. Empty when there is no answer to describe. */
+/**
+ * The line under the verdict, in parts: the words before the raw answer, the raw answer itself (null when there is
+ * none to show), and any words after it. The panel sets the raw answer as code, so the template is cut at its `{raw}`
+ * slot before it is filled: nothing is cut out of a filled sentence.
+ */
+export interface HintParts {
+  lead: string;
+  raw: string | null;
+  tail: string;
+}
+
+const NO_HINT: HintParts = { lead: "", raw: null, tail: "" };
+
+export function hintParts(
+  shown: Shown,
+  copy: Pick<LiveCopy, "asking" | "answeredAt" | "recordedAt">,
+  vault: string,
+  timeOf: (iso: string) => string,
+): HintParts {
+  if (shown.kind === "loading") return { ...NO_HINT, lead: fill(copy.asking, { vault }) };
+  if (shown.kind === "failed" && shown.reason === "badAmount") return NO_HINT;
+  const a = lastAnswer(shown);
+  if (a === null) return NO_HINT;
+  const template = a.recorded ? copy.recordedAt : copy.answeredAt;
+  const vars = { vault, block: a.blockHeight, date: a.at.slice(0, 10), time: timeOf(a.at) };
+  const slot = template.indexOf("{raw}");
+  if (slot < 0) return { ...NO_HINT, lead: fill(template, vars) };
+  return {
+    lead: fill(template.slice(0, slot), vars),
+    raw: String(JSON.stringify(a.raw)),
+    tail: fill(template.slice(slot + "{raw}".length), vars),
+  };
+}
+
+/**
+ * The line under the verdict as one string: where the answer came from. Empty when there is no answer to describe.
+ * Test-only: the client renders hintParts, and live-check-view.test.ts reads the line through this to hold its words.
+ */
 export function hintText(
   shown: Shown,
   copy: Pick<LiveCopy, "asking" | "answeredAt" | "recordedAt">,
   vault: string,
   timeOf: (iso: string) => string,
 ): string {
-  if (shown.kind === "loading") return fill(copy.asking, { vault });
-  if (shown.kind === "failed" && shown.reason === "badAmount") return "";
-  const a = lastAnswer(shown);
-  if (a === null) return "";
-  return fill(a.recorded ? copy.recordedAt : copy.answeredAt, {
-    vault,
-    block: a.blockHeight,
-    date: a.at.slice(0, 10),
-    time: timeOf(a.at),
-    raw: JSON.stringify(a.raw),
-  });
+  const p = hintParts(shown, copy, vault, timeOf);
+  return `${p.lead}${p.raw ?? ""}${p.tail}`;
+}
+
+/**
+ * A raw JSON answer cut after each comma between its members, so the panel can offer a line break there and nowhere
+ * else. A comma inside a string stays where it is. The pieces join back to the input.
+ */
+export function rawPieces(raw: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  let inString = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === ",") {
+      out.push(raw.slice(start, i + 1));
+      start = i + 1;
+    }
+  }
+  if (start < raw.length) out.push(raw.slice(start));
+  return out;
+}
+
+/** An ISO time as the page shows it, in UTC, to the second: the copy says UTC after it. */
+export function utcTime(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toISOString().slice(11, 19);
+}
+
+/** A line of copy that names a thing, then gives it ("Method: ...", "RPC: ..."), cut at its first ": ". */
+export function labelled(line: string): { label: string; value: string } {
+  const at = line.indexOf(": ");
+  return at < 0
+    ? { label: "", value: line }
+    : { label: line.slice(0, at), value: line.slice(at + 2) };
 }
 
 /** What to show after an answer arrives: only the answer to the latest request counts. */

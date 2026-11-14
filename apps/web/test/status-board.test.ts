@@ -1,7 +1,7 @@
 // The landing's status board (components/site/StatusBoard.tsx): every row stands on a status row, every mark is held to
 // the words of the record that backs it, every evidence link to a named constant and its source, and the copy to the
 // site's rules. Nothing here fetches: links are checked against the repository and the transactions it records.
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import GithubSlugger from "github-slugger";
@@ -10,8 +10,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import { StatusBoard } from "@/components/site/StatusBoard";
+import b from "@/components/site/status.module.css";
 import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { explorerTxUrl } from "@/lib/config";
+import { PAGES, pageFile } from "@/lib/docs/registry";
 import { REPO_URL } from "@/lib/proof/cli";
 import {
   BASE_TX,
@@ -21,7 +23,6 @@ import {
   type BoardItem,
   type BoardPart,
   boardEntries,
-  COMPARE,
   CONSOLE_ROUTE,
   DEMO_PROOF,
   EVIDENCE_KINDS,
@@ -29,6 +30,7 @@ import {
   HERO,
   INTEGRATE,
   LINKS,
+  MAINNET_DRILL_ON,
   MAINNET_TX,
   type ProofMark,
   proofOfParts,
@@ -48,6 +50,15 @@ import {
 import { linkProblem } from "./docs-helpers";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
+/** INV-2001 on the testnet demo vault, the transaction the invoice story and the Payables row link. */
+const DEMO_PAID_TX: TxFact = (() => {
+  const [link] = STORY.invoices[0].evidence.tx as readonly { label: string; url: string }[];
+  return {
+    hash: link?.url.split("/").pop() ?? "?",
+    label: link?.label ?? "?",
+    url: link?.url ?? "?",
+  };
+})();
 const ROOT = join(WEB, "..", "..");
 const text = (...p: string[]) => readFileSync(join(...p), "utf8");
 /** Whitespace folded, so a sentence a Markdown file wraps reads as one line. */
@@ -62,7 +73,10 @@ const SOURCES = {
 } as const;
 type Quote = readonly [keyof typeof SOURCES, string];
 
-const board = () => renderToStaticMarkup(createElement(StatusBoard));
+/** The board as the landing draws it: compact, a block of #verify. */
+const board = () => renderToStaticMarkup(createElement(StatusBoard, { compact: true }));
+/** The full board, a section of its own. */
+const fullBoard = () => renderToStaticMarkup(createElement(StatusBoard));
 const landing = () => renderToStaticMarkup(createElement(Home));
 /** The text a visitor reads: inline tags join their words, block tags part them. */
 const visibleText = (html: string) =>
@@ -226,7 +240,7 @@ const BACKING: Readonly<Record<string, { proof: readonly Quote[]; use?: readonly
         "judges",
         "On mainnet, the 3 of `v0.probarion.near` of 2026-11-13, entries 0, 1 and 4, pass A1 to A7",
       ],
-      ["judges", "O1 and O2 have not run on them"],
+      ["judges", "and O1 and O2 in a live run at 17:52 UTC on 2026-11-13"],
     ],
   },
 };
@@ -397,8 +411,48 @@ describe("the status board's rows", () => {
     for (const u of left) expect(names, u.area).toContain(u.area);
   });
 
-  it("folds the console's tried parts under a line that names them, and always shows what is left to try", () => {
+  it("folds each row's record under its own summary on the landing, and keeps every id on a line that shows", () => {
     const html = board();
+    // Every row and every part is one closed native details, its summary the line that shows: its name and marks.
+    const folds = [
+      ...html.matchAll(
+        /<li class="[^"]*" id="([^"]+)" data-row="\1"[^>]*><details class="[^"]*"><summary class="[^"]*">([\s\S]*?)<\/summary>/g,
+      ),
+    ];
+    expect(folds.map((m) => m[1])).toEqual(ENTRIES.map((e) => e.id));
+    for (const [, id = "", summary = ""] of folds) {
+      const e = ENTRIES.find((x) => x.id === id);
+      const word = STATUS_KEY.proof.marks.find((m) => m.id === e?.proof)?.word;
+      expect(visibleText(summary), id).toContain(`${e?.name} ${STATUS_KEY.proof.label}: ${word}`);
+      // A summary holds phrasing content and its one heading: no list, no link, no paragraph.
+      expect(summary, id).not.toMatch(/<(?:ul|ol|li|a|p|div)\b/);
+    }
+    expect(html).not.toMatch(/<details[^>]*\sopen/);
+    // With every fold closed, each row's and part's id, the key's and the gaps' ids are still on what shows.
+    const shown = html.replace(/<\/summary>[\s\S]*?<\/details>/g, "</summary></details>");
+    const ids = [
+      "status",
+      "status-key-proof",
+      "status-key-use",
+      STATUS.gaps.id,
+      ...STATUS.gaps.lists.map((l) => l.id),
+      ...ENTRIES.map((e) => e.id),
+    ];
+    for (const id of ids) expect(shown, id).toContain(` id="${id}"`);
+    // Not proven yet stays open; the other two lists fold, each saying how many items it holds.
+    for (const l of STATUS.gaps.lists) {
+      const open = l.id === "gaps-proof";
+      for (const g of l.items) expect(shown.includes(g.lead), l.id).toBe(open);
+      if (!open) expect(visibleText(shown)).toContain(`${l.title} ${l.items.length} items`);
+    }
+    // What is left to try in the console is said in full, in its part's record.
+    for (const u of PARTS.flatMap((p) => p.untried ?? [])) {
+      expect(visibleText(html), u.area).toContain(`${u.area}: ${u.what.replace(/`/g, "")}`);
+    }
+  });
+
+  it("folds the full board's tried console parts under a line that names them, and always shows what is left", () => {
+    const html = fullBoard();
     const parts = ITEMS.find((i) => i.id === "web-console")?.parts ?? [];
     const tried = parts.filter((p) => p.untried === undefined);
     const left = parts.filter((p) => p.untried !== undefined);
@@ -419,16 +473,30 @@ describe("the status board's rows", () => {
     }
   });
 
-  it("dates the board by the day of JUDGES.md's Not yet list", () => {
+  it("dates the board by the day of JUDGES.md's Not yet list, and names the later mainnet drill its row tells", () => {
     expect(SOURCES.judges).toContain(`## Not yet, as of ${STATUS_AS_OF}`);
-    expect(STATUS_BOARD.eyebrow).toBe(`Status as of ${STATUS_AS_OF}`);
-    expect(visibleText(board())).toContain(`Status as of ${STATUS_AS_OF}`);
-    expect(SOURCES.judges).toContain(
-      "the Canary's board showed 0 visitor attempts and 6 by the team",
+    expect(STATUS_BOARD.eyebrow).toBe(
+      `Status as of ${STATUS_AS_OF}, with the mainnet drill of ${MAINNET_DRILL_ON}`,
     );
-    expect(SOURCES.judges).toContain(
-      "showed 0 external owners, 0 Canary participants and 0 pilots, beside 2 team vaults",
-    );
+    expect(visibleText(board())).toContain(STATUS_BOARD.eyebrow);
+    const mainnet = ITEMS.find((i) => i.id === "mainnet-vault")?.what ?? "";
+    expect(mainnet).toContain(`In a drill the team rehearsed on ${MAINNET_DRILL_ON}`);
+  });
+
+  it("shows no count of outside users while it is zero: not on the board, and not in JUDGES.md's Not yet list", () => {
+    const text = visibleText(board());
+    for (const zero of [
+      /No outside users/,
+      /\b0 (external owners|Canary participants|pilots|visitor attempts?)\b/,
+      /No visitor attempt yet/,
+      /Be the first visitor/,
+    ]) {
+      expect(text).not.toMatch(zero);
+      expect(SOURCES.judges).not.toMatch(zero);
+    }
+    // The audit gap stays: it is about the code, not a count of users.
+    expect(text).toContain("No outside review yet.");
+    expect(SOURCES.judges).toContain("**No audit.** No third party has audited");
   });
 
   it("tells the mainnet vault's three test payments, the 0.25 USDC one on an attested model's proposal", () => {
@@ -439,11 +507,13 @@ describe("the status board's rows", () => {
     expect(what).toContain(
       "The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed.",
     );
-    // What is still not done after S2: no customer payment, and no online check of the mainnet decisions.
+    // What is still not done after S2: no customer payment, and spend 1 without the SDK. The online check of the
+    // mainnet decisions ran on 2026-11-13 at 17:52 UTC, so the row no longer says it has not.
     expect(row?.limit).toContain("No customer payment yet");
-    expect(row?.limit).toContain("`verify --online` (O1 and O2) has not run");
+    expect(row?.limit).toContain("Spend 1 was sent without the SDK");
+    expect(row?.limit).not.toMatch(/has not run|not been checked online/);
     expect(row?.limit).not.toMatch(/No payment on a model's proposal/);
-    // Its evidence: spend 3 on NEAR, what arrived on Base, and the S2 run beside the S1 run.
+    // Its evidence: spend 3 on NEAR, what arrived on Base, the S2 run beside the S1 run, and the online check.
     const hrefs = row?.evidence.map((e) => e.href) ?? [];
     for (const href of [
       BOARD_TX.basePayout.url,
@@ -452,6 +522,7 @@ describe("the status board's rows", () => {
       BASE_TX.attestedPayout.url,
       BOARD_LINKS.mainnetRunS1,
       BOARD_LINKS.mainnetRunS2,
+      BOARD_LINKS.mainnetVerifyOnline,
     ]) {
       expect(hrefs, href).toContain(href);
     }
@@ -459,21 +530,155 @@ describe("the status board's rows", () => {
     const s2 = flat(text(ROOT, "docs", "evidence", "mainnet-v0", "s2-2026-11-13", "README.md"));
     expect(s2).toContain("**Decided by an attested model and the code rules.**");
     expect(s2).toContain("verdict `allow`, `decided_by` `model+rules`");
-    expect(s2).toContain("which has not run on this decision");
+    // The S2 record kept what it said at the time of the run, and its dated section gives the later online check.
+    expect(s2).toContain("which had not run on this decision when this record was written");
+    expect(s2).toContain("## The online check, 2026-11-13");
+    expect(s2).toContain("passed O1 and O2 for all three attested decisions, entries 0, 1 and 4");
+    expect(s2).toContain("[output](verify-online-2026-11-13.txt)");
+    expect(s2).not.toContain("which has not run on this decision");
     expect(SOURCES.judges).toContain(
       "spend 3 paid it to the owner's own Base address, a test: 0.25 USDC sent, 0.2476 USDC arrived",
     );
-    // The model run's row tells the 3 mainnet decisions, and that O1 and O2 have not run on them.
+    // The model run's row tells the 3 mainnet decisions; O1 and O2 passed on them, and the image is still not pinned.
     const model = ITEMS.find((i) => i.id === "attested-model-run");
     expect(model?.what).toContain("On mainnet, the 3 of 2026-11-13 pass A1 to A8 offline.");
     expect(model?.what).toContain("Code refused 2 of them and allowed the third");
-    expect(model?.limit).toContain("has not run on the 3 mainnet decisions");
+    expect(model?.limit).toContain("The TEE measurement is not pinned");
+    expect(model?.limit).not.toMatch(/has not run on the 3 mainnet decisions/);
+    expect(model?.evidence.map((e) => e.href)).toContain(BOARD_LINKS.mainnetVerifyOnline);
     // On the page, word for word.
     const out = visibleText(board());
     expect(out).toContain(
       "The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed.",
     );
-    expect(out).toContain("verify --online (O1 and O2) has not run on the 3 mainnet decisions");
+    expect(out).not.toContain("has not run on the 3 mainnet decisions");
+    expect(out).not.toContain("has not run on the vault's 3 attested decisions");
+  });
+
+  it("cites the online check of the mainnet vault's 3 attested decisions, and the file says they passed", () => {
+    const row = ITEMS.find((i) => i.id === "mainnet-vault");
+    const online = row?.evidence.find((e) => e.href === BOARD_LINKS.mainnetVerifyOnline);
+    expect(online?.kind).toBe("verify");
+    expect(online?.label).toBe("online check, 2026-11-13");
+    expect(online?.note).toBe("O1 and O2 pass, 3 of 3");
+    expect(BOARD_LINKS.mainnetVerifyOnline).toBe(
+      `${REPO_URL}/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt`,
+    );
+    const log = text(
+      ROOT,
+      "docs",
+      "evidence",
+      "mainnet-v0",
+      "s2-2026-11-13",
+      "verify-online-2026-11-13.txt",
+    );
+    expect(log).toContain("Probarion verify: v0.probarion.near (mainnet)");
+    expect(log).toContain("entries 6, anchors 4");
+    expect(log).toContain("8 passed, 0 failed, 0 unproven, 1 skipped");
+    expect(log).toContain("\nRESULT: PASS");
+    expect(log).toContain(
+      "A8 (request binding and mandate match) passes for 3 of 3 attested decisions (seq 0, 1, 4)",
+    );
+    expect(log).toContain("online: 3 DCAP-genuine TDX quotes bound to this request");
+    expect(log).toContain("3 GPU payloads bound to the request nonce and verified by NRAS (O2)");
+    // O1 does not pin the measurement: the file says so, and the row next to it keeps that limit.
+    expect(log).toContain("measurement not pinned, so quote_verified stays false");
+    expect(ITEMS.find((i) => i.id === "attested-model-run")?.limit).toContain(
+      "so no check shows which model image ran",
+    );
+    // On the page, the link is there with its note.
+    const html = board();
+    expect(html).toContain(BOARD_LINKS.mainnetVerifyOnline);
+    expect(visibleText(html)).toContain("O1 and O2 pass, 3 of 3");
+  });
+
+  it("tells the mainnet drill as the team's own, says both spends were over the cap, and links its four transactions", () => {
+    const row = ITEMS.find((i) => i.id === "mainnet-vault");
+    const what = row?.what ?? "";
+    expect(what).toContain("In a drill the team rehearsed on 2026-11-14");
+    expect(what).toContain("it refused a 2 USDC spend while frozen");
+    // The freeze did not stop a spend that would have paid: the cap refused both spends too.
+    expect(what).toContain(
+      "Both spends were over the cap, so neither could have paid even if the vault had not been frozen. No USDC moved.",
+    );
+    const hrefs = row?.evidence.map((e) => e.href) ?? [];
+    for (const tx of [
+      MAINNET_TX.drillOverCap,
+      MAINNET_TX.drillFreeze,
+      MAINNET_TX.drillFrozenRefused,
+      MAINNET_TX.drillUnfreeze,
+    ]) {
+      expect(hrefs, tx.hash).toContain(tx.url);
+    }
+    expect(hrefs).toContain(BOARD_LINKS.mainnetDrill);
+    const drill = flat(
+      text(ROOT, "docs", "evidence", "mainnet-v0", "drill-2026-11-14", "README.md"),
+    );
+    expect(drill).toContain(
+      "**Rehearsed by the team; a hijacked agent key could send exactly this. No USDC moved.**",
+    );
+    expect(drill).toContain(
+      "Both spends were over mandate 1's cap of 1 USDC a payment, so neither could have paid even if the vault had not been frozen.",
+    );
+  });
+
+  it("no file says any more that O1 and O2 have not run on the mainnet decisions, and each docs page citing the run links it", () => {
+    // The read-only run of 2026-11-13 at 17:52 UTC passed O1 and O2 on entries 0, 1 and 4. Evidence files keep what
+    // they said at the time of a run, and older CHANGELOG releases keep their words; the Unreleased section is held.
+    const docs = join(WEB, "content", "docs");
+    const pages = readdirSync(docs, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".mdx"))
+      .map((f) => join(docs, f));
+    const changelog = text(ROOT, "CHANGELOG.md");
+    const start = changelog.indexOf("## Unreleased");
+    const unreleased = changelog.slice(start, changelog.indexOf("\n## ", start + 1));
+    const texts: [string, string][] = [
+      ...[
+        "README.md",
+        "JUDGES.md",
+        "SECURITY.md",
+        join("docs", "THREAT_MODEL.md"),
+        join("apps", "web", "src", "lib", "site", "facts.ts"),
+        join("apps", "web", "src", "lib", "site", "ops-copy.ts"),
+      ].map((f): [string, string] => [f, text(ROOT, f)]),
+      ...pages.map((f): [string, string] => [f, readFileSync(f, "utf8")]),
+      ["CHANGELOG.md, Unreleased", unreleased],
+    ];
+    const OLD = [
+      /have not been checked online/i,
+      /O1 and O2 have not (?:run|checked)/i,
+      /has not run on (?:it|them|this decision|those attested decisions|the 3 mainnet decisions|the three)\b/i,
+      /has not checked the mainnet model decisions/i,
+      /mainnet model decisions are not checked online/i,
+      /No online check of the attested decisions/i,
+    ];
+    expect(pages.length).toBeGreaterThan(30);
+    expect(start).toBeGreaterThan(0);
+    expect(unreleased.length).toBeGreaterThan(1000);
+    for (const [name, body] of texts) {
+      for (const old of OLD) expect(flat(body), `${name}: ${old}`).not.toMatch(old);
+    }
+    // Each docs page with the online output among its sources links it.
+    const file = "docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt";
+    const citing = PAGES.filter((p) => p.sources.includes(file));
+    expect(citing.map((p) => p.path).sort()).toEqual([
+      "build/let-an-agent-pay",
+      "build/sdk-reference",
+      "operate/architecture",
+      "resources/glossary",
+      "start/how-one-payment-works",
+      "start/mainnet-payout",
+      "start/testnet-and-mainnet",
+      "start/what-is-probarion",
+      "start/what-works-today",
+      "trust/security-model",
+      "trust/verifier-checks",
+    ]);
+    for (const p of citing) {
+      expect(text(docs, `${pageFile(p.path)}.mdx`), p.path).toContain(
+        `${REPO_URL}/blob/main/${file}`,
+      );
+    }
   });
 });
 
@@ -544,6 +749,21 @@ describe("the status board's evidence", () => {
     // The README's Status heading, for the footer's link.
     expect(BOARD_LINKS.readmeStatus.endsWith("#status")).toBe(true);
     expect(SOURCES.readme).toContain(" ## Status ");
+  });
+
+  it("gives the eval's model replay numbers as the committed results give them", () => {
+    const latest = JSON.parse(text(ROOT, "eval", "results", "latest.json")) as {
+      headline: { money_moved_wrongly: { model_replay: string } };
+      runs: { model_replay: { summary?: { model: { attested: string; call_failed: string } } } };
+    };
+    const model = latest.runs.model_replay.summary?.model;
+    expect(model, "the model replay is recorded").toBeDefined();
+    const footer = strings(STATUS_BOARD.footer).join("");
+    expect(footer).not.toMatch(/not recorded/);
+    // "attested" is qualified as everywhere else: A1 to A8 offline (O1 and O2 were not run, the TEE is not pinned).
+    expect(footer).toContain(
+      `(${model?.attested} attested by A1 to A8 offline, ${model?.call_failed} failed calls, money moved wrongly ${latest.headline.money_moved_wrongly.model_replay})`,
+    );
   });
 
   it("holds every board transaction to the record that names it", () => {
@@ -678,7 +898,7 @@ describe("the status board's evidence", () => {
       ...Object.values(MAINNET_TX),
       ...Object.values(BOARD_TX),
       ...Object.values(BASE_TX),
-      HERO.paid.tx,
+      DEMO_PAID_TX,
       HERO.refused.tx,
     ];
     const onBoard = evidence.filter((e) => facts.some((f) => f.url === e.href));
@@ -756,6 +976,18 @@ describe("the status board's evidence", () => {
         "A1 to A8 on all 3",
         "A8 (request binding and mandate match) passes for 3 of 3 attested decisions (seq 0, 1, 4)",
       ],
+      [
+        "attested-model-run",
+        BOARD_LINKS.mainnetVerifyOnline,
+        "O1 and O2 on all 3",
+        "online: 3 DCAP-genuine TDX quotes bound to this request",
+      ],
+      [
+        "mainnet-vault",
+        BOARD_LINKS.mainnetVerifyOnline,
+        "O1 and O2 pass, 3 of 3",
+        "3 GPU payloads bound to the request nonce and verified by NRAS (O2)",
+      ],
     ];
     for (const [id, href, note, line] of logs) {
       expect(evidence.find((e) => e.id === id && e.href === href)?.note, `${id} ${href}`).toBe(
@@ -765,7 +997,7 @@ describe("the status board's evidence", () => {
       expect(text(ROOT, file), file).toContain(line);
     }
     // The mainnet verify is the live run after S2, on the whole ledger: its 3 attested decisions pass A1 to A7 too, and
-    // it ran without --online, so O1 and O2 are still to run on mainnet.
+    // it ran without --online. O1 and O2 ran later, in their own file, which the logs above and a test of the rows hold.
     const mainnetLog = text(
       ROOT,
       BOARD_LINKS.mainnetVerify.replace(
@@ -818,7 +1050,7 @@ describe("the status board's evidence", () => {
       ...Object.values(MAINNET_TX),
       ...Object.values(BOARD_TX),
       ...Object.values(BASE_TX),
-      HERO.paid.tx,
+      DEMO_PAID_TX,
       HERO.refused.tx,
     ];
     let named = 0;
@@ -852,7 +1084,7 @@ describe("the status board's evidence", () => {
     }
     // A verify output is a log or a result file in the evidence, and its note is the result, set in ink.
     const verify = evidence.filter((e) => e.kind === "verify");
-    expect(verify.length).toBe(8);
+    expect(verify.length).toBe(10);
     for (const e of verify) {
       expect(e.href.startsWith(`${REPO_URL}/blob/main/docs/evidence/`), e.label).toBe(true);
       expect(e.href.endsWith(".txt") || e.href.endsWith(".json"), e.label).toBe(true);
@@ -881,24 +1113,35 @@ describe("the status board's evidence", () => {
 });
 
 describe("the status board's page structure and copy", () => {
-  it("nests its headings without a skip: the section's h2, a group's h3, a row's h4, a part's h5", () => {
+  it("nests its headings without a skip: the block's h3 under #verify's h2, a row's h4, a part's h5", () => {
     const html = board();
     const levels = [...html.matchAll(/<h([1-6])\b/g)].map((m) => Number(m[1]));
-    expect(levels[0]).toBe(2);
+    expect(levels[0]).toBe(3);
     for (let i = 1; i < levels.length; i++) {
       expect((levels[i] ?? 0) - (levels[i - 1] ?? 0), `heading ${i}`).toBeLessThanOrEqual(1);
     }
-    // The groups, then the closing note's own heading, so it does not read as a part of the last group, then the gaps.
-    expect(levels.filter((l) => l === 3)).toHaveLength(BOARD_GROUPS.length + 2);
+    // The board's own h3, then the gaps'. The groups are labels, so every row is an h4 under the board.
     const h3 = [...html.matchAll(/<h3\b[^>]*>([^<]*)</g)].map((m) => m[1]);
-    expect(h3.slice(-2)).toEqual([STATUS_BOARD.notesTitle, STATUS.gaps.title]);
+    expect(h3).toEqual([STATUS.title, STATUS.gaps.title]);
+    // Each row, the closing note's own heading, and the three gap lists.
+    expect(levels.filter((l) => l === 4)).toHaveLength(ITEMS.length + 1 + STATUS.gaps.lists.length);
     expect(levels.filter((l) => l === 5)).toHaveLength(PARTS.length);
+    // On the landing the board is a block of #verify: the h2 before its h3 is the section's.
+    const page = landing();
+    const before = page.slice(0, page.indexOf('id="status-title"'));
+    expect(before.slice(before.lastIndexOf("<h2"))).toContain('id="verify-title"');
+    // The full board keeps its own section: its h2, a group's h3, a row's h4, a part's h5.
+    const full = [...fullBoard().matchAll(/<h([1-6])\b/g)].map((m) => Number(m[1]));
+    expect(full[0]).toBe(2);
+    expect(full.filter((l) => l === 3)).toHaveLength(BOARD_GROUPS.length + 2);
   });
 
   it("says each mark in words, to a screen reader too, and keeps the glyphs out of the reading", () => {
     const html = board();
     expect(html.match(/<svg[^>]*aria-hidden="true"/g)?.length).toBe(html.match(/<svg/g)?.length);
-    expect(html.match(/<ul[^>]*aria-label="Status"/g)).toHaveLength(ENTRIES.length);
+    // A summary holds no list: each row's marks are spans, each read after its label.
+    expect(html.match(new RegExp(`<span class="${b.cMarks}">`, "g"))).toHaveLength(ENTRIES.length);
+    expect(fullBoard().match(/<ul[^>]*aria-label="Status"/g)).toHaveLength(ENTRIES.length);
     const out = visibleText(board());
     expect(out).toContain("Proof: Verified");
     expect(out).toContain("Use: Released");
@@ -931,7 +1174,8 @@ describe("the status board's page structure and copy", () => {
 
   it("links each status pill elsewhere on the page to its row here, so one key explains them all", () => {
     const page = landing();
-    for (const id of ["compare", "integrate"]) {
+    // The use cases' ways in are the pills left on the page: the comparison's rows are the docs' now.
+    for (const id of ["integrate"]) {
       const at = page.indexOf(`id="${id}"`);
       const section = page.slice(at, page.indexOf("</section>", at));
       const pills = anchors(section).filter((a) => a.includes(STATUS_BOARD.pillSuffix));
@@ -945,14 +1189,9 @@ describe("the status board's page structure and copy", () => {
         expect(a, href).toContain(row?.pill ?? "no row");
       }
     }
-    const rows = [
-      ...COMPARE.rows.map((r) => r.status),
-      ...INTEGRATE.cards.map((c) => c.status),
-      ...INTEGRATE.who.map((w) => w.status),
-    ];
-    for (const r of rows) expect(page).toContain(`href="#${statusOf(r).id}"`);
-    // The comparison and the integrate cards draw no pill of their own any more.
-    for (const file of ["Compare.tsx", "Integrate.tsx"]) {
+    for (const c of INTEGRATE.cards) expect(page).toContain(`href="#${statusOf(c.status).id}"`);
+    // The integrate cards draw no pill of their own any more.
+    for (const file of ["Integrate.tsx"]) {
       const tsx = text(WEB, "src", "components", "site", file);
       expect(tsx, file).not.toContain("s.pill");
       expect(tsx, file).toContain("<StatusPill row=");
@@ -1005,8 +1244,9 @@ describe("the status board's page structure and copy", () => {
     const css = text(WEB, "src", "components", "site", "status.module.css");
     const tsx = text(WEB, "src", "components", "site", "StatusBoard.tsx");
     expect(tsx).toContain('import b from "./status.module.css";');
-    // The section keeps the landing's own section classes, as every other section does.
-    expect(tsx).toMatch(/<section className=\{`\$\{s\.section\} \$\{s\.flush\}`\} id="status">/);
+    // The section opens with the landing's shared head, as every other section does; the board's columns are set on
+    // its wrap.
+    expect(tsx).toMatch(/<LandingSection\s+id="status"\s+wrapClassName=\{b\.board\}/);
     // The column labels repeat what every row says to a screen reader, so they are hidden from it.
     expect(tsx.match(/className=\{`?\$?\{?b\.colLabel[^>]*aria-hidden="true"/g)?.length).toBe(3);
     // Below 1280px no column header shows, so each Where line names itself; from 1280px its label is for a screen

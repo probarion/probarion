@@ -8,6 +8,7 @@ import {
   isPdfBytes,
   isPdfUrl,
   LINK_ELSEWHERE,
+  LINK_NOT_INVOICE,
   MAX_FILE_BYTES,
   MAX_SELECTION_BYTES,
   MAX_TEXT_CHARS,
@@ -15,6 +16,8 @@ import {
   NOT_UTF8,
   readCaptured,
   sameOrigin,
+  TAB_NOT_INVOICE,
+  TAB_UNREADABLE,
   TOO_LARGE,
   TOO_LONG,
   toBase64,
@@ -197,6 +200,35 @@ describe("a PDF behind an address", () => {
       text: LINK_ELSEWHERE,
     });
     expect(down.calls).toHaveLength(1);
+  });
+
+  it("names the tab, not a link, when the PDF in the tab can't be read", async () => {
+    const page = fetchOf(
+      () => new Response("<html></html>", { headers: { "content-type": "text/html" } }),
+    );
+    expect(await captureUrl("https://billing.example/x.pdf", page.fetch, "tab")).toEqual({
+      ok: false,
+      text: TAB_NOT_INVOICE,
+    });
+    expect(TAB_NOT_INVOICE).toBe("This tab isn't showing a PDF or a text file.");
+    const down = fetchOf(() => Promise.reject(new TypeError("Failed to fetch")));
+    expect(await captureUrl("https://billing.example/x.pdf", down.fetch, "tab")).toEqual({
+      ok: false,
+      text: TAB_UNREADABLE,
+    });
+    expect(TAB_UNREADABLE).toBe(
+      "Couldn't read the PDF in this tab. Download it and drag the file here.",
+    );
+    const elsewhere = fetchOf(() => redirected("https://cdn.other.example/x.pdf", asPdf));
+    expect(await captureUrl("https://billing.example/x.pdf", elsewhere.fetch, "tab")).toEqual({
+      ok: false,
+      text: TAB_UNREADABLE,
+    });
+    // The right-click menu keeps the link's words.
+    expect(await captureUrl("https://billing.example/x.pdf", page.fetch, "link")).toEqual({
+      ok: false,
+      text: LINK_NOT_INVOICE,
+    });
   });
 
   it("says why a link can't be read when its download breaks off", async () => {

@@ -53,11 +53,16 @@
 .betaNarrow {
   display: none;
 }
+/*
+ * The summary is a tap target of at least 44px, 19.5px of line and 12.5px above and below it: its padding stands in for
+ * the strip's own, which a phone drops.
+ */
 .betaNarrow summary {
   cursor: pointer;
+  padding-block: 12.5px;
 }
 .betaNarrow p {
-  margin: 4px 0 0;
+  margin: 0 0 8px;
 }
 
 /* Skip link */
@@ -251,10 +256,7 @@ a.netPill:hover {
   text-underline-offset: 3px;
 }
 
-/* Hero */
-.hero {
-  padding-block: clamp(36px, 6vw, 76px) clamp(48px, 7vw, 96px);
-}
+/* Hero: its type and its cards. The section's layout is hero.module.css. */
 .heroEyebrow {
   margin-bottom: 14px;
 }
@@ -275,13 +277,6 @@ a.netPill:hover {
   color: transparent;
   padding-bottom: 0.08em;
 }
-.heroGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: clamp(32px, 5vw, 72px);
-  margin-top: clamp(32px, 4vw, 56px);
-  align-items: start;
-}
 .lede {
   font-size: clamp(19px, 1.65vw, 23px);
   line-height: 1.5;
@@ -295,28 +290,7 @@ a.netPill:hover {
   gap: 12px;
   margin-top: 28px;
 }
-/* The hero's light third link: text, not a button, with a touch target as tall as a button's. */
-.ctaLink {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding-inline: 4px;
-  font-size: 15px;
-  font-weight: 500;
-}
-.fineprint {
-  margin-top: 22px;
-  font-size: 14px;
-  color: var(--color-mute);
-  max-width: 34em;
-}
 
-.duel {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
 .card {
   border-radius: 24px;
   padding: 24px;
@@ -381,20 +355,6 @@ a.netPill:hover {
   font-size: 14px;
   color: var(--c-mute);
 }
-.state {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 3px 11px;
-  border-radius: 999px;
-}
-.metal .state {
-  background: var(--color-ink);
-  color: var(--color-gold-light);
-}
-.obsidian .state {
-  background: var(--color-band-bad-bg);
-  color: var(--color-band-bad);
-}
 .cardBig {
   font-weight: 300;
   font-size: clamp(30px, 3.1vw, 44px);
@@ -430,74 +390,30 @@ a.netPill:hover {
   text-align: right;
   overflow-wrap: anywhere;
 }
+/*
+ * A card's transaction link: a 44px touch target (WCAG 2.5.5) that takes no more of its row than one line, so the
+ * card's rows keep their rhythm. The target reaches into the row's padding, where no other link is.
+ */
 .cardHash {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-block: -11px;
   font-family: var(--font-mono);
   font-size: 13px;
 }
+/* A card's own link, as tall as a button. */
 .cardLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
   align-self: flex-start;
-  font-size: 14px;
-  font-weight: 500;
-}
-.duelNote {
-  grid-column: 1 / -1;
-  max-width: var(--container-measure);
-  font-size: 14px;
-  color: var(--color-mute);
-  padding-inline: 4px;
-}
-
-/* Numbers */
-.numbers {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-top: 1px solid var(--color-line);
-  border-bottom: 1px solid var(--color-line);
-}
-.numbers > div {
-  padding: clamp(20px, 2.4vw, 32px) clamp(16px, 2vw, 28px) clamp(24px, 3vw, 40px);
-  border-left: 1px solid var(--color-line);
-  min-width: 0;
-}
-.numbers > div:first-child {
-  border-left: 0;
-  padding-left: 0;
-}
-.numbers b {
-  display: block;
-  font-weight: 300;
-  font-size: clamp(64px, 9vw, 132px);
-  line-height: 1;
-  letter-spacing: -0.05em;
-  font-variant-numeric: tabular-nums;
-}
-.numbers p {
-  margin-top: 12px;
   font-size: 15px;
-  line-height: 1.5;
-  color: var(--color-mute);
-  max-width: 19em;
-}
-.numbers strong {
-  color: var(--color-ink);
-  font-weight: 500;
+  font-weight: 600;
 }
 
-/* Sections */
-.section {
-  padding-block: clamp(64px, 9vw, 128px);
-}
-.flush {
-  padding-top: 0;
-}
-.sectionHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px 48px;
-  margin-bottom: clamp(32px, 4vw, 56px);
-}
+/* Sections: each opens with the shared head (SectionHead.tsx, head.module.css), which sets this heading. */
 .h2 {
   font-weight: 300;
   font-size: clamp(36px, 5.2vw, 76px);
@@ -507,276 +423,49 @@ a.netPill:hover {
   text-wrap: balance;
   min-width: 0;
 }
-.sectionHead p {
-  max-width: 26em;
-  color: var(--color-mute);
-}
 
-/* Live check: two panels and the mandate under them. The answer panel is the ink band's colours. */
-.liveGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 22px;
-}
-.livePanel {
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  border-radius: 20px;
-  padding: 24px;
-  min-width: 0;
-}
-.livePanel h3 {
-  font-size: 17px;
-  font-weight: 600;
-}
-.liveHint {
-  margin: 4px 0 18px;
-  max-width: var(--container-measure);
-  font-size: 13.5px;
-  color: var(--color-mute);
-  overflow-wrap: anywhere;
-}
-.scenarios {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin: 0 0 22px;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-}
-.scenario {
-  text-align: left;
-  border: 1px solid var(--color-line);
-  border-radius: 14px;
-  padding: 12px 14px;
-  font: inherit;
-  font-size: 14.5px;
-  line-height: 1.35;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-.scenario small {
-  display: block;
-  margin-top: 2px;
-  font-size: 12.5px;
-  color: var(--color-mute);
-}
-/* A 2px ink border (1px less padding, so nothing moves), which forced colours keep, as they do not keep a shadow. */
-.scenario[aria-pressed="true"] {
-  padding: 11px 13px;
-  border-width: 2px;
-  border-color: var(--color-ink);
-  background: var(--color-surface);
-}
-.field {
-  display: grid;
-  grid-template-columns: 130px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  padding: 10px 0;
-  border-top: 1px solid var(--color-line);
-  font-size: 14.5px;
-}
-.field > span:first-child,
-.field > label {
-  color: var(--color-mute);
-}
-/* The mute edge of every other field: 8.7:1 on the white panel, where a field's boundary needs 3:1 (WCAG 1.4.11). */
-.field select,
-.field input:not([type="range"]) {
-  font: inherit;
-  font-size: 16px;
-  padding: 8px 10px;
-  border: 1px solid var(--color-mute);
-  border-radius: 10px;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  min-width: 0;
-  width: 100%;
-}
-.amountRow {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.amountRow input[type="range"] {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--color-gold-deep);
-}
-.amountRow input:not([type="range"]) {
-  width: 104px;
-  flex: none;
-}
-.payee {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-}
-.payee code {
-  background: var(--color-paper);
-  border: 1px solid var(--color-line);
-  padding: 3px 8px;
-  border-radius: 7px;
-  overflow-wrap: anywhere;
-}
-.payeeLock {
-  font-size: 12.5px;
-  color: var(--color-wait);
-  background: var(--color-wait-bg);
-  padding: 3px 8px;
-  border-radius: 999px;
-}
-.injected {
-  margin-top: 18px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--color-bad-bg);
-  color: var(--color-bad);
-  font-size: 14px;
-}
-.liveAnswer {
-  background: var(--color-band);
-  color: var(--color-band-fg);
-  border-color: var(--color-band-line);
-}
-.liveAnswer .liveHint {
-  color: var(--color-band-mute);
-  /* Two lines kept free: the hint switches between "Asking" and the answer's source, so the verdict does not move. */
-  min-height: 3.1em;
-}
-.liveAnswer :focus-visible {
-  outline-color: var(--color-band-fg);
-}
-.liveVerdict {
-  margin: 6px 0 10px;
-  font-weight: 300;
-  font-size: clamp(32px, 3.4vw, 44px);
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-  overflow-wrap: anywhere;
-}
-.livePay {
-  color: var(--color-band-fg);
-}
-.liveRefuse {
-  color: var(--color-band-bad);
-}
-.liveHold {
-  color: var(--color-gold-light);
-}
-.liveNone {
-  color: var(--color-band-mute);
-}
-.liveWhy {
-  font-size: 16px;
-  min-height: 50px;
-  margin-bottom: 18px;
-}
-/* While a request is out, the region is aria-busy and still shows the last answer's sentence: it is dimmed. */
-.liveBusy .liveVerdict,
-.liveBusy .liveWhy {
-  color: var(--color-band-mute);
-}
-.liveRetry {
-  margin-bottom: 14px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  border: 1px solid var(--color-band-fg);
-  background: none;
-  color: var(--color-band-fg);
-  font: inherit;
-  cursor: pointer;
-}
-.liveRequest {
-  position: relative;
-  border: 1px solid var(--color-band-line);
-  border-radius: 12px;
-  overflow-x: auto;
-  margin-bottom: 12px;
-}
-.liveRequest pre {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.6;
-  padding: 14px;
-}
-.liveGone {
-  color: var(--color-band-bad);
-}
-.liveMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-  font-size: 12.5px;
-  color: var(--color-band-mute);
-}
-.liveMeta a {
-  color: var(--color-band-fg);
-}
-.liveMandate {
-  grid-column: 1 / -1;
-}
-.mandateFacts {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 16px;
-  font-size: 13.5px;
-}
-.mandateFacts dt {
-  color: var(--color-mute);
-}
-.mandateFacts dd {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  overflow-wrap: anywhere;
-}
-.liveTable th,
-.liveTable td {
-  text-align: left;
-  padding: 4px 16px 4px 0;
-}
-
-/* Problem: two columns, then the numbers */
+/*
+ * Problem: one white card split in two by a hairline, an agent with its own key beside one with a mandate, each line
+ * ruled; then the pull line, then the payee panel.
+ */
 .vs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-  margin-bottom: clamp(32px, 4vw, 56px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--color-line);
+  border-radius: 24px;
+  background: var(--color-surface);
+  overflow: hidden;
 }
 .vsCol {
-  border: 1px solid var(--color-line);
-  border-radius: 18px;
-  padding: 26px;
-  background: var(--color-surface);
+  padding: clamp(24px, 3vw, 40px);
+  min-width: 0;
 }
+.vsCol + .vsCol {
+  border-left: 1px solid var(--color-line);
+}
+/* The mandate's side, a shade of the gold paper at its top. */
 .vsWith {
-  border-color: var(--color-ink);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-gold-pale) 30%, var(--color-surface)),
+    var(--color-surface)
+  );
 }
 .vsCol h3 {
   font-size: 17px;
   font-weight: 600;
-  margin-bottom: 16px;
-}
-.vsCol ul {
-  display: grid;
-  gap: 12px;
+  margin-bottom: 18px;
 }
 .vsCol li {
-  position: relative;
-  padding-left: 32px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  padding-block: 12px;
+  border-top: 1px solid var(--color-line);
   font-size: 16px;
+  line-height: 1.5;
 }
 .vsNo,
 .vsYes {
-  position: absolute;
-  left: 0;
-  top: 0;
   font-weight: 600;
 }
 .vsNo {
@@ -786,322 +475,8 @@ a.netPill:hover {
   color: var(--color-ok);
 }
 
-/* Compare: a real table; under 960 px each row stacks as a card with its column names */
-.compare {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  border: 1px solid var(--color-line);
-  border-radius: 18px;
-  overflow: hidden;
-  background: var(--color-surface);
-  font-size: 15px;
-}
-.compare th,
-.compare td {
-  text-align: left;
-  vertical-align: top;
-  padding: 16px 20px;
-  border-top: 1px solid var(--color-line);
-}
-.compareHead th {
-  border-top: 0;
-  background: var(--color-paper);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-mute);
-}
-.compareRow {
-  font-weight: 500;
-  width: 30%;
-}
-.compareDiy {
-  color: var(--color-mute);
-}
-
-.compareMore {
-  max-width: var(--container-measure);
-  margin-top: 18px;
-  font-size: 15px;
-}
-
-/* Integrate */
-.ways {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 28px;
-}
-.way {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border: 1px solid var(--color-line);
-  border-radius: 16px;
-  padding: 20px;
-  background: var(--color-surface);
-  min-width: 0;
-}
-.way h3 {
-  font-size: 16px;
-  font-weight: 600;
-}
-.way p {
-  flex: 1;
-  font-size: 14.5px;
-  color: var(--color-mute);
-}
-.codeBox {
-  border-radius: 16px;
-  background: var(--color-band);
-  color: var(--color-band-fg);
-  border: 1px solid var(--color-band-line);
-  overflow: hidden;
-}
-.codeBox :focus-visible {
-  outline-color: var(--color-band-fg);
-}
-.codeHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-band-line);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  color: var(--color-band-mute);
-}
-.codeMeta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-}
-/* Every sideways scroller is positioned, so absolutely positioned screen-reader text inside stays inside it. */
-.codeBody {
-  position: relative;
-  overflow-x: auto;
-}
-/* The box clips what is outside it, so the scroller's ring is drawn inside. */
-.codeBody:focus-visible {
-  outline-offset: -3px;
-}
-.codeBody pre {
-  padding: 18px 20px;
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  line-height: 1.65;
-}
-.codeNote {
-  /* 14px over 14px text: 2.55em between two notes with the 1.55 line (WCAG 1.4.8). */
-  margin-top: 14px;
-  max-width: var(--container-measure);
-  font-size: 14px;
-  color: var(--color-mute);
-}
-.who {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 28px;
-}
-.who > div {
-  border-top: 1px solid var(--color-ink);
-  padding-top: 12px;
-  font-size: 15px;
-}
-.who b {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.whoBody {
-  color: var(--color-mute);
-}
-/* 14px over 14px text: with the 1.55 line, 2.55em from one paragraph's last line to the next one's first (WCAG 1.4.8). */
-.whoControl,
-.whoProof {
-  margin-top: 14px;
-  font-size: 14px;
-}
-.whoProof {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-}
-/* A long status pill (a link to its status row) wraps inside itself rather than run past a narrow card. */
-.whoProof > a {
-  max-width: 100%;
-}
-/* Under the code: the docs pages and the example a developer opens next. */
-.devLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 20px;
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: 14px;
-}
-.devLinks a {
-  display: inline-block;
-  padding-block: 3px;
-}
-
-/* Journey */
-.step {
-  display: grid;
-  grid-template-columns: 76px minmax(0, 5fr) minmax(0, 6fr);
-  gap: 16px clamp(20px, 4vw, 56px);
-  padding-block: clamp(26px, 3vw, 40px);
-  border-top: 1px solid var(--color-line);
-  align-items: start;
-}
-.stepN {
-  font-weight: 300;
-  font-size: 42px;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  color: var(--color-gold-small);
-  font-variant-numeric: tabular-nums;
-}
-.step h3 {
-  font-weight: 400;
-  font-size: clamp(23px, 2.2vw, 30px);
-  line-height: 1.14;
-  letter-spacing: -0.02em;
-}
-.step p {
-  margin-top: 10px;
-  color: var(--color-mute);
-  max-width: 31em;
-  font-size: 16px;
-}
-/* What is true today, set apart by a gold rule rather than a filled pill (audit P1-10). */
-.today {
-  margin: 14px 0 0;
-  padding: 2px 0 2px 12px;
-  border-left: 3px solid var(--color-gold-deep);
-  font-size: 14px;
-}
-.todayLabel {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-gold-ink);
-}
-.tryIt {
-  display: inline-block;
-  margin-top: 10px;
-  font-size: 15px;
-}
-
-/* The journey as it ran: the demo vault's four invoices, after the five steps. */
-.story {
-  padding-top: clamp(26px, 3vw, 40px);
-  border-top: 1px solid var(--color-line);
-}
-.story h3 {
-  font-weight: 400;
-  font-size: clamp(23px, 2.2vw, 30px);
-  line-height: 1.14;
-  letter-spacing: -0.02em;
-}
-.storyCaption {
-  margin-top: 6px;
-  font-size: 14px;
-  color: var(--color-mute);
-}
-.storyIntro {
-  /* 2.5em of its own text or more from the top of the caption's line to the top of its first (WCAG 1.4.8). */
-  margin-top: 20px;
-  max-width: var(--container-measure);
-  font-size: 16px;
-}
-.storyGrid {
-  list-style: none;
-  margin-top: 22px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-.storyCard {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  padding: 18px 20px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  border-radius: 16px;
-}
-.storyTop {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.storyTop h4 {
-  font-weight: 500;
-  font-size: 17px;
-}
-.storyCard p {
-  max-width: var(--container-measure);
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-.storyAsks {
-  color: var(--color-mute);
-}
-/* With the card's 8px gap, 15px between its two paragraphs: 2.5em or more from line top to line top (WCAG 1.4.8). */
-.storyAsks + p {
-  margin-top: 7px;
-}
-.storyLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-  font-size: 14px;
-}
-.storyProof {
-  margin-top: 18px;
-  max-width: var(--container-measure);
-  font-size: 15px;
-  color: var(--color-mute);
-}
-.refusedPill {
-  background: var(--color-bad-bg);
-  color: var(--color-bad);
-}
-.panel {
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  border-radius: 16px;
-  padding: 18px 20px;
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  line-height: 1.75;
-  position: relative;
-  overflow-x: auto;
-  min-width: 0;
-}
-.panelRow {
-  display: flex;
-  justify-content: space-between;
-  gap: 22px;
-  white-space: nowrap;
-}
+/* A panel's lines: the journey lays its panels out in journey.module.css. */
 .panelKey {
-  color: var(--color-mute);
-}
-.panelNote {
   color: var(--color-mute);
 }
 /* One line, so that it copies whole. The panel scrolls sideways when it does not fit. */
@@ -1120,96 +495,89 @@ a.netPill:hover {
   color: var(--color-bad);
 }
 
-/* The console: real testnet screenshots, three across. On a phone the row scrolls sideways, one shot at a time. */
-.shots {
-  padding-bottom: 0;
+/* The pull line under the two columns: why a cap is not enough, light and large, after a short gold rule. */
+.pull {
+  margin-block: var(--space-block);
 }
-/* Positioned, so that a link's absolutely positioned screen-reader text stays inside the row when it scrolls. */
-.shotRow {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  min-width: 0;
-}
-.shot {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-}
-.shotImage {
+.pull::before {
+  content: "";
   display: block;
-  overflow: hidden;
-  border: 1px solid var(--color-line);
-  border-radius: 14px;
-  background: var(--color-surface);
+  width: 44px;
+  height: 2px;
+  margin-bottom: 22px;
+  background: var(--color-gold-deep);
 }
-/* The row scrolls on a phone and clips what is outside it, so the ring is drawn inside the shot. */
-.shotImage:focus-visible {
-  outline-offset: -3px;
+.pullLine {
+  max-width: 17em;
+  font-weight: 300;
+  font-size: clamp(28px, 3.3vw, 46px);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
 }
-.shotImage img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-.shot h3 {
+.pullLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: 12px;
+  font-size: 15px;
   font-weight: 500;
-  font-size: 17px;
-}
-.shot p {
-  margin-top: 4px;
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-/* The meta line under a caption: 2.5em or more of the caption's text from line top to line top (WCAG 1.4.8). */
-.shot .shotMeta {
-  margin-top: 15px;
-  font-size: 13px;
-  color: var(--color-mute);
-}
-.shotMeta a {
-  white-space: nowrap;
-}
-.shotProof {
-  margin-top: 22px;
-  max-width: var(--container-measure);
-  font-size: 15px;
-  color: var(--color-mute);
 }
 
-/* Ink band */
-.band {
+/*
+ * The payee panel (InkBand.tsx, #payee): an inset ink panel at the end of the problem, on the wrap like every block.
+ * The heading, the body and the struct on the left; the numerals on the right, from their foot. The problem section
+ * owns the paper below it.
+ */
+.payeePanel {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: clamp(32px, 5vw, 80px);
+  align-items: end;
+  padding: clamp(28px, 4vw, 64px);
+  border-radius: 24px;
   background: var(--color-band);
   color: var(--color-band-fg);
 }
-.band :focus-visible {
+.payeePanel :focus-visible {
   outline-color: var(--color-band-fg);
 }
-.bandGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
-  gap: clamp(36px, 6vw, 88px);
-  padding-block: clamp(64px, 9vw, 128px);
-  align-items: center;
+.payeeMain {
+  min-width: 0;
 }
-.bandSub {
-  margin-top: 24px;
+.payeeTitle {
+  max-width: 12em;
+  font-weight: 300;
+  font-size: clamp(32px, 4vw, 58px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.payeeBody {
+  margin-top: 20px;
   max-width: 30em;
   color: var(--color-band-mute);
-  font-size: 18px;
+}
+.payeeBody code {
+  color: var(--color-band-fg);
 }
 .struct {
+  margin-top: 32px;
   font-family: var(--font-mono);
-  font-size: clamp(15px, 1.5vw, 19px);
-  line-height: 2;
+  font-size: clamp(15px, 1.4vw, 18px);
+  line-height: 1.75;
+  background: color-mix(in srgb, var(--color-code-active) 50%, var(--color-band));
   border: 1px solid var(--color-band-line);
-  border-radius: 20px;
-  padding: clamp(20px, 2.4vw, 32px);
+  border-radius: 16px;
+  padding: 22px 26px;
   min-width: 0;
   position: relative;
   overflow-x: auto;
+}
+.structName {
+  display: block;
+  color: var(--color-gold-bright);
 }
 .structField {
   padding-left: 1.5em;
@@ -1219,30 +587,54 @@ a.netPill:hover {
 .structGone {
   color: var(--color-band-bad);
   text-decoration: line-through;
-  text-decoration-thickness: 1px;
+  text-decoration-thickness: 2px;
 }
+/* A pill of its own beside the struck field, so the line does not run through it. */
 .structNote {
-  color: var(--color-band-mute);
-  font-size: max(12px, 0.78em);
-  text-decoration: none;
   display: inline-block;
-  margin-left: 0.8em;
+  margin-left: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-band-bad-bg);
+  color: var(--color-band-bad);
+  font-size: 13px;
+  line-height: 1.5;
 }
 .structMuted {
   display: block;
   color: var(--color-band-mute);
 }
-
-/* The ledger test */
-.tamper {
+/* The three numerals, ruled between and at the foot. */
+.numerals li {
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-  gap: 14px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 16px;
+  align-items: baseline;
+  padding-block: 18px;
+  border-top: 1px solid var(--color-band-line);
 }
-/* Its height is its own, not the verdict's, so that its foot follows the table. */
-.tamper > .sheet:first-child {
-  align-self: start;
+.numerals li:last-child {
+  border-bottom: 1px solid var(--color-band-line);
 }
+.numerals b {
+  font-weight: 300;
+  font-size: clamp(48px, 5vw, 72px);
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-gold-bright);
+}
+.numeralText {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-band-mute);
+}
+.numerals strong {
+  font-weight: 500;
+  color: var(--color-band-fg);
+}
+
+/* The ledger test (TamperTest.tsx): the sheet, its table and the buttons. The layout is in tamper.module.css. */
 .sheet {
   background: var(--color-surface);
   border: 1px solid var(--color-line);
@@ -1255,9 +647,9 @@ a.netPill:hover {
 .sheetHead {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 8px 16px;
+  gap: 2px 16px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--color-line);
   font-size: 14px;
@@ -1282,12 +674,13 @@ a.netPill:hover {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
+/* The ledger's column heads: the page's label (parts.module.css .label). */
 .table th {
   text-align: left;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: none;
   color: var(--color-mute);
   padding: 10px 14px;
   border-bottom: 1px solid var(--color-line);
@@ -1333,30 +726,6 @@ a.netPill:hover {
   color: var(--color-bad);
   text-decoration: none;
 }
-/* Above the table, so the buttons stay where they are when the verdict panel beside them grows. */
-.sheetActions {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--color-line);
-  display: grid;
-  gap: 12px;
-}
-.sheetFoot {
-  margin-top: auto;
-  padding: 16px 20px;
-  border-top: 1px solid var(--color-line);
-}
-.sheetFoot code {
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-.source {
-  color: var(--color-mute);
-}
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 .act {
   position: relative;
   font-size: 15px;
@@ -1393,160 +762,11 @@ a.netPill:hover {
   background: transparent;
   color: var(--color-ink);
 }
-/* Dimmed, and still legible: about 6:1 for the ink pill's label (5.97:1 over a white card). */
+/* Dimmed, and still legible: about 6:1 for the ink pill's label, over the paper (6.07:1) as over a white card. */
 .act[aria-disabled="true"] {
   opacity: 0.65;
   cursor: not-allowed;
   transform: none;
-}
-.verdict {
-  padding: 18px 20px 6px;
-}
-.verdict b {
-  display: block;
-  font-weight: 300;
-  font-size: clamp(34px, 3.4vw, 46px);
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-}
-.verdict span {
-  display: block;
-  margin-top: 6px;
-  font-size: 14px;
-  color: var(--color-mute);
-}
-.checks {
-  margin: 0;
-  padding: 8px 20px 18px;
-  display: grid;
-  list-style: none;
-}
-.checks > li {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  gap: 2px 8px;
-  align-items: baseline;
-  padding-block: 6px;
-  font-size: 14.5px;
-  border-top: 1px solid var(--color-line);
-}
-.checks > li:first-child {
-  border-top: 0;
-}
-.checkId {
-  font-family: var(--font-mono);
-  color: var(--color-mute);
-}
-.checkWord {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-ok);
-}
-.checkBad {
-  color: var(--color-bad);
-}
-.checkBad .checkWord {
-  color: var(--color-bad);
-}
-/* What the check means, in one line, the same whether it passed or failed. */
-.checkHint {
-  grid-column: 2 / -1;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-mute);
-}
-.why {
-  grid-column: 2 / -1;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--color-bad);
-  overflow-wrap: anywhere;
-}
-.caveat {
-  grid-column: 2 / -1;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--color-mute);
-  overflow-wrap: anywhere;
-}
-/* The verifier's own words, closed until asked for: the plain verdict above says what they mean. */
-.detail {
-  margin: 0 20px 14px;
-  font-size: 14px;
-}
-.detail summary {
-  cursor: pointer;
-  width: fit-content;
-  color: var(--color-mute);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-thickness: 1px;
-}
-.detail p {
-  margin-top: 8px;
-  max-width: var(--container-measure);
-  color: var(--color-mute);
-}
-.detail ul {
-  margin: 6px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-  list-style: none;
-}
-.detail li {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  gap: 8px;
-  align-items: baseline;
-}
-.sheetNote {
-  max-width: var(--container-measure);
-  padding: 0 20px 18px;
-  font-size: 14px;
-  color: var(--color-mute);
-}
-/* After a run the verifier failed: where to go next. */
-.sheetNext {
-  margin-top: -6px;
-  padding: 0 20px 18px;
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-.sheetError {
-  padding: 0 20px 18px;
-  font-size: 14px;
-  color: var(--color-bad);
-}
-
-/* On chain */
-.tx {
-  display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 5fr) auto;
-  gap: 8px 28px;
-  padding-block: 20px;
-  border-top: 1px solid var(--color-line);
-  align-items: baseline;
-}
-.tx:last-of-type {
-  border-bottom: 1px solid var(--color-line);
-}
-.tx h3 {
-  font-weight: 400;
-  font-size: 19px;
-  letter-spacing: -0.012em;
-}
-.tx p {
-  color: var(--color-mute);
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-.txHash {
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  white-space: nowrap;
 }
 
 /* Status pills: the comparison, the integrate cards and the story cards (the status section has its own module). */
@@ -1593,128 +813,17 @@ a.netPill:hover {
 .pillLink:hover {
   text-decoration-color: currentColor;
 }
-/* A footnote to the status section, not a chapter: the heading of the integrations it is built on stays small. */
-.boTitle {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 500;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-}
 
 /*
- * Built on: one card with a row for NEAR and one for NEAR AI Cloud (what it is to Probarion, what it does, the
- * evidence). NEAR's logo is NEAR's own file in its own colour, never stretched, and stands in for its name, with clear
- * space above and below it. The stack note, the four places to get Probarion and the trademark footer under the card
- * are in ships.module.css.
+ * Closing: the page's end statement. Its rule sits halfway down its gap, G under the section before it and G over the
+ * title, on the wrap's left edge like every section head's hairline.
  */
-.boCard {
-  border: 1px solid var(--color-line);
-  border-radius: 16px;
-  background: var(--color-surface);
-}
-/*
- * The evidence column keeps at least 232px, room for its longest link on one line ("Entry 13 on the proof page", about
- * 218px in 13px mono), so that no link wraps on a desktop. A fixed floor, not one sized to the links, keeps the two
- * rows' columns lined up.
- */
-.boRow {
-  display: grid;
-  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr) minmax(232px, 3fr);
-  gap: 18px clamp(20px, 3vw, 44px);
-  padding: clamp(22px, 2.6vw, 34px);
-  align-items: start;
-}
-.boRow + .boRow {
-  border-top: 1px solid var(--color-line);
-}
-.boWho,
-.boWhat {
-  min-width: 0;
-}
-.boLabel {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-gold-ink);
-}
-/* As tall as NEAR's logo, so that the logo and the name set in text start their rows at the same height. */
-.boName {
-  display: flex;
-  align-items: center;
-  min-height: 24px;
-  margin-top: 16px;
-  font-size: 22px;
-  font-weight: 400;
-  line-height: 1.1;
-  letter-spacing: -0.015em;
-}
-.nearLogo {
-  display: block;
-  width: 98px;
-  max-width: 100%;
-  height: auto;
-  aspect-ratio: 1440 / 351;
-}
-.boDomain {
-  display: inline-block;
-  margin-top: 14px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--color-mute);
-}
-.boBody {
-  max-width: 34em;
-  font-size: 16px;
-}
-.boChecks {
-  display: grid;
-  gap: 8px;
-  margin-top: 14px;
-  font-size: 15px;
-}
-.boFact {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-.boCheck {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin-top: 0.2em;
-  fill: none;
-  stroke: var(--color-gold-small);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.boNote {
-  margin-top: 12px;
-  font-size: 14px;
-  color: var(--color-mute);
-}
-.boLinks {
-  display: grid;
-  gap: 10px;
-  justify-items: end;
-  min-width: 0;
-  text-align: right;
-  font-family: var(--font-mono);
-  font-size: 13px;
-}
-.boLinks a {
-  overflow-wrap: anywhere;
-}
-
-/* Closing */
 .close {
-  border-top: 1px solid var(--color-line);
-  padding-block: clamp(64px, 9vw, 128px);
+  padding-block: 0 var(--space-section);
 }
 .closeTitle {
+  border-top: 1px solid var(--color-line);
+  padding-top: var(--space-section);
   font-weight: 300;
   font-size: clamp(42px, 7.4vw, 108px);
   letter-spacing: -0.045em;
@@ -1737,44 +846,48 @@ a.netPill:hover {
 .closeNote code ~ code {
   white-space: normal;
 }
-/* After the two ways out to the evaluation and the spec, the way into the product. */
+/*
+ * After the two ways out to the evaluation and the spec, the way into the product: the page's last link, as an ink
+ * card. The link fills the card, so the whole card is its tap target (WCAG 2.5.5); its words are large and light.
+ */
 .closeNext {
-  margin-top: 28px;
+  margin-top: 36px;
   font-size: 17px;
 }
+.closeNext a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 28px;
+  border-radius: 24px;
+  background: var(--color-band);
+  color: var(--color-band-fg);
+  font-size: clamp(24px, 2.6vw, 34px);
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  text-decoration: none;
+}
+.closeNext a:hover {
+  background: var(--color-code-active);
+}
+/* The arrow, hidden from screen readers, on the paid card's gold: ink on --gradient-metal keeps 7:1. */
+.closeNext a > span {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--gradient-metal);
+  color: var(--color-ink);
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
 
-/* Footer */
-.footer {
-  border-top: 1px solid var(--color-line);
-  padding-block: 40px 56px;
-  font-size: 14px;
-  color: var(--color-mute);
-}
-.foot {
-  display: grid;
-  grid-template-columns: minmax(0, 4fr) repeat(3, minmax(0, 2fr));
-  gap: 32px;
-}
-.foot h2 {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-ink);
-  margin-bottom: 10px;
-}
-.foot ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 6px;
-}
-.foot a:hover {
-  color: var(--color-ink);
-  text-decoration: underline;
-}
-.footNote {
-  margin-top: 1em;
-}
+/* The site footer is in footer.module.css. */
 
 /* /proof with no vault: the site's full wrap, so that its left edge matches the header and the footer. */
 .proofIndex {
@@ -1862,8 +975,11 @@ a.netPill:hover {
   font-size: 15px;
 }
 
-/* Wider than the page's own break, so that the header has room for the next built page. */
-@media (max-width: 1100px) {
+/*
+ * Wider than the page's own break. The eight links (four sections, then Canary, Docs, What works and GitHub) need about
+ * 1200px of page to stay on one row; 1240px leaves room for a 15px scrollbar and a wider fallback font.
+ */
+@media (max-width: 1240px) {
   .navLinks {
     display: none;
   }
@@ -1875,11 +991,11 @@ a.netPill:hover {
   }
 }
 /*
- * With both networks served the bar also carries the switch, and the links fit beside it only once the page has its full
- * width (.wrap's 1320px, plus room for a scrollbar). Below that they move into the phone menu, as they do below 1101px.
- * With one network there is no switch, and the bar is unchanged.
+ * With both networks served the bar also carries the switch, and the eight links do not fit beside it even at .wrap's
+ * full 1320px, so at every width they stay in the phone menu, as they do below 1241px. With one network there is no
+ * switch, and the bar is unchanged.
  */
-@media (min-width: 1101px) and (max-width: 1360px) {
+@media (min-width: 1241px) {
   .nav:has(> .netSwitch) {
     gap: 12px;
   }
@@ -1895,136 +1011,26 @@ a.netPill:hover {
   .netSwitch {
     display: none;
   }
-  .storyGrid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .shotRow {
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: 86%;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    padding-bottom: 8px;
-    /* 6px of room each side, taken back by the margin, so the row does not cut a caption link's focus ring. */
-    margin-inline: -6px;
-    padding-inline: 6px;
-    scroll-padding-inline: 6px;
-  }
-  .shot {
-    scroll-snap-align: start;
-  }
   .betaWide {
     display: none;
   }
   .betaNarrow {
     display: block;
   }
-}
-/* Built on: below 1101px the evidence column is too narrow for its links, so they move under the checks. */
-@media (max-width: 1100px) {
-  .boRow {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  }
-  .boLinks {
-    grid-column: 2;
-    justify-items: start;
-    text-align: left;
+  .beta {
+    padding-block: 0;
   }
 }
 @media (max-width: 960px) {
-  .liveGrid {
-    grid-template-columns: 1fr;
-  }
   .vs {
-    grid-template-columns: 1fr;
-  }
-  .ways {
-    grid-template-columns: 1fr 1fr;
-  }
-  .who {
     grid-template-columns: minmax(0, 1fr);
   }
-  .compareHead {
-    display: none;
-  }
-  .compare tr,
-  .compare th,
-  .compare td {
-    display: block;
-    width: auto;
-  }
-  .compare .compareRow {
-    padding-bottom: 4px;
-  }
-  .compare td {
-    border-top: 0;
-    padding-block: 4px;
-  }
-  .compare td::before {
-    content: attr(data-label) ": ";
-    font-weight: 500;
-    color: var(--color-ink);
-  }
-  .compare tr + tr th {
-    border-top: 1px solid var(--color-line);
-  }
-  .compare td:last-child {
-    padding-bottom: 16px;
-  }
-  .heroGrid,
-  .bandGrid,
-  .tamper {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .numbers {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .numbers > div:nth-child(odd) {
+  .vsCol + .vsCol {
     border-left: 0;
-    padding-left: 0;
-  }
-  .numbers > div:nth-child(n + 3) {
     border-top: 1px solid var(--color-line);
   }
-  .foot {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .foot > div:first-child {
-    grid-column: 1 / -1;
-  }
-  .step {
-    grid-template-columns: 54px minmax(0, 1fr);
-  }
-  .step .panel {
-    grid-column: 2;
-  }
-  .tx {
+  .payeePanel {
     grid-template-columns: minmax(0, 1fr);
-  }
-}
-/*
- * Built on, from 961px: the sentence beside the heading sits on the heading's last line, at the right. Section heads
- * wrap, and this heading and sentence are too wide for one line, so without this the sentence would sit under the
- * heading at the left. Balanced, so that its last line is not one word. At 960px and below the two stack.
- */
-@media (min-width: 961px) {
-  .boHead {
-    flex-wrap: nowrap;
-    align-items: baseline;
-  }
-  .boHead > p {
-    max-width: 44em;
-    font-size: 15px;
-    text-align: right;
-    text-wrap: balance;
-  }
-}
-/* The narrowest two-column cards: the longest status line would wrap below the title and move the buttons. */
-@media (min-width: 961px) and (max-width: 1100px) {
-  .sheetHead {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
   }
 }
 @media (max-width: 620px) {
@@ -2032,65 +1038,20 @@ a.netPill:hover {
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
-  .boRow {
-    grid-template-columns: minmax(0, 1fr);
-    padding: 20px 18px;
+  .closeNext a {
+    padding: 20px;
   }
-  .boLinks {
-    grid-column: auto;
-  }
-  .scenarios {
-    grid-template-columns: 1fr;
-  }
-  .ways,
-  .who {
-    grid-template-columns: 1fr;
-  }
-  .field {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
-  /* The slider gets a row of its own, as wide as the panel, with a 44px touch height. */
-  .amountRow {
-    flex-wrap: wrap;
-  }
-  .amountRow input[type="range"] {
-    flex-basis: 100%;
+  .closeNext a > span {
+    width: 44px;
     height: 44px;
   }
-  /* Four lines kept free here: at 320px to 390px the answer's source, with its raw answer, takes four. */
-  .liveAnswer .liveHint {
-    min-height: 6.2em;
-  }
-  /*
-   * The hero's two buttons and its light link keep one row on a phone: the buttons are smaller, and the link takes
-   * the rest of the row, its label on two short lines if it must. Where even that does not fit, it moves below.
-   */
+  /* The hero's two buttons keep one row on a phone, a little smaller. */
   .cta {
     gap: 8px;
   }
   .cta .big {
     padding: 12px;
     font-size: 14px;
-  }
-  .ctaLink {
-    display: block;
-    flex: 1 1 0;
-    align-self: center;
-    padding-inline: 0;
-    font-size: 14px;
-  }
-  .duel {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .step {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .step .panel {
-    grid-column: 1;
-  }
-  .foot {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .quietSm {
     display: none;
@@ -2106,14 +1067,11 @@ a.netPill:hover {
     padding-inline: 14px;
     font-size: 14px;
   }
-  /* The longest summary takes two lines here. They are kept free, so that the buttons below do not move. */
+  /* The ledger test: the status line goes under the sheet's title. */
   .sheetHead {
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
-  }
-  .sheetHead > span:last-child {
-    min-height: 3.1em;
   }
   .table th,
   .table td {
@@ -2150,9 +1108,6 @@ a.netPill:hover {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .scenario {
-    transition: none;
-  }
   .card {
     animation: none;
   }
@@ -2170,26 +1125,15 @@ a.netPill:hover {
     background: none;
     color: CanvasText;
   }
-  /* NEAR's black logo and the gold check marks would fade on a dark Canvas: both take the forced text colour. */
-  .nearLogo {
-    fill: currentColor;
-  }
-  .boCheck {
-    stroke: currentColor;
-  }
   /* Forced colours drop the box-shadow that marks a pressed button. */
   .act[aria-pressed="true"] {
     text-decoration: underline;
   }
-  /* The chosen scenario keeps its 2px border, in the selection colour of the system. */
-  .scenario[aria-pressed="true"] {
-    border-color: Highlight;
-  }
-  /* A fill is dropped, so the current network, the paid card and the pills get an edge instead. */
+  /* A fill is dropped, so the current network, the paid card, the pills and the closing's card get an edge instead. */
   .netPillCurrent,
   .pill,
-  .state,
-  .payeeLock {
+  .payeePanel,
+  .closeNext a {
     border: 1px solid CanvasText;
   }
   .metal {

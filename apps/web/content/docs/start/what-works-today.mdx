@@ -1,18 +1,40 @@
-NEAR testnet is live. Where a Live part runs on a chain, it runs on NEAR testnet with test tokens, except the mainnet vault. On mainnet one small vault, `v0.probarion.near`, has run since 2026-11-11 with real USDC: one NEAR payment and one refusal on 2026-11-11, and on 2026-11-13 two Base payouts through NEAR Intents, tests to the owner's own Base address: 1.00 USDC decided by code rules alone, then 0.25 USDC decided by an attested model and the code rules. The mainnet factory `vaults.probarion.near` is not deployed. [Testnet and mainnet](/docs/start/testnet-and-mainnet) says what differs between the two networks.
+NEAR testnet is live. Where a Live part runs on a chain, it runs on NEAR testnet with test tokens, except the mainnet vault. On mainnet one small vault, `v0.probarion.near`, has run since 2026-11-11 with real USDC: one NEAR payment and one refusal on 2026-11-11, and on 2026-11-13 two Base payouts through NEAR Intents, tests to the owner's own Base address: 1.00 USDC decided by code rules alone, then 0.25 USDC decided by an attested model and the code rules. On 2026-11-14, in a drill the team rehearsed, it refused a 50 USDC spend over mandate 1's 1 USDC cap, the owner froze it, it refused a 2 USDC spend sent while frozen, and the owner unfroze it. Both spends were over the cap, so neither could have paid even if the vault had not been frozen, and no USDC moved ([the drill](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/drill-2026-11-14/README.md)). The mainnet factory `vaults.probarion.near` is not deployed. [Testnet and mainnet](/docs/start/testnet-and-mainnet) says what differs between the two networks.
 
 ## The status list
 
 <StatusTable />
 
-The Detail column is each row's pill, as the comparison and the integrate cards on the landing page show it. Each row's id is its anchor here, and on the landing page too. The landing's status section groups these rows, gives each a proof mark (Verified, In part or Not tried yet) and, where it applies, a use mark (Running or Released), gives the web console one row with its parts, adds the Chrome extension, and closes with Known gaps. In the order of the rows, the ids are `vault-contract`, `offline-verifier`, `reproducible-builds`, `vault-factory`, `web-console`, `web-console-not-tried`, `public-proof-page`, `sdk-and-cli`, `payables-agent`, `attested-model-run`, `canary`, `mcp-server` and `mainnet-vault`, so [`#mainnet-vault`](#mainnet-vault) links the last row. Here the web console has two rows: what was tried on testnet with a real wallet, and the console actions that are built but not tried yet, adding an email alert and the Base top-up through 1Click, which is mainnet only. Reject on a held spend, revoking a mandate, Withdraw and removing an agent key moved to the first row on 2026-11-12, when the owner of a testnet vault tried each with a real wallet (Meteor), in a desktop browser ([the record](https://github.com/probarion/probarion/blob/main/docs/evidence/trial-vault/README.md#2026-11-12-reject-revoke-a-spare-agent-key-and-withdraw-all)).
+The Detail column is each row's pill, as the landing page shows it beside each way in to Probarion, and as the [comparison](/docs/start/what-is-probarion#why-not-a-spending-limit-contract) on What is Probarion shows it. Each row's id is its anchor here, and on the landing page too. The landing's status section groups these rows, gives each a proof mark (Verified, In part or Not tried yet) and, where it applies, a use mark (Running or Released), gives the web console one row with its parts, adds the Chrome extension, and closes with Known gaps. In the order of the rows, the ids are `vault-contract`, `offline-verifier`, `reproducible-builds`, `vault-factory`, `web-console`, `web-console-not-tried`, `public-proof-page`, `sdk-and-cli`, `payables-agent`, `attested-model-run`, `canary`, `mcp-server` and `mainnet-vault`, so [`#mainnet-vault`](#mainnet-vault) links the last row. Here the web console has two rows: what was tried on testnet with a real wallet, and the console actions that are built but not tried yet, adding an email alert and the Base top-up through 1Click, which works on mainnet alone. Reject on a held spend, revoking a mandate, Withdraw and removing an agent key moved to the first row on 2026-11-12, when the owner of a testnet vault tried each with a real wallet (Meteor), in a desktop browser ([the record](https://github.com/probarion/probarion/blob/main/docs/evidence/trial-vault/README.md#2026-11-12-reject-revoke-a-spare-agent-key-and-withdraw-all)).
 
-At the end of its status section, the landing page lists its known gaps, and the beta strip on every page links them. One is the contract build: "It also runs a build from before the 2026-11-03 `set_ledger_key` fix. The vaults the testnet factory creates, the demo vault among them, run the fixed build recorded in `contracts/code-hashes.json`." The vault source changed after `v0.probarion.testnet` was deployed, with a `set_ledger_key` fix on 2026-11-03. On the older build, replacing the ledger key could fail in a way that left the vault unable to anchor again. Every vault the testnet factory creates, the console's included, runs the fixed build. [`contracts/code-hashes.json`](https://github.com/probarion/probarion/blob/main/contracts/code-hashes.json) records the hash of each reproducible build, and [verify a vault](/docs/trust/verify-a-vault) shows how to run the verifier on a vault yourself.
+On the landing page the status section is a compact board: each row is one line that keeps its id and opens to its record, with where it runs, its evidence and what it does not do yet. Under the board, the landing page lists the [known gaps](#known-gaps) in the same three lists as this page, and the beta strip on every page links them. One is the build of the smoke-run vault. The vault source changed after `v0.probarion.testnet` was deployed, with a `set_ledger_key` fix on 2026-11-03. On the older build, replacing the ledger key could fail in a way that left the vault unable to anchor again. Every vault the testnet factory creates, the console's included, runs the fixed build. [`contracts/code-hashes.json`](https://github.com/probarion/probarion/blob/main/contracts/code-hashes.json) records the hash of each reproducible build, and [verify a vault](/docs/trust/verify-a-vault) shows how to run the verifier on a vault yourself.
 
 <Callout kind="note" title="Unaudited beta.">
 
 No third party has audited this code. [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#what-is-not-proven-yet) lists what `verify` does not prove yet, and the [security model](/docs/trust/security-model) covers the rest.
 
 </Callout>
+
+## Known gaps
+
+What is not proven, not done or not built yet across the product. Each row of [the status list](#the-status-list) says its own limits. These are the known gaps under the landing page's status board, from `STATUS.gaps` in [`apps/web/src/lib/site/facts.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/site/facts.ts).
+
+### Not proven yet
+
+- **No outside review yet.** No third party has audited this code. The [threat model](https://github.com/probarion/probarion/blob/main/SECURITY.md#what-is-not-proven-yet) says what `verify` does not prove yet.
+- **No end-to-end encryption.** The request to NEAR AI Cloud is plain JSON over HTTPS, the hosted console reads each invoice, and the signed ledger keeps the model's answer, which can restate it.
+
+### In the code
+
+- **No Content-Security-Policy yet.** Owner and approver actions still need a 1 yoctoNEAR wallet prompt, so a script in the page cannot approve or withdraw.
+- **An unmaintained allocator.** The contracts link near-sdk's default `wee_alloc` allocator. Changing it needs a new vault version.
+- **No dependency scan in CI.** CI has no job that checks dependencies for known flaws. Dependabot alerts are triaged in the review log.
+- **The smoke-run vault.** `v0.probarion.testnet`, the vault of the 2026-11-01 smoke run, sent its spends with the agent key alone, without a ledger, so a live `verify --vault` on it fails checks d and h. It also runs a build from before the 2026-11-03 `set_ledger_key` fix. The vaults the testnet factory creates, the demo vault among them, run the fixed build recorded in `contracts/code-hashes.json`.
+
+### Not built yet
+
+- **No outbound webhooks.** The code has no webhook that calls a server of yours. [Outbound webhooks](#outbound-webhooks) below says how to follow a vault instead.
+- **No public HTTP API for agents.** An agent pays through the SDK or the MCP server, in its own process. [A public HTTP API for agents](#a-public-http-api-for-agents) below has more.
+- **No pricing.** There is no price list and no paid plan. [Pricing](#pricing) below says what your wallet pays for.
 
 ## Also in the source
 
@@ -22,7 +44,7 @@ The status list leaves these parts out, among others. Each one follows one row o
 | --- | --- |
 | [NEAR AI Cloud adapter](#near-ai-cloud-adapter) | Preview |
 | [npm release 0.1.1](#npm-release-011) | Live |
-| [Test USDC on testnet](#test-usdc-on-testnet) | Preview |
+| [Test USDC on testnet](#test-usdc-on-testnet) | Live |
 | [Browser extension, server half](#browser-extension-server-half) | Preview |
 | [Browser extension for Chrome](#browser-extension-for-chrome) | Preview |
 | [Testnet and mainnet from one deployment](#testnet-and-mainnet-from-one-deployment) | Preview |
@@ -36,7 +58,7 @@ The README Status table also has rows that this page does not cover: the inciden
 
 ### NEAR AI Cloud adapter
 
-Preview. Built and tested against a fake NEAR AI Cloud. On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two real attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt)). On the testnet demo vault, Payables made five more, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. Code refused three of them on 2026-11-11, and on 2026-11-12 the code allowed the fourth and the fifth, both by `Qwen/Qwen3.8-27B`, and the vault paid each invoice, 2.00 test USDC, as spends 4 and 5 ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/README.md#2026-11-12-payables-pays-on-its-own-with-an-attested-model), [the second](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/verify-online-2026-11-12.txt)). On mainnet, the ledger of `v0.probarion.near` holds three attested decisions of 2026-11-13, which pass A1 to A7 and, with the invoice texts, A8 offline, and have not been checked online: code refused the first two, and the third, by `z-ai/glm-5.3-flash`, led to spend 3, a 0.25 USDC test to the owner's own Base address ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/README.md)). The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run on the Canary's two; on the demo vault's five it passed on 2026-11-12, with the invoices committed in the repository ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/verify-a8-2026-11-12.txt)). The [attested model run](#attested-model-run) row above is Preview too.
+Preview. Built and tested against a fake NEAR AI Cloud. On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two real attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt)). On the testnet demo vault, Payables made five more, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. Code refused three of them on 2026-11-11, and on 2026-11-12 the code allowed the fourth and the fifth, both by `Qwen/Qwen3.8-27B`, and the vault paid each invoice, 2.00 test USDC, as spends 4 and 5 ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/README.md#2026-11-12-payables-pays-on-its-own-with-an-attested-model), [the second](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/verify-online-2026-11-12.txt)). On mainnet, the ledger of `v0.probarion.near` holds three attested decisions of 2026-11-13, which pass A1 to A7 and, with the invoice texts, A8 offline and, in a later run that day, O1 and O2 online ([online output](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)): code refused the first two, and the third, by `z-ai/glm-5.3-flash`, led to spend 3, a 0.25 USDC test to the owner's own Base address ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/README.md)). The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run on the Canary's two; on the demo vault's five it passed on 2026-11-12, with the invoices committed in the repository ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/verify-a8-2026-11-12.txt)). The [attested model run](#attested-model-run) row above is Preview too.
 
 Code: [`packages/sdk/src/nearai.ts`](https://github.com/probarion/probarion/blob/main/packages/sdk/src/nearai.ts)
 
@@ -48,7 +70,7 @@ Code: [`.github/workflows/release.yml`](https://github.com/probarion/probarion/b
 
 ### Test USDC on testnet
 
-The testnet faucet is Preview: it is built and tested, and its key is set on probarion.xyz. On 2026-11-09 its button minted 25 test USDC into the testnet demo vault, `demo.vaults.probarion.testnet`.
+The testnet faucet is Live: it is built and tested, and its key is set on probarion.xyz. On 2026-11-09 its button minted 25 test USDC into the testnet demo vault, `demo.vaults.probarion.testnet` ([the transaction](https://testnet.nearblocks.io/txns/9GGZoC1aaAtmj366JXoTV2FkJBfbax3jsHYCqjcXjd5m)).
 
 On a testnet vault's Top-up tab (`/console/<vault>/topup`), signed in as the vault's owner, the "Add test USDC" button mints 25 test USDC into the vault, with no wallet: the Probarion team's key signs the mint, and that key can only mint the test token. It works once a UTC day per vault, and for up to 3 vaults per signed-in account a day. A cap of 50 mints a UTC day for all vaults together can also stop it until midnight UTC, and the button then answers "Today's test USDC for all vaults is given out." with the time to wait.
 
@@ -78,7 +100,7 @@ Code: [`apps/web/src/lib/network.ts`](https://github.com/probarion/probarion/blo
 
 ### Owner alerts by Telegram and email
 
-Preview. Built and tested against a fake Telegram and a fake Resend. Telegram is on at probarion.xyz: on 2026-11-11 the owner of a testnet vault linked a chat from its Alerts tab, and the bot sent real messages, "Approval needed" for a held spend and "Paid" once an approved spend paid ([the record](https://github.com/probarion/probarion/blob/main/docs/evidence/trial-vault/README.md)). No email has been sent yet. Each channel switches on by itself. Telegram needs `TELEGRAM_BOT_TOKEN` set and the bot's webhook registered by the setup script, since a chat links through that webhook. Email needs `RESEND_API_KEY` set and `probarion.xyz`, the domain the alerts are sent from, verified in Resend. The runbook [`docs/ops/alerts.md`](https://github.com/probarion/probarion/blob/main/docs/ops/alerts.md) has the setup.
+Preview for email. Telegram ran on testnet on 2026-11-11. Built and tested against a fake Telegram and a fake Resend. Telegram is on at probarion.xyz: on 2026-11-11 the owner of a testnet vault linked a chat from its Alerts tab, and the bot sent real messages, "Approval needed" for a held spend and "Paid" once an approved spend paid ([the record](https://github.com/probarion/probarion/blob/main/docs/evidence/trial-vault/README.md)). No email has been sent yet. Each channel switches on by itself. Telegram needs `TELEGRAM_BOT_TOKEN` set and the bot's webhook registered by the setup script, since a chat links through that webhook. Email needs `RESEND_API_KEY` set and `probarion.xyz`, the domain the alerts are sent from, verified in Resend. The runbook [`docs/ops/alerts.md`](https://github.com/probarion/probarion/blob/main/docs/ops/alerts.md) has the setup.
 
 Code: [`apps/web/src/lib/alerts`](https://github.com/probarion/probarion/tree/main/apps/web/src/lib/alerts)
 
@@ -124,7 +146,7 @@ There is no price list and no paid plan. The [terms](/terms) say "Probarion char
 
 ### A third-party audit
 
-No third party has audited this code, as the Known gaps at the end of the landing's status section say. [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#reporting-a-vulnerability) says how to report a vulnerability.
+No third party has audited this code, as the [known gaps](#known-gaps) say, on this page and under the landing page's status board. [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#reporting-a-vulnerability) says how to report a vulnerability.
 
 ## How this list stays true
 
@@ -136,7 +158,7 @@ Tests hold the list to the repository:
 - [`apps/web/test/docs-reference.test.ts`](https://github.com/probarion/probarion/blob/main/apps/web/test/docs-reference.test.ts) checks that every row maps to Live, Preview or Planned and has a stable id, the anchor of its row on this page.
 - [`apps/web/test/docs-pages.test.ts`](https://github.com/probarion/probarion/blob/main/apps/web/test/docs-pages.test.ts) checks that this page renders the table.
 
-The sections under [also in the source](#also-in-the-source) and [what does not exist](#what-does-not-exist) are written by hand, so no test holds them to the README. Where the two differ, the README Status table and the code it links are the record.
+The sections under [also in the source](#also-in-the-source) and [what does not exist](#what-does-not-exist) are written by hand, so no test holds them to the README. Where the two differ, the README Status table and the code it links are the record. The [known gaps](#known-gaps) are written by hand too, and [`apps/web/test/docs-pages.test.ts`](https://github.com/probarion/probarion/blob/main/apps/web/test/docs-pages.test.ts) holds each one to `STATUS.gaps`, the lists the landing page renders.
 
 ## Related pages
 

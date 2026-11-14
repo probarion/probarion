@@ -84,6 +84,32 @@ table.usage tbody tr:last-child th {
   font-weight: 600;
 }
 
+/*
+ * How far it is tested: one item per figure, its name over it and where it was read under it, ruled apart. A figure is
+ * a sentence that wraps, with a reading line height and 1em between items (WCAG 1.4.8); a long code span may break.
+ */
+.tested {
+  display: grid;
+  gap: 1em;
+  max-width: var(--container-measure);
+  margin-top: 20px;
+  font-size: 16px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.tested > li {
+  padding-top: 1em;
+  border-top: 1px solid var(--color-line);
+}
+.testedWhat {
+  font-weight: 600;
+}
+.testedAt {
+  margin-top: 4px;
+  color: var(--color-mute);
+  font-size: 15px;
+}
+
 @media (max-width: 620px) {
   .delta {
     display: block;
