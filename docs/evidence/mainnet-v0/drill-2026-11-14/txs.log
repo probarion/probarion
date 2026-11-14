@@ -1,0 +1,5 @@
+utc	label	hash	signer	receiver	status
+2026-11-14T01:06:22Z	drill_over_cap	G6WJcTZA67NBSrLV8zhS7Ay5BQKt6qCSao7dndm1tF1c	v0.probarion.near	v0.probarion.near	failed
+2026-11-14T01:08:45Z	drill_freeze	6oPDe77z5FmendyMQPTeKMdA5jsgpboks9uyUNGLvX6Z	probarion.near	v0.probarion.near	ok
+2026-11-14T01:11:54Z	drill_frozen_refused	DwXRPZHWWKaBcNpvp6F1rsaFzvM5wyi6A4Z6sckF8ifg	v0.probarion.near	v0.probarion.near	failed
+2026-11-14T01:13:00Z	drill_unfreeze	H4qf84TwG1U7k8MRVp6VJHJcwryJFUPzPrRDv3yEAu8T	probarion.near	v0.probarion.near	ok

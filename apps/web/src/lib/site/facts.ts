@@ -213,6 +213,13 @@ export const MAINNET_TX = {
   basePayout: mainnetTx("BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9", "BdN7oB76…rSQ9"),
   // S2, 2026-11-13: spend 3, paid on an attested model's proposal (proof.attested_base_payout_tx).
   attestedPayout: mainnetTx("5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH", "5amtgb8M…9NGH"),
+  // The drill of 2026-11-14, rehearsed by the team (docs/evidence/mainnet-v0/drill-2026-11-14): a 50 USDC spend over
+  // mandate 1's 1 USDC cap, refused; the owner's freeze; a 2 USDC spend sent while frozen, also over the cap, refused;
+  // the unfreeze.
+  drillOverCap: mainnetTx("G6WJcTZA67NBSrLV8zhS7Ay5BQKt6qCSao7dndm1tF1c", "G6WJcTZA…tF1c"),
+  drillFreeze: mainnetTx("6oPDe77z5FmendyMQPTeKMdA5jsgpboks9uyUNGLvX6Z", "6oPDe77z…vX6Z"),
+  drillFrozenRefused: mainnetTx("DwXRPZHWWKaBcNpvp6F1rsaFzvM5wyi6A4Z6sckF8ifg", "DwXRPZHW…8ifg"),
+  drillUnfreeze: mainnetTx("H4qf84TwG1U7k8MRVp6VJHJcwryJFUPzPrRDv3yEAu8T", "H4qf84Tw…Au8T"),
 } as const;
 
 /** A mainnet transaction by its hash alone, labelled the way the site labels hashes (mainnet-payout `shortHash`). */
@@ -1723,6 +1730,12 @@ export type StatusTone = "live" | "work" | "plan";
  */
 export const STATUS_AS_OF = "2026-11-13";
 
+/**
+ * The day of the team's drill on the mainnet vault (docs/evidence/mainnet-v0/drill-2026-11-14). The board's mainnet row
+ * tells it, so the board's eyebrow names it beside STATUS_AS_OF, which stays the day of JUDGES.md's Not yet list.
+ */
+export const MAINNET_DRILL_ON = "2026-11-14";
+
 /** The known gaps' two pinned sentences: no audit, and the smoke run's vault (audit P1-10). */
 const GAP_AUDIT = {
   before: "No third party has audited this code. The ",
@@ -1790,7 +1803,7 @@ export const STATUS = {
     {
       id: "mainnet-vault",
       row: "Mainnet vault",
-      pill: "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
+      pill: "On mainnet: 3 test payments (2 to Base), 3 refused on chain",
       tone: "live",
     },
   ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
@@ -1947,6 +1960,7 @@ export const BOARD_LINKS = {
   vault402: blob("docs/evidence/402-vault/README.md"),
   mainnetRunS1: blob("docs/evidence/mainnet-v0/s1-2026-11-13/README.md"),
   mainnetRunS2: blob("docs/evidence/mainnet-v0/s2-2026-11-13/README.md"),
+  mainnetDrill: blob("docs/evidence/mainnet-v0/drill-2026-11-14/README.md"),
   /** The live verify of the mainnet ledger after S2: all 6 entries, both invoices, 3 attested decisions. */
   mainnetVerify: blob("docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt"),
   /**
@@ -2136,7 +2150,7 @@ const testnetTx = (verb: string, fact: TxFact, note?: string) =>
  * link to its record.
  */
 export const STATUS_BOARD = {
-  eyebrow: `Status as of ${STATUS_AS_OF}`,
+  eyebrow: `Status as of ${STATUS_AS_OF}, with the mainnet drill of ${MAINNET_DRILL_ON}`,
   lede: "Each row says whether it was tried for real, and links the record. What runs is on NEAR testnet, plus one small mainnet vault with real USDC.",
   /** The summary under the lede: how many rows each proof mark holds, and what the others miss (proofSummary). */
   summaryLabel: "In short",
@@ -2185,7 +2199,7 @@ export const STATUS_BOARD = {
           name: "Mainnet vault",
           proof: "verified",
           use: "running",
-          what: "One small standalone vault with real USDC, locked, on the recorded build. It made three test payments to the owner's own addresses: 1 USDC to a NEAR wallet on 2026-11-11, then two Base payouts through NEAR Intents on 2026-11-13. Code rules alone decided the 1.00 USDC Base payout. The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed. It refused mandate 999 on chain.",
+          what: "One small standalone vault with real USDC, locked, on the recorded build. It made three test payments to the owner's own addresses: 1 USDC to a NEAR wallet on 2026-11-11, then two Base payouts through NEAR Intents on 2026-11-13. Code rules alone decided the 1.00 USDC Base payout. The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed. It refused mandate 999 on chain. In a drill the team rehearsed on 2026-11-14, it refused a 50 USDC spend over mandate 1's 1 USDC cap, the owner froze it, it refused a 2 USDC spend while frozen, and the owner unfroze it. Both spends were over the cap, so neither could have paid even if the vault had not been frozen. No USDC moved.",
           limit:
             "No customer payment yet: each one is a test to the owner's own address. Spend 1 was sent without the SDK, with no signed ledger.",
           where: { place: "Mainnet, real USDC" },
@@ -2193,6 +2207,10 @@ export const STATUS_BOARD = {
             { kind: "mainnet", label: "v0.probarion.near", href: BOARD_LINKS.mainnetAccount },
             chainTx("mainnet", "paid", MAINNET_TX.payment, "1 USDC, 2026-11-11"),
             chainTx("mainnet", "refused", MAINNET_TX.refusal, "NoMandate"),
+            chainTx("mainnet", "refused", MAINNET_TX.drillOverCap, "OverPerPayment"),
+            chainTx("mainnet", "frozen", MAINNET_TX.drillFreeze, "the drill, 2026-11-14"),
+            chainTx("mainnet", "refused", MAINNET_TX.drillFrozenRefused, "Frozen"),
+            chainTx("mainnet", "unfrozen", MAINNET_TX.drillUnfreeze, "the drill, 2026-11-14"),
             chainTx("mainnet", "Base payout", BOARD_TX.basePayout, "1.00 USDC burned, rules alone"),
             chainTx("base", "arrived", BASE_TX.basePayout, "0.9976 USDC on Base"),
             chainTx(
@@ -2204,6 +2222,7 @@ export const STATUS_BOARD = {
             chainTx("base", "arrived", BASE_TX.attestedPayout, "0.2476 USDC on Base"),
             { kind: "record", label: "the S1 run, 2026-11-13", href: BOARD_LINKS.mainnetRunS1 },
             { kind: "record", label: "the S2 run, 2026-11-13", href: BOARD_LINKS.mainnetRunS2 },
+            { kind: "record", label: "the drill, 2026-11-14", href: BOARD_LINKS.mainnetDrill },
             {
               kind: "verify",
               label: "online check, 2026-11-13",
@@ -2730,7 +2749,7 @@ export const BUILT_ON = {
       checks: [
         "The vault and the factory run on NEAR testnet",
         "One small vault on mainnet since 2026-11-11, `v0.probarion.near`",
-        "On mainnet: a NEAR payment, two Base payouts and a refusal, all on chain",
+        "On mainnet: a NEAR payment, two Base payouts, three refusals and a freeze, all on chain",
       ],
       note: "Tests to the owner's Base address: one rules-only, one on an attested model's proposal.",
       links: [

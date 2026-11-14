@@ -174,3 +174,23 @@ invoices: 2 files read; A8 checks 2 of them against the attested decisions with 
 8 passed, 0 failed, 0 unproven, 1 skipped
 RESULT: PASS
 exit code: 0
+
+== 2026-11-13 23:35 UTC: the same block in GitHub Actions ==
+
+.github/workflows/no-clone-verify.yml ran on pull request #163 at commit 3fc5879, on ubuntu with no checkout and
+no secret, downloading the three files from raw.githubusercontent.com at that commit.
+
+Node v22.23.4 (npm 10.9.9; npm warns EBADENGINE: probarion@0.1.1 and its packages declare node >=24):
+  a to h PASS, i SKIP (not a factory vault)
+  8 passed, 0 failed, 0 unproven, 1 skipped
+  RESULT: PASS
+  log: https://github.com/probarion/probarion/actions/runs/43528200026/job/132239070376
+
+Node v24.22.2:
+  a to h PASS, i SKIP (not a factory vault)
+  8 passed, 0 failed, 0 unproven, 1 skipped
+  RESULT: PASS
+  log: https://github.com/probarion/probarion/actions/runs/43528200026/job/132239070722
+
+The probarion.xyz/samples/mainnet URLs are served from the deploy that ships this folder; that run is recorded
+below once it happens.

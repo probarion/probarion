@@ -269,10 +269,12 @@ describe("the figures this repository can derive", () => {
     const f = row("Real USDC on mainnet, vault `v0.probarion.near`").figure;
     expect(MAINNET_RECORD.payments).toBe(3);
     expect(MAINNET_RECORD.basePayouts).toBe(2);
-    expect(MAINNET_RECORD.refusedOnChain).toBe(1);
+    expect(MAINNET_RECORD.refusedOnChain).toBe(3);
     expect(MAINNET_RECORD.decisions).toHaveLength(3);
     expect(f).toContain("3 test payments to the owner's own accounts");
-    expect(f).toContain("1 spend refused on chain (`NoMandate`)");
+    expect(f).toContain("3 spends refused on chain, no USDC moved: `NoMandate` on 2026-11-11");
+    expect(f).toContain("`OverPerPayment` for 50 USDC");
+    expect(f).toContain("`Frozen` for 2 USDC");
     expect(f).toContain("3 attested decisions pass A1 to A8 offline");
     expect(f).toContain("the TEE measurement is not pinned");
     expect(

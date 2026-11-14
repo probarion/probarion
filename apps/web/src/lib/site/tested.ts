@@ -123,10 +123,11 @@ export const TESTED = {
     {
       what: "Real USDC on mainnet, vault `v0.probarion.near`",
       figure:
-        "3 test payments to the owner's own accounts: 1.00 USDC to a NEAR account on 2026-11-11, then 1.00 and 0.25 USDC to a Base address through NEAR Intents on 2026-11-13. 1 spend refused on chain (`NoMandate`). 3 attested decisions pass A1 to A8 offline, and O1 (Intel TDX) and O2 (NVIDIA NRAS) online; the TEE measurement is not pinned. 6 signed ledger entries, with 4 anchors on chain.",
-      at: `recorded 2026-11-11 and 2026-11-13; ledger anchors read on chain ${TESTED_AS_OF} 01:10 UTC`,
+        "3 test payments to the owner's own accounts: 1.00 USDC to a NEAR account on 2026-11-11, then 1.00 and 0.25 USDC to a Base address through NEAR Intents on 2026-11-13. 3 spends refused on chain, no USDC moved: `NoMandate` on 2026-11-11, then, in a drill the team rehearsed on 2026-11-14, `OverPerPayment` for 50 USDC over mandate 1's 1 USDC cap, and `Frozen` for 2 USDC after the owner froze the vault, which the owner then unfroze. 3 attested decisions pass A1 to A8 offline, and O1 (Intel TDX) and O2 (NVIDIA NRAS) online; the TEE measurement is not pinned. 6 signed ledger entries, with 4 anchors on chain.",
+      at: `recorded 2026-11-11, 2026-11-13 and, the drill, 2026-11-14 01:06 to 01:13 UTC; ledger anchors read on chain ${TESTED_AS_OF} 01:10 UTC`,
       sources: [
         { label: "mainnet-proof.json", href: "docs/mainnet-proof.json" },
+        { label: "the drill", href: "docs/evidence/mainnet-v0/drill-2026-11-14/README.md" },
         {
           label: "online check",
           href: "docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt",
