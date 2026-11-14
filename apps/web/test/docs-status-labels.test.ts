@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { MCP_VERSION } from "@/lib/agent/connect";
 import { jsxNodes, parseMdx } from "@/lib/docs/mdast";
 import { findPage, PAGES } from "@/lib/docs/registry";
 import { docsStatusRows } from "@/lib/docs/status";
@@ -140,11 +141,9 @@ describe("the docs home's developer door", () => {
   const body = readMdx("").split('go="Developer quickstart"')[1]?.split("</Door>")[0] ?? "";
 
   it("starts with the MCP demo, which needs no key, then the npm install", () => {
-    const mcp = JSON.parse(text("packages", "mcp", "package.json")) as {
-      name: string;
-      version: string;
-    };
-    const demo = `\`npx -y ${mcp.name}@${mcp.version} demo\``;
+    const mcp = JSON.parse(text("packages", "mcp", "package.json")) as { name: string };
+    // The release on npm that the site's npx lines run (MCP_VERSION), which a prepared release can be ahead of.
+    const demo = `\`npx -y ${mcp.name}@${MCP_VERSION} demo\``;
     expect(body).toContain(demo);
     expect(body).toContain("`npm install @probarion/sdk @probarion/core`");
     expect(body.indexOf(demo)).toBeLessThan(body.indexOf("npm install"));
