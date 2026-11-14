@@ -678,9 +678,9 @@ published does not have. So, as advice: before the 0.1.1 tag, check that `NPM_TO
 still valid and may publish a new package under the `@probarion` scope; if it was revoked, make a new one
 and store it there ([the `NPM_TOKEN` row of Key rotation](#key-rotation)). After 0.1.1, set up trusted
 publishing for `@probarion/mcp` too, as step 5 says. `@probarion/near` (the NEAR builder primitives in
-`packages/near`, which the CLI depends on) is new on npm with the next release, so the same advice holds for
+`packages/near`, which the CLI depends on) is new on npm with release 0.1.2, so the same advice holds for
 it: before that tag, check that `NPM_TOKEN` may publish a new package under the scope, and set up trusted
-publishing for it once it is on npm.
+publishing for it once it is on npm ([Release 0.1.2](#release-012)).
 
 ### Release 0.1.1
 
@@ -810,6 +810,83 @@ versions is merged into `main`.
 
    If the tag was pushed on another day than 2026-11-12, the same pull request dates the `CHANGELOG.md`
    heading `## 0.1.1` with the day the packages were published.
+
+### Release 0.1.2
+
+0.1.2 brings `@probarion/near` to npm, a package npm does not have yet, and the CLI's `account audit` and
+`tx prove`, which depend on it. The release workflow publishes `@probarion/near` before the other four.
+The steps start after the promote pull request that carries the 0.1.2 versions is merged into `main`.
+
+1. Check `main` before tagging. In a clone of the repository:
+
+   ```bash
+   git fetch origin
+   git switch --detach origin/main
+   pnpm install --frozen-lockfile
+   pnpm run release:check -- sdk-v0.1.2
+   ```
+
+   It prints `release check ok:` and the five packages, each at 0.1.2, on one line:
+   `release check ok: @probarion/near@0.1.2, @probarion/core@0.1.2, @probarion/sdk@0.1.2, probarion@0.1.2, @probarion/mcp@0.1.2`.
+
+2. Check `NPM_TOKEN` before the tag, as the advice above says. `@probarion/near` was not published before,
+   so it has no trusted publisher, and its publish rests on `NPM_TOKEN` in `npm-release`. The token must
+   not have expired and must be allowed to create a new package in the `@probarion` scope. If it was
+   revoked, make a new one and store it there ([the `NPM_TOKEN` row of Key rotation](#key-rotation)).
+
+3. Tag that commit (annotated, on `main`) and push the tag. The push starts the release workflow:
+
+   ```bash
+   git tag -a sdk-v0.1.2 -m "SDK v0.1.2" origin/main
+   git push origin sdk-v0.1.2
+   ```
+
+4. Approve the `npm-release` environment. On the Actions page, open the `release` run for `sdk-v0.1.2`;
+   once "Check, test and pack" has passed, "Publish to npm" waits for a review: Review deployments, tick
+   `npm-release`, Approve and deploy. Wait for the run to finish green.
+
+   If "Publish to npm" stops at `@probarion/near`, nothing of 0.1.2 is on npm yet, because it is published
+   before the others. An authentication or permission error there means `NPM_TOKEN` cannot create a new
+   package in the scope. Keep the tag: do not delete it or push a new one. Store a working `NPM_TOKEN` in
+   `npm-release`, then open the same run and use "Re-run failed jobs" within 7 days, the time the run keeps
+   its tarballs, and approve `npm-release` again when it waits. If it stops at a later package, the ones
+   before it are on npm, and the same re-run publishes the rest: a package npm already has with the same
+   bytes is skipped. After 7 days the tarballs are gone, and "Re-run all jobs" packs again: it publishes
+   the rest when the new tarballs have the same bytes as the ones npm holds.
+
+5. Check npm. Lines one to three print `0.1.2`. Line four prints `version = '0.1.2'` and the
+   dependencies, with `'@probarion/near': '0.1.2'` among them. The last prints `version = '0.1.2'` and
+   `mcpName = 'io.github.probarion/probarion'`:
+
+   ```bash
+   npm view @probarion/near@0.1.2 version
+   npm view @probarion/core@0.1.2 version
+   npm view @probarion/sdk@0.1.2 version
+   npm view probarion@0.1.2 version dependencies
+   npm view @probarion/mcp@0.1.2 version mcpName
+   ```
+
+   Then set up trusted publishing for `@probarion/near`, as the advice above says, now that it has a
+   settings page on npm.
+
+6. The MCP registry. `@probarion/mcp` has no code change since 0.1.1, so the registry's 0.1.1 entry still
+   runs the same server, and the server keeps working if this step waits. A registry version is published
+   once and cannot be changed, so the registry lists 0.1.2 after a new publish. To list it, which keeps
+   the registry's latest version equal to npm's, run steps 6 and 7 of [Release 0.1.1](#release-011) from
+   `packages/mcp` of the same checkout, after step 5 here shows the `mcpName`. `publish` ends with
+   `Server io.github.probarion/probarion version 0.1.2`, and the listing check shows the version `0.1.2`.
+
+7. Then a pull request changes what the repository says about npm, as step 8 of 0.1.1 did. Once npm's
+   `latest` is 0.1.2, the lines that name 0.1.1 as the npm release, and the "not on npm yet" lines for
+   `@probarion/near`, are stale. Find them with `git grep -n "0\.1\.1"` and `git grep -n "not on npm yet"`,
+   and leave the `## 0.1.1` section of `CHANGELOG.md` and the evidence records as they are. The pull
+   request moves the commands a reader runs against npm (the npx lines of `probarion@0.1.1` and
+   `@probarion/mcp@0.1.1` in the README, `JUDGES.md`, the docs, `scripts/smoke-live.mjs` and the no-clone
+   CI workflow), the npm pills and the npm card in `apps/web/src/lib/site/facts.ts` (which then lists
+   `@probarion/near` too), `MCP_VERSION` in `apps/web/src/lib/agent/connect.ts`, `NPM_RELEASE` in
+   `apps/web/test/built-on.test.ts`, `SECURITY.md`, the header of `CHANGELOG.md`, and the tests that pin
+   these lines. If the tag was pushed on another day than 2026-11-14, the same pull request dates the
+   `CHANGELOG.md` heading `## 0.1.2` with the day the packages were published.
 
 ## Status page posts
 
