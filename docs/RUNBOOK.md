@@ -662,9 +662,10 @@ tag, approve the environment or publish to npm or to the MCP registry.
 
 How a release runs ([`release.yml`](../.github/workflows/release.yml)): pushing the tag `sdk-v<version>`
 starts the workflow. Its verify job refuses a tagged commit that is not on `main`, runs the release check,
-`verify:ts` and `verify:launch`, and packs the four packages. Its publish job waits in the `npm-release`
-environment for the OWNER's approval, then publishes the tarballs in dependency order, `@probarion/core`,
-`@probarion/sdk`, `probarion`, then `@probarion/mcp`, with npm provenance. A version npm already holds
+`verify:ts` and `verify:launch`, and packs the five packages. Its publish job waits in the `npm-release`
+environment for the OWNER's approval, then publishes the tarballs in dependency order, `@probarion/near`,
+`@probarion/core`, `@probarion/sdk`, `probarion`, then `@probarion/mcp`, with npm provenance (the list is
+`PUBLISHED_DIRS` in `scripts/release-check.ts`). A version npm already holds
 with the same bytes is skipped; one it holds with other bytes stops the run. If a run fails, "Re-run
 failed jobs" on the Actions page keeps the tarballs of the first verify job.
 
@@ -676,7 +677,10 @@ trusted publishing docs set it up from a package's own settings page, which a pa
 published does not have. So, as advice: before the 0.1.1 tag, check that `NPM_TOKEN` in `npm-release` is
 still valid and may publish a new package under the `@probarion` scope; if it was revoked, make a new one
 and store it there ([the `NPM_TOKEN` row of Key rotation](#key-rotation)). After 0.1.1, set up trusted
-publishing for `@probarion/mcp` too, as step 5 says.
+publishing for `@probarion/mcp` too, as step 5 says. `@probarion/near` (the NEAR builder primitives in
+`packages/near`, which the CLI depends on) is new on npm with the next release, so the same advice holds for
+it: before that tag, check that `NPM_TOKEN` may publish a new package under the scope, and set up trusted
+publishing for it once it is on npm.
 
 ### Release 0.1.1
 
