@@ -285,23 +285,6 @@ a.netPill:hover {
   gap: 12px;
   margin-top: 28px;
 }
-/* The hero's light third link: text, not a button, with a touch target as tall as a button's. No inline padding, so
-   that when it wraps under the buttons it starts on their left edge. */
-.ctaLink {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding-inline: 0;
-  font-size: 15px;
-  font-weight: 500;
-}
-.fineprint {
-  margin-top: 22px;
-  font-size: 14px;
-  color: var(--color-mute);
-  max-width: 34em;
-}
 
 .card {
   border-radius: 24px;
@@ -402,50 +385,27 @@ a.netPill:hover {
   text-align: right;
   overflow-wrap: anywhere;
 }
+/*
+ * A card's transaction link: a 44px touch target (WCAG 2.5.5) that takes no more of its row than one line, so the
+ * card's rows keep their rhythm. The target reaches into the row's padding, where no other link is.
+ */
 .cardHash {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-block: -11px;
   font-family: var(--font-mono);
   font-size: 13px;
 }
+/* A card's own link, as tall as a button. */
 .cardLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
   align-self: flex-start;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-/* Numbers */
-/* No rule under the strip: the next section's hairline, G below it, already closes it. */
-.numbers {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-top: 1px solid var(--color-line);
-}
-.numbers > div {
-  padding: clamp(20px, 2.4vw, 32px) clamp(16px, 2vw, 28px) clamp(24px, 3vw, 40px);
-  border-left: 1px solid var(--color-line);
-  min-width: 0;
-}
-.numbers > div:first-child {
-  border-left: 0;
-  padding-left: 0;
-}
-.numbers b {
-  display: block;
-  font-weight: 300;
-  font-size: clamp(64px, 9vw, 132px);
-  line-height: 1;
-  letter-spacing: -0.05em;
-  font-variant-numeric: tabular-nums;
-}
-.numbers p {
-  margin-top: 12px;
   font-size: 15px;
-  line-height: 1.5;
-  color: var(--color-mute);
-  max-width: 19em;
-}
-.numbers strong {
-  color: var(--color-ink);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 /* Sections: each opens with the shared head (SectionHead.tsx, head.module.css), which sets this heading. */
@@ -459,41 +419,48 @@ a.netPill:hover {
   min-width: 0;
 }
 
-/* Problem: two columns, then the numbers */
+/*
+ * Problem: one white card split in two by a hairline, an agent with its own key beside one with a mandate, each line
+ * ruled; then the pull line, then the payee panel.
+ */
 .vs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-  margin-bottom: clamp(32px, 4vw, 56px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--color-line);
+  border-radius: 24px;
+  background: var(--color-surface);
+  overflow: hidden;
 }
 .vsCol {
-  border: 1px solid var(--color-line);
-  border-radius: 18px;
-  padding: 26px;
-  background: var(--color-surface);
+  padding: clamp(24px, 3vw, 40px);
+  min-width: 0;
 }
+.vsCol + .vsCol {
+  border-left: 1px solid var(--color-line);
+}
+/* The mandate's side, a shade of the gold paper at its top. */
 .vsWith {
-  border-color: var(--color-ink);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-gold-pale) 30%, var(--color-surface)),
+    var(--color-surface)
+  );
 }
 .vsCol h3 {
   font-size: 17px;
   font-weight: 600;
-  margin-bottom: 16px;
-}
-.vsCol ul {
-  display: grid;
-  gap: 12px;
+  margin-bottom: 18px;
 }
 .vsCol li {
-  position: relative;
-  padding-left: 32px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  padding-block: 12px;
+  border-top: 1px solid var(--color-line);
   font-size: 16px;
+  line-height: 1.5;
 }
 .vsNo,
 .vsYes {
-  position: absolute;
-  left: 0;
-  top: 0;
   font-weight: 600;
 }
 .vsNo {
@@ -562,38 +529,89 @@ a.netPill:hover {
   color: var(--color-bad);
 }
 
-/* Ink band. It keeps its own padding inside, and owns G of paper below itself, as each section does. */
-.band {
+/* The pull line under the two columns: why a cap is not enough, light and large, after a short gold rule. */
+.pull {
+  margin-block: var(--space-block);
+}
+.pull::before {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 2px;
+  margin-bottom: 22px;
+  background: var(--color-gold-deep);
+}
+.pullLine {
+  max-width: 17em;
+  font-weight: 300;
+  font-size: clamp(28px, 3.3vw, 46px);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+.pullLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: 12px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/*
+ * The payee panel (InkBand.tsx, #payee): an inset ink panel at the end of the problem, on the wrap like every block.
+ * The heading, the body and the struct on the left; the numerals on the right, from their foot. The problem section
+ * owns the paper below it.
+ */
+.payeePanel {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: clamp(32px, 5vw, 80px);
+  align-items: end;
+  padding: clamp(28px, 4vw, 64px);
+  border-radius: 24px;
   background: var(--color-band);
   color: var(--color-band-fg);
-  margin-bottom: var(--space-section);
 }
-.band :focus-visible {
+.payeePanel :focus-visible {
   outline-color: var(--color-band-fg);
 }
-.bandGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
-  gap: clamp(36px, 6vw, 88px);
-  padding-block: clamp(64px, 9vw, 128px);
-  align-items: center;
+.payeeMain {
+  min-width: 0;
 }
-.bandSub {
-  margin-top: 24px;
+.payeeTitle {
+  max-width: 12em;
+  font-weight: 300;
+  font-size: clamp(32px, 4vw, 58px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.payeeBody {
+  margin-top: 20px;
   max-width: 30em;
   color: var(--color-band-mute);
-  font-size: 18px;
+}
+.payeeBody code {
+  color: var(--color-band-fg);
 }
 .struct {
+  margin-top: 32px;
   font-family: var(--font-mono);
-  font-size: clamp(15px, 1.5vw, 19px);
-  line-height: 2;
+  font-size: clamp(15px, 1.4vw, 18px);
+  line-height: 1.75;
+  background: color-mix(in srgb, var(--color-code-active) 50%, var(--color-band));
   border: 1px solid var(--color-band-line);
-  border-radius: 20px;
-  padding: clamp(20px, 2.4vw, 32px);
+  border-radius: 16px;
+  padding: 22px 26px;
   min-width: 0;
   position: relative;
   overflow-x: auto;
+}
+.structName {
+  display: block;
+  color: var(--color-gold-bright);
 }
 .structField {
   padding-left: 1.5em;
@@ -603,18 +621,51 @@ a.netPill:hover {
 .structGone {
   color: var(--color-band-bad);
   text-decoration: line-through;
-  text-decoration-thickness: 1px;
+  text-decoration-thickness: 2px;
 }
+/* A pill of its own beside the struck field, so the line does not run through it. */
 .structNote {
-  color: var(--color-band-mute);
-  font-size: max(12px, 0.78em);
-  text-decoration: none;
   display: inline-block;
-  margin-left: 0.8em;
+  margin-left: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-band-bad-bg);
+  color: var(--color-band-bad);
+  font-size: 13px;
+  line-height: 1.5;
 }
 .structMuted {
   display: block;
   color: var(--color-band-mute);
+}
+/* The three numerals, ruled between and at the foot. */
+.numerals li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 16px;
+  align-items: baseline;
+  padding-block: 18px;
+  border-top: 1px solid var(--color-band-line);
+}
+.numerals li:last-child {
+  border-bottom: 1px solid var(--color-band-line);
+}
+.numerals b {
+  font-weight: 300;
+  font-size: clamp(48px, 5vw, 72px);
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-gold-bright);
+}
+.numeralText {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-band-mute);
+}
+.numerals strong {
+  font-weight: 500;
+  color: var(--color-band-fg);
 }
 
 /* The ledger test (TamperTest.tsx): the sheet, its table and the buttons. The layout is in tamper.module.css. */
@@ -1087,20 +1138,14 @@ a.netPill:hover {
 }
 @media (max-width: 960px) {
   .vs {
-    grid-template-columns: 1fr;
-  }
-  .bandGrid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .numbers {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .numbers > div:nth-child(odd) {
+  .vsCol + .vsCol {
     border-left: 0;
-    padding-left: 0;
-  }
-  .numbers > div:nth-child(n + 3) {
     border-top: 1px solid var(--color-line);
+  }
+  .payeePanel {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 620px) {
@@ -1115,19 +1160,12 @@ a.netPill:hover {
   .boLinks {
     grid-column: auto;
   }
-  /*
-   * The hero's two buttons keep one row on a phone, a little smaller; the light link takes a row of its own under
-   * them, on one line, so that its label never breaks beside them.
-   */
+  /* The hero's two buttons keep one row on a phone, a little smaller. */
   .cta {
     gap: 8px;
   }
   .cta .big {
     padding: 12px;
-    font-size: 14px;
-  }
-  .ctaLink {
-    flex-basis: 100%;
     font-size: 14px;
   }
   .quietSm {
@@ -1215,7 +1253,8 @@ a.netPill:hover {
   }
   /* A fill is dropped, so the current network, the paid card and the pills get an edge instead. */
   .netPillCurrent,
-  .pill {
+  .pill,
+  .payeePanel {
     border: 1px solid CanvasText;
   }
   .metal {
