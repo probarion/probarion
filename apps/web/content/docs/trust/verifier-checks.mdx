@@ -130,6 +130,22 @@ O1 and O2 run only on `model+rules` decisions that carry an attestation report. 
 
 O1 and O2 are part of check e, not checks of their own. An online failure fails e, and they never turn an offline failure into a pass. When the package cannot be loaded, the report says `online: O1 and O2 did not run (<reason>)` and e keeps its offline result. `--online` also looks burns up in FastNEAR's transaction index, and it cannot be combined with `--offline`.
 
+## Attested decisions on record
+
+Three ledgers in the repository hold real attested decisions from NEAR AI Cloud: the Canary's, a public challenge vault on testnet; the testnet demo vault's, made by Payables; and the mainnet vault's, `v0.probarion.near`. Each cell gives the result, the day of the run and the verifier's output.
+
+| Check | The Canary's ledger | The demo vault's ledger | The mainnet vault's ledger |
+| --- | --- | --- | --- |
+| Attested decisions | 2, of 2026-11-10 ([the ledger](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/ledger-2026-11-10.jsonl)) | 5, of 2026-11-11 and 2026-11-12: entries 10 to 13 and 15 ([the ledger](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/ledger-2026-11-12-video.jsonl)) | 3, of 2026-11-13: entries 0, 1 and 4 ([the ledger](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/ledger-2026-11-13.jsonl)) |
+| A1 to A7 (offline checks) | Pass on both, 2026-11-11 ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-2026-11-11.txt)) | Pass on all five, 2026-11-12 ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/verify-2026-11-12-video.txt)) | Pass on all three, 2026-11-13 ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)) |
+| O1 and O2 (online checks) | Pass on both, 2026-11-11 ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt)) | Pass on all five, entry 15 included, 2026-11-12 at 16:13 UTC ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/verify-online-a8-2026-11-12.txt)). Entries 10 to 13 had passed earlier, at 01:10 UTC ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/verify-online-2026-11-12.txt)) | Pass on all three, 2026-11-13 at 17:52 UTC ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)) |
+| A8 | Not run: its ledger holds no invoice text ([why](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#what-check-e-proves-for-seq-1-and-2)) | Pass on all five, 2026-11-12, with the invoices committed in the repository ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/verify-a8-2026-11-12.txt)) | Pass on all three, 2026-11-13, with the two invoice texts committed in the repository ([output](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)) |
+| Which model image ran | Not shown | Not shown | Not shown |
+
+The TEE measurement is not pinned, so these checks do not show which model image ran: see [the finding of 2026-11-12](https://github.com/probarion/probarion/blob/main/docs/measurement-pin-2026-11.md) and [online checks O1 and O2](#online-checks-o1-and-o2).
+
+The demo vault's five came after [its four invoices](/docs/start/how-one-payment-works#the-demo-vaults-four-invoices), on invoices INV-2006 to INV-2010. On 2026-11-12 the code allowed two of them, entries 13 and 15 (INV-2009 and INV-2010), and the vault paid each invoice, 2.00 test USDC, on testnet: spend 4, [`EA7MbLts…PBuU`](https://testnet.nearblocks.io/txns/EA7MbLtsRjQUBbycfNyh6u1ieLNU5WXtyGy2K8eiPBuU), and spend 5, [`3YEGw5Qd…vEE4`](https://testnet.nearblocks.io/txns/3YEGw5Qdp9RbnR5LXFbAKXWPPhgiz7hf6vdDapfXvEE4). On mainnet, code refused the decisions of entries 0 and 1, and entry 4, by `z-ai/glm-5.3-flash`, led to spend 3, a 0.25 USDC test to the owner's own Base address ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/README.md)).
+
 ## What no check covers
 
 <Callout kind="warning">

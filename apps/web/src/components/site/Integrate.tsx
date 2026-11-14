@@ -1,53 +1,127 @@
-import { createElement, type ReactNode } from "react";
+import Link from "next/link";
+import { CopyButton } from "@/components/docs/CopyButton";
 import { RouteLink } from "@/components/RouteLink";
-import { INTEGRATE, SDK_SNIPPET } from "@/lib/site/facts";
-import { KeepRich, LIST, PartHead } from "./bits";
+import { INTEGRATE } from "@/lib/site/facts";
+import { KeepRich, LIST, Mark } from "./bits";
+import { ConsoleShot } from "./ConsoleShots";
 import m from "./integrate.module.css";
 import { Away, StatusPill } from "./parts";
-import p from "./parts.module.css";
-import { ScrollRegion } from "./ScrollRegion";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
-/** The uses' part, an anchor of its own. */
+/** The uses' list, an anchor of its own. */
 export const USES_ID = "integrate-uses";
 
-/** The snippet as written, each comment in a span of its own so that it reads quieter than the code beside it. */
-function Snippet({ code }: { code: string }) {
-  const parts: ReactNode[] = [];
-  for (const [i, line] of code.split("\n").entries()) {
-    if (i > 0) parts.push("\n");
-    const cut = line.indexOf(" // ");
-    if (cut < 0) parts.push(line);
-    else
-      parts.push(
-        line.slice(0, cut + 1),
-        createElement("span", { className: m.comment }, line.slice(cut + 1)),
-      );
-  }
-  return createElement("pre", null, ...parts);
-}
+const NBSP = " ";
 
-type Link = { route: string; label: string } | { href: string; label: string; after?: string };
+type Use = (typeof INTEGRATE.who)[number];
 
-/** A link of the section: a page of this site in this tab, anything else in a new one, with its arrow. */
-function Go({ link, className = s.link }: { link: Link; className?: string }) {
-  if ("route" in link) {
+/** A stamp's tone: the page's pairs, ok on its tint for paid and bad on its tint for refused. */
+const STAMP: Readonly<Record<Use["stamps"][number]["tone"], string | undefined>> = {
+  paid: m.stampPaid,
+  refused: m.stampRefused,
+};
+
+/**
+ * A use's one link to its record: a place on this page (↓), a page of this site (→), or a file elsewhere, in a new tab
+ * with the shared arrow (parts.tsx Away). The arrow is glued to the last word.
+ */
+function Evidence({ link }: { link: Use["evidence"] }) {
+  const className = `${s.link} ${m.ev}`;
+  if (link.href.startsWith("#")) {
     return (
-      <RouteLink route={link.route} className={className}>
+      <a className={className} href={link.href}>
         {link.label}
-      </RouteLink>
+        {NBSP}
+        <span aria-hidden="true">↓</span>
+      </a>
     );
   }
-  return <Away className={className} href={link.href} label={link.label} after={link.after} />;
+  if (link.href.startsWith("/")) {
+    return (
+      <Link className={className} href={link.href}>
+        {link.label}
+        {NBSP}
+        <span aria-hidden="true">→</span>
+      </Link>
+    );
+  }
+  return <Away className={className} href={link.href} label={link.label} />;
 }
 
-/** Part 1: the four ways in, as equal cards whose title, text, status and link line up across a row. */
+/**
+ * One use as a card: its network over its title, what it is, what the mandate controls in it, then its outcome under a
+ * hairline, stamped in its tone, with the link to its record. Each stamp ends in a full stop for a screen reader, so
+ * that two stamps and the sentence after them are read apart.
+ */
+function UseCard({ use }: { use: Use }) {
+  return (
+    <li className={m.use}>
+      <hgroup className={m.useHead}>
+        <p className={use.network === "Mainnet" ? `${m.net} ${m.netMain}` : m.net}>{use.network}</p>
+        <h3 className={m.useTitle}>{use.title}</h3>
+      </hgroup>
+      <p className={m.useBody}>
+        <KeepRich text={use.body} />
+      </p>
+      <p className={m.chip}>
+        <span className={m.chipLabel}>
+          {INTEGRATE.controlsLabel}
+          <span className="sr-only">:</span>
+        </span>{" "}
+        {use.control}
+      </p>
+      <div className={m.outcome}>
+        <p className={m.stamps}>
+          {use.stamps.map((x) => (
+            <span key={x.label} className={`${m.stamp} ${STAMP[x.tone]}`}>
+              <Mark tone={x.tone} />
+              {x.label}
+              <span className="sr-only">.</span>
+            </span>
+          ))}
+        </p>
+        <p className={m.outcomeText}>
+          <KeepRich text={use.outcome} />
+        </p>
+        <Evidence link={use.evidence} />
+      </div>
+    </li>
+  );
+}
+
+/** The SDK's install line, as the SDK README has it, with a copy button (hidden until the script runs), then the quickstart. */
+function Install() {
+  const x = INTEGRATE.install;
+  return (
+    <div className={m.install}>
+      <div className={m.cmd}>
+        <code>
+          <span className={m.prompt} aria-hidden="true">
+            ${" "}
+          </span>
+          {x.command}
+        </code>
+        <CopyButton text={x.command} ariaLabel={x.copyLabel} className={m.copy} />
+      </div>
+      <RouteLink route={x.link.route} className={`${s.link} ${m.installLink}`}>
+        {x.link.label}
+        {NBSP}
+        <span aria-hidden="true">→</span>
+      </RouteLink>
+    </div>
+  );
+}
+
+/** The four ways in, one ruled row of equal columns: each a title, a line, its status pill and its link. */
 function Ways() {
   return (
-    <div className={m.part}>
-      <PartHead title={INTEGRATE.parts.ways} />
-      <ul className={m.ways} {...LIST}>
+    <div className={m.ways}>
+      <h3 className={m.waysTitle}>{INTEGRATE.waysTitle}</h3>
+      <p className={m.waysSub}>
+        <KeepRich text={INTEGRATE.sub} />
+      </p>
+      <ul className={m.wayList} {...LIST}>
         {INTEGRATE.cards.map((c) => (
           <li key={c.title} className={m.way}>
             <h4 className={m.wayTitle}>{c.title}</h4>
@@ -65,180 +139,38 @@ function Ways() {
                 className={`${s.link} ${m.wayLink}`}
               >
                 {c.link.label}
+                {NBSP}
+                <span aria-hidden="true">→</span>
               </RouteLink>
             ) : (
-              <Go link={c.link} className={`${s.link} ${m.wayLink}`} />
+              <Away className={`${s.link} ${m.wayLink}`} href={c.link.href} label={c.link.label} />
             )}
           </li>
         ))}
       </ul>
+      <Install />
     </div>
   );
 }
 
-/** Beside the code: the accounts to point an agent at, each on its own network's explorer. */
-function Addresses() {
-  const a = INTEGRATE.addresses;
-  return (
-    <div>
-      <h4 className={p.label}>{a.title}</h4>
-      <div className={m.addr}>
-        {a.networks.map((n) => (
-          <div key={n.name}>
-            <p className={`${p.label} ${m.net}`}>{n.name}</p>
-            <dl className={m.addrList}>
-              {n.rows.map((r) => (
-                <div key={r.term}>
-                  <dt>{r.term}</dt>
-                  {"none" in r ? (
-                    <dd className={m.none}>{r.none}</dd>
-                  ) : (
-                    <dd>
-                      <Away href={r.account.url} code={r.account.id} after={n.explorer} />
-                      {"after" in r ? r.after : null}
-                    </dd>
-                  )}
-                </div>
-              ))}
-            </dl>
-          </div>
-        ))}
-      </div>
-      <p className={m.more}>
-        <Go link={a.link} />
-      </p>
-    </div>
-  );
-}
-
-/** Beside the code: what `outcome.status` can be, and the page that says what each one means. */
-function Statuses() {
-  return (
-    <div>
-      <h4 className={p.label}>{INTEGRATE.statusesTitle}</h4>
-      <p className={m.lead}>
-        <KeepRich text={INTEGRATE.statusesLead} />
-      </p>
-      <ul className={m.chips} {...LIST}>
-        {INTEGRATE.statuses.map((x) => (
-          <li key={x}>
-            <code>{x}</code>
-          </li>
-        ))}
-      </ul>
-      <p className={m.more}>
-        <Go link={INTEGRATE.statusesLink} />
-      </p>
-    </div>
-  );
-}
-
-/** Part 2: the SDK's one call with its reference beside it, then the docs and the source under both. */
-function Code() {
-  return (
-    <div className={m.part}>
-      <PartHead title={INTEGRATE.parts.code} note={INTEGRATE.parts.codeNote} />
-      <div className={m.dev}>
-        <div className={`${s.codeBox} ${m.code}`}>
-          <div className={s.codeHead}>
-            <span>{INTEGRATE.fileName}</span>
-            <span>{INTEGRATE.codeLabel}</span>
-          </div>
-          <ScrollRegion className={s.codeBody} label={INTEGRATE.fileName}>
-            <Snippet code={SDK_SNIPPET} />
-          </ScrollRegion>
-        </div>
-        <div className={m.rail}>
-          <Addresses />
-          <Statuses />
-        </div>
-      </div>
-      <div className={m.docsRow}>
-        <h4 className={p.label}>{INTEGRATE.docs.title}</h4>
-        <dl className={m.docs}>
-          {INTEGRATE.docs.groups.map((g) => (
-            <div key={g.name}>
-              <dt>{g.name}</dt>
-              <dd>
-                {g.links.map((l) => (
-                  <Go key={l.label} link={l} />
-                ))}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </div>
-  );
-}
-
-/** Part 3: the uses, one ruled row each; each network a use ran on is a run with what happened, its status and evidence. */
-function Uses() {
-  const [, controls] = INTEGRATE.usesHead;
-  return (
-    <div className={m.part}>
-      <PartHead title={INTEGRATE.parts.uses} id={USES_ID} />
-      {/* The heads are for the eye; the cell that needs its head carries it for a screen reader. */}
-      <div className={`${m.useHead} ${p.label}`} aria-hidden="true">
-        {INTEGRATE.usesHead.map((h) => (
-          <span key={h}>{h}</span>
-        ))}
-      </div>
-      <ul className={m.uses} {...LIST}>
-        {INTEGRATE.who.map((w) => (
-          <li key={w.title} className={m.use}>
-            <div className={m.name}>
-              <h4 className={m.useTitle}>{w.title}</h4>
-              <p className={m.useBody}>
-                <KeepRich text={w.body} />
-              </p>
-            </div>
-            <p className={m.ctl}>
-              <span className={`${p.label} ${m.cellLab}`}>
-                {controls}
-                <span className="sr-only">: </span>
-              </span>
-              {w.control}
-            </p>
-            <div className={m.runs}>
-              {w.runs.map((r) => (
-                <div key={r.network} className={m.run}>
-                  <p className={m.what}>
-                    <span className={`${p.label} ${m.net}`}>
-                      {r.network}
-                      <span className="sr-only">: </span>
-                    </span>
-                    <KeepRich text={r.outcome} />
-                  </p>
-                  <div className={m.ev}>
-                    <StatusPill row={r.status} />
-                    {r.evidence.map((e) =>
-                      e.label.includes(", tx ") ? (
-                        <Away key={e.url} href={e.url} tx={e.label} />
-                      ) : (
-                        <Away key={e.url} href={e.url} label={e.label} />
-                      ),
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
+/**
+ * The use cases, for the jobs an agent does under a mandate: the three uses first, each with its record, then the
+ * console's one screenshot (ConsoleShots.tsx), then the four ways in and the install line. The SDK code, the addresses
+ * and the outcome statuses are in the docs.
+ */
 export function Integrate() {
   return (
     <LandingSection
       id="integrate"
-      head={{ eyebrow: INTEGRATE.eyebrow, title: INTEGRATE.title, lede: INTEGRATE.sub }}
+      head={{ eyebrow: INTEGRATE.eyebrow, title: INTEGRATE.title, lede: INTEGRATE.lede }}
     >
+      <ul className={m.uses} id={USES_ID} {...LIST}>
+        {INTEGRATE.who.map((w) => (
+          <UseCard key={w.title} use={w} />
+        ))}
+      </ul>
+      <ConsoleShot />
       <Ways />
-      <Code />
-      <Uses />
     </LandingSection>
   );
 }

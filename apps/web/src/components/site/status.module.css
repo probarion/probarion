@@ -3,7 +3,9 @@
  * a closing note and the known gaps. Each row has two marks, proof (always) and use (where it applies), each a shape
  * and a word: colour only repeats them. Mobile first: one column in reading order; from 700px a row's name and marks
  * share a line and where and evidence sit side by side; from 1280px four columns line up across every group and every
- * part. The site's tokens only; no motion. test/typography-aaa.test.ts reads this file with the other modules.
+ * part. The landing draws the compact board at the end of this file: one line a row, each a native details. The site's
+ * tokens only; the one motion is a chevron that turns, with none under reduced motion. test/typography-aaa.test.ts
+ * reads this file with the other modules.
  */
 
 .board {
@@ -292,7 +294,8 @@
   overflow-wrap: anywhere;
 }
 /* The detail is already mono: code inside it keeps the detail's size, not .site code's smaller one. */
-.where .whereDetail code {
+.where .whereDetail code,
+.cWhere .whereDetail code {
   font-size: 1em;
 }
 
@@ -682,5 +685,324 @@
   .groupHead,
   .gapsBlock {
     border-color: CanvasText;
+  }
+}
+
+/* --- The landing's compact board (StatusBoard compact) ------------------------------------------------------- */
+
+/*
+ * One row a line. A row is a native details: its summary, at least 56px tall, holds the name, its marks and where it
+ * runs, so every row's id stays on a visible line, and its record opens under it with no script. The web console's
+ * parts are rows of their own, one step in beside a hairline. On a phone a row's marks sit under its name; from 700px
+ * beside it; from 1100px the marks and the place line up in the columns that each group's label line names.
+ */
+.cShort {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 28px;
+  padding: 18px 22px;
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  background: var(--color-surface);
+}
+.cShortLabel {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-gold-ink);
+}
+.cShort .summary {
+  margin: 0;
+}
+.cGroup {
+  /* The summary's columns from 1100px: the name, the proof mark, the use mark, the place, the chevron. */
+  --c-cols: minmax(0, 1fr) 136px 112px minmax(0, 220px) 24px;
+}
+.cGroup + .cGroup {
+  margin-top: clamp(32px, 4vw, 48px);
+}
+.cGroupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-ink);
+}
+.cGroupName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  min-width: 0;
+}
+.cGroupTitle {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.cGroupSub {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.cCols {
+  display: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+.cRow {
+  border-bottom: 1px solid var(--color-line);
+}
+.cSummary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  gap: 4px 16px;
+  align-items: center;
+  min-height: 56px;
+  padding-block: 10px;
+  list-style: none;
+  cursor: pointer;
+}
+.cSummary::-webkit-details-marker {
+  display: none;
+}
+/* A chevron in the last column that turns when the row opens. */
+.cSummary::after {
+  content: "";
+  grid-column: -2 / -1;
+  grid-row: 1;
+  justify-self: end;
+  width: 9px;
+  height: 9px;
+  border-right: 1.5px solid var(--color-ink);
+  border-bottom: 1.5px solid var(--color-ink);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 0.2s ease;
+}
+.cFold[open] > .cSummary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+.cTitle {
+  grid-column: 1;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.cMarks {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  min-width: 0;
+}
+.cProof,
+.cUse {
+  min-width: 0;
+}
+.cPlace {
+  display: none;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+/* The record: what it is, Not yet and Where, then its evidence, beside them from 1100px. */
+.cBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 15px 40px;
+  padding: 2px 0 22px;
+}
+/* The evidence list is placed by this grid, not by the full board's areas. */
+.cBody > .ev {
+  grid-area: auto;
+  margin-top: 0;
+}
+.cText {
+  min-width: 0;
+}
+.cText > .what:first-child {
+  margin-top: 0;
+}
+.cTried {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+/* What the part is, under what was tried: its first line 2.5em below the tried line's (1.4.8). */
+.cText > .cTried + .what {
+  margin-top: 18px;
+}
+/* Each paragraph that follows another starts 1em down: with the 1.55 line height, 2.5em from line to line (1.4.8). */
+.cWhere {
+  margin-top: 15px;
+  font-size: 15px;
+  min-width: 0;
+}
+.cLabel {
+  margin-right: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+.cParts {
+  margin: 0 0 14px;
+  padding: 0 0 0 var(--st-indent);
+  list-style: none;
+  border-left: 1px solid var(--color-line);
+}
+.cPart + .cPart {
+  border-top: 1px solid var(--color-line);
+}
+.cPartSummary {
+  min-height: 48px;
+}
+.cPartTitle {
+  grid-column: 1;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.cSummary:hover .cTitle,
+.cSummary:hover .cPartTitle {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.cNotes {
+  margin-top: 28px;
+}
+
+/* Known gaps: the head, then what is not proven yet in a box that stays open, beside the two lists that fold. */
+.cGaps {
+  margin-top: var(--space-block);
+  padding-top: 20px;
+  border-top: 1px solid var(--color-ink);
+}
+.cGapGrid {
+  display: grid;
+  gap: 16px var(--st-gap);
+  align-items: start;
+}
+.cGapOpen {
+  min-width: 0;
+  padding: clamp(20px, 2.4vw, 32px);
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  background: var(--color-surface);
+}
+.cGapTitle {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.cGapOpen > .cGapTitle {
+  margin-bottom: 12px;
+}
+.cGapFolds {
+  min-width: 0;
+}
+.cGapFold {
+  border-top: 1px solid var(--color-line);
+}
+.cGapFold:last-child {
+  border-bottom: 1px solid var(--color-line);
+}
+.cGapSummary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  list-style: none;
+  cursor: pointer;
+}
+.cGapSummary::-webkit-details-marker {
+  display: none;
+}
+.cGapSummary::after {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-right: 1.5px solid var(--color-ink);
+  border-bottom: 1.5px solid var(--color-ink);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 0.2s ease;
+}
+.cGapFold[open] > .cGapSummary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+.cGapCount {
+  margin-left: auto;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.cGapFold > .gaps {
+  padding-bottom: 18px;
+}
+
+@media (min-width: 700px) {
+  .cSummary {
+    grid-template-columns: minmax(0, 1fr) auto 24px;
+  }
+  .cMarks {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+@media (min-width: 961px) {
+  .cGapGrid {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  }
+}
+@media (min-width: 1100px) {
+  .cGroupHead {
+    display: grid;
+    grid-template-columns: var(--c-cols);
+    column-gap: 16px;
+  }
+  .cCols {
+    display: contents;
+  }
+  .cCols > span:first-child {
+    grid-column: 2;
+  }
+  .cSummary {
+    grid-template-columns: var(--c-cols);
+  }
+  .cMarks {
+    display: contents;
+  }
+  .cProof {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .cUse {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .cPlace {
+    display: block;
+    grid-column: 4;
+    grid-row: 1;
+  }
+  .cBody {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cSummary::after,
+  .cGapSummary::after {
+    transition: none;
   }
 }

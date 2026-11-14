@@ -127,6 +127,7 @@ import { TamperPanel } from "@/components/site/TamperPanel";
 import { decisionRows } from "@/lib/proof/decisions";
 import { PAYMENTS_COLUMNS, paymentsCsv } from "@/lib/proof/payments-csv";
 import { SITE_NAV } from "@/lib/routes";
+import { DEMO_PROOF, STACK, TAMPER_COPY, VERIFY_NOTE } from "@/lib/site/facts";
 
 /** True when the text still holds a right-to-left override, a line separator or a BEL. */
 const hasUnsafe = (text: string): boolean =>
@@ -984,6 +985,10 @@ describe("/proof", () => {
     it("gives its ledger test no link to /proof: the form above it is the next step here", async () => {
       const panels = elementsOf(await index(), TamperPanel);
       expect(panels.map((p) => (p.props as { next?: boolean }).next)).toEqual([undefined]);
+      // Its checks a to i stay open here; the landing folds them.
+      expect(panels.map((p) => (p.props as { foldChecks?: boolean }).foldChecks)).toEqual([
+        undefined,
+      ]);
     });
 
     it("still prefers the public demo vault to the form", async () => {
@@ -1005,24 +1010,22 @@ describe("the landing page and the menu", () => {
     // A file path reads as one (bits.tsx CodeLabel draws its folders and its file name as two code runs).
     const joined = out.replace(/<wbr\/>/g, "").replace(/<\/code><span class="[^"]*"><code>/g, "");
     expect(text(joined)).toContain("packages/core/test/fixtures/valid-snapshot.json");
-    // Step 5's labelled note, read as a person reads it: no new-tab arrow, no screen-reader words.
-    const note = text(out.replace(/<span[^>]*aria-hidden="true"[^>]*>↗<\/span>/g, ""))
-      .replace(/ \(opens in a new tab\)/g, "")
-      .replace(/ ([.,])/g, "$1");
-    expect(note).toContain(
-      "On real data. The testnet demo vault&#x27;s proof page runs the same checks on its own ledger and chain data. Its record, below",
-    );
+    // Under the ledger test: the demo vault's proof page runs the same checks on real data.
+    const realData = TAMPER_COPY.realData
+      .map((p) => (typeof p === "string" ? p : p.label))
+      .join("");
+    expect(text(out).replace(/ ([.,:])/g, "$1")).toContain(realData.replace(/'/g, "&#x27;"));
+    expect(out).toContain(`href="${DEMO_PROOF}"`);
+    // What it rests on: the ledger row ends in the commands that check the fixture offline, then the live run.
+    const ledger = STACK.rows.find((r) => r.id === "ledger");
+    expect(ledger?.tokens.map((t) => t.code)).toContain("verify --vault");
+    for (const t of ledger?.tokens ?? []) expect(text(out), t.code).toContain(t.code);
     if (CLI_ON_NPM) {
-      expect(note).toContain(
-        "What the commands run on A test fixture. This site serves an exact copy of the file in the repository.",
-      );
+      expect(text(out)).toContain(VERIFY_NOTE);
       expect(text(out)).toContain("curl -O https://probarion.xyz/samples/valid-snapshot.json");
       expect(text(out)).toContain("npx probarion verify --offline valid-snapshot.json");
       expect(text(out)).not.toContain("run it at the root of a clone");
     } else {
-      expect(note).toContain(
-        "What the command runs on A test fixture. The command reads the file in the repository. Build the CLI from a clone first (README step 1).",
-      );
       expect(text(out)).not.toContain("npx probarion");
     }
     expect(SITE_NAV).toContainEqual({ route: "/proof", label: "Proof" });

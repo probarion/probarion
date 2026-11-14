@@ -1,5 +1,5 @@
 // The #mainnet section's question to the mainnet contract (lib/site/mainnet-ask.ts, MainnetAsk.tsx), the no-clone verify
-// under it, the hero's link that starts a payout's check there, and the dated line of the later online run under S2's
+// beside it, its commands folded under its title, the hero's link that starts a payout's check there, and the dated line of the later online run under S2's
 // verify. A click sends one view and names a verdict only from the contract's answer; the mandate's facts are held to the
 // committed snapshot, the later run's to its output file.
 import { existsSync, readFileSync } from "node:fs";
@@ -8,8 +8,9 @@ import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { MainnetAsk, MainnetVerifyBlock } from "@/components/site/MainnetAsk";
+import { MainnetAsk, MainnetVerify, MainnetVerifyBlock } from "@/components/site/MainnetAsk";
 import { MainnetPayout } from "@/components/site/MainnetPayout";
+import mn from "@/components/site/mainnet.module.css";
 import { explorerAccountUrl } from "@/lib/config";
 import {
   BOARD_LINKS,
@@ -258,7 +259,7 @@ describe("what the question shows, by state", () => {
   it("keeps the copy rules: no dash, no absolute claim, no test tokens", () => {
     const strings: string[] = Object.values(MAINNET_ASK);
     const V = MAINNET_VERIFY;
-    const verify = [V.title, V.intro, V.expected, V.caveat, V.evidence.label];
+    const verify = [V.title, V.intro, V.fold, V.expected, V.caveat, V.evidence.label];
     for (const s of [...strings, ...verify, ...V.blocks.map((b) => b.label)]) {
       expect(s, s).not.toMatch(new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`));
       // "read-only" is a plain fact, not an absolute claim.
@@ -290,7 +291,9 @@ describe("the no-clone verify block", () => {
     expect(blocks).toEqual([bash?.lines.join("\n"), ps?.lines.join("\n")]);
     expect(html).toContain('aria-label="Copy the Bash commands"');
     expect(html).toContain('aria-label="Copy the PowerShell commands"');
-    expect(renderToStaticMarkup(createElement(MainnetAsk))).toContain(MAINNET_VERIFY.title);
+    expect(renderToStaticMarkup(createElement(MainnetVerify))).toContain(MAINNET_VERIFY.title);
+    // The question holds none of them: the verify is its own group beside it.
+    expect(renderToStaticMarkup(createElement(MainnetAsk))).not.toContain(MAINNET_VERIFY.title);
   });
 
   it("downloads the three files verify reads from this site, then runs probarion 0.1.1 on mainnet", () => {
@@ -343,6 +346,86 @@ describe("the no-clone verify block", () => {
     expect(runs).toContain("A8 not run");
     expect(runs).toContain("2026-11-13T19:02:25Z Git Bash");
     expect(runs).toContain("Windows PowerShell 5.1");
+  });
+});
+
+describe("the question beside the verify, after the payouts", () => {
+  const html = renderToStaticMarkup(createElement(MainnetPayout));
+  const V = MAINNET_VERIFY;
+  const groupOf = (title: string) =>
+    new RegExp(`<section[^>]*aria-labelledby="${title}"[^>]*>[\\s\\S]*?</section>`).exec(
+      html,
+    )?.[0] ?? "";
+  const ask = groupOf("mainnet-ask-title");
+  const verify = groupOf("mainnet-verify-title");
+  /** Text between elements: each tag is a space, as between a heading and its paragraph. */
+  const words = (h: string) =>
+    decoded(h.replace(/<[^>]+>/g, " "))
+      .replace(/\s+/g, " ")
+      .trim();
+  /** Text inside one paragraph: its code and its links read in line, so a tag is dropped. */
+  const said = (h: string) =>
+    decoded(h.replace(/<[^>]+>/g, ""))
+      .replace(/\s+/g, " ")
+      .trim();
+
+  it("puts the two in one pair, the question first, after the last payout and before the earlier line", () => {
+    const pair = html.indexOf(`<div class="${mn.pair}">`);
+    expect(pair).toBeGreaterThan(0);
+    expect(html.indexOf(ask)).toBeGreaterThan(pair);
+    expect(html.indexOf(verify)).toBeGreaterThan(html.indexOf(ask));
+    // After every payout's article, so the newest stone and the folds come first.
+    expect(pair).toBeGreaterThan(html.lastIndexOf("</article>"));
+    expect(html.indexOf(`<p class="${mn.earlierLine}">`)).toBeGreaterThan(html.indexOf(verify));
+    // Each is named by its own h3, one level under the section's h2.
+    expect(ask).toMatch(/<h3 class="[^"]*" id="mainnet-ask-title">Ask the mainnet contract<\/h3>/);
+    expect(verify).toMatch(
+      /<h3 class="[^"]*" id="mainnet-verify-title">Verify the vault yourself<\/h3>/,
+    );
+  });
+
+  it("keeps the question open: its amounts, its answer and its facts sit in no fold", () => {
+    expect(ask).not.toContain("<details");
+    expect(said(ask)).toContain(MAINNET_ASK.lede.replace(/`/g, ""));
+    expect(ask).toContain(`aria-label="${MAINNET_ASK.amountsLabel}"`);
+    expect(ask).toContain('aria-live="polite"');
+  });
+
+  it("shows the verify's title and what it does, and folds its commands in a closed drawer under them", () => {
+    const drawer = verify.indexOf(`<details class="${mn.drawer}">`);
+    expect(drawer).toBeGreaterThan(0);
+    // One drawer, with no open attribute: it starts closed and opens with no script.
+    expect(verify.match(/<details\b[^>]*>/g)).toEqual([`<details class="${mn.drawer}">`]);
+    expect(words(verify.slice(0, drawer))).toBe(`${V.title} ${V.intro}`);
+    const summary = verify.slice(drawer, verify.indexOf("</summary>"));
+    expect(words(summary)).toBe(`${V.fold} ↓`);
+    expect(summary).toMatch(/<span class="[^"]*" aria-hidden="true">↓<\/span>/);
+    // In the drawer: both blocks with their copy buttons, then what the run prints and its recorded runs.
+    const body = verify.slice(verify.indexOf("</summary>"));
+    const blocks = [...body.matchAll(/<pre[^>]*><code>([\s\S]*?)<\/code><\/pre>/g)];
+    expect(blocks.map((m) => decoded(m[1] ?? ""))).toEqual(V.blocks.map((b) => b.lines.join("\n")));
+    expect(body).toContain('aria-label="Copy the Bash commands"');
+    expect(body).toContain('aria-label="Copy the PowerShell commands"');
+    expect(said(body)).toContain(V.expected.replace(/`/g, ""));
+    expect(body).toContain(`href="${V.evidence.href}"`);
+    expect(V.fold).toBe("The commands, for Bash and PowerShell 5.1");
+  });
+
+  it("sets the two side by side from 961px, and stacks them, the question first, at 960px and under", () => {
+    const css = readFileSync(
+      join(ROOT, "apps", "web", "src", "components", "site", "mainnet.module.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    const at = css.indexOf("\n.pair {");
+    expect(css.slice(at, css.indexOf("}", at))).toMatch(
+      /grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/,
+    );
+    const narrow = css.slice(css.indexOf("@media (max-width: 960px)"));
+    expect(narrow.slice(0, narrow.indexOf("\n}"))).toMatch(
+      /\n {2}\.pair \{\s*grid-template-columns: minmax\(0, 1fr\);/,
+    );
+    // No other width changes the pair.
+    expect(css.match(/\.pair \{/g)).toHaveLength(2);
   });
 });
 

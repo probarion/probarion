@@ -36,7 +36,7 @@ Each file here is one page of `/docs`. The page's metadata lives in the registry
 | `<ErrorCatalog kind="vault" />`, `"sdk"`, `"http"` | The generated error tables. Each row is an anchor (`#NoMandate`, `#RpcError`, `#http-404-not_found`: an HTTP row's anchor is `http-<status>-<code>`). |
 | `<SpendChecks />` | The 14 spend checks, in contract order. |
 | `<VerifierChecks />`, `<VerifierChecks only="a, c" />` | The verifier checks, each anchored at `#check-a` ... `#check-i`. |
-| `<StatusTable />` | The landing's status rows, each anchored by its id. |
+| `<StatusTable />` | The status rows (`STATUS.rows`), each anchored by its id. The landing page's compact status board stands on these rows and keeps their ids as anchors. |
 | `<AgentRules />` | The rules for agents (the same text as `/llms.txt`). |
 | `<RefTable id="sdk-client" />` | A reference table from `src/lib/docs/ref/`. The rows are data there, pinned to the code by `test/docs-ref-<area>.test.ts`; the page explains how to read them and never repeats them. Each row with an id is an anchor. |
 | `<Changelog />` | The repository `CHANGELOG.md`, on `resources/changelog` only. Each heading is an anchor: a version's is the slug of its text, and a section's starts with its version's, such as `#unreleased-added`. A relative link opens the file on GitHub, and a link to `https://probarion.xyz` or its `www` host becomes a site path. Then every link meets the link rules below, and a GitHub link points at `github.com/probarion/`. The copy rules hold in its text too, except the bare `npm install` it quotes. A table, an image, a reference-style link or raw HTML in `CHANGELOG.md` fails the build. Its text names CLI commands but shows no call, so the page needs no signing callout. |

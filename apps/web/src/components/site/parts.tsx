@@ -121,8 +121,8 @@ const PILL_TONE: Readonly<Record<StatusTone, string | undefined>> = {
 };
 
 /**
- * A STATUS row's pill, in the page's one status style (site.module.css `.pill` and its tones): Compare and Integrate
- * draw it here, and only here. Its words and tone come from the row, never from here. `prefix` reads "Status: " before
+ * A STATUS row's pill, in the page's one status style (site.module.css `.pill` and its tones), as the landing's ways
+ * in (Integrate) draw it. Its words and tone come from the row, never from here. `prefix` reads "Status: " before
  * it where no column head names it. A hyphenated word in it (rules-only) never splits, and a pill whose words wrap
  * takes a smaller radius (parts.module.css .pill), so that two lines do not read as a blob.
  */
