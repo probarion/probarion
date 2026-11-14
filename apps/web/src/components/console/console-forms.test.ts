@@ -108,12 +108,17 @@ describe("the console forms' busy labels", () => {
     ]);
   });
 
-  it("keep their underline on a text button, whose busyLabel grid takes none from the button", () => {
+  it("keep their underline on a text button, which the busyLabel grid takes from the button", () => {
+    const underlined = (attrs = "") => /class="[^"]*(?<![\w:-])underline(?![\w-])/.test(attrs);
     const [save, resync] = buttons(html(FORMS[0]?.[1] as ReactElement));
-    expect(save?.attrs).not.toContain("busy-now");
-    expect(resync?.attrs).toContain("[&amp;_.busy-now]:underline");
+    expect(underlined(save?.attrs)).toBe(false);
+    expect(underlined(resync?.attrs)).toBe(true);
     const [keep] = buttons(html(FORMS[3]?.[1] as ReactElement));
-    expect(keep?.attrs).toContain("[&amp;_.busy-now]:underline");
+    expect(underlined(keep?.attrs)).toBe(true);
+    // An inline grid takes no text decoration from its parent unless it inherits one: the old label (the echo) and the
+    // busy label then keep the button's underline through the 200 ms gate.
+    const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
+    expect(/\.busy-label \{[^}]*text-decoration: inherit;/.test(css)).toBe(true);
   });
 
   it("write their words with no dash characters and their busy labels with the ellipsis character", () => {

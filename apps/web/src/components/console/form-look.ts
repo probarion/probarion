@@ -2,11 +2,11 @@
 // so the server pages' forms (Discard, Remove, Save zero retention) use them as the client forms do.
 
 /**
- * An underlined text button (Re-sync, Keep, Discard, Remove) whose label is a busyLabel. The label is an inline grid,
- * which takes no underline from the button, so the underline is set on the label's text itself. The pressed one shows
- * the progress cursor, as ui.tsx's buttons do.
+ * An underlined text button (Re-sync, Keep, Discard, Remove) whose label is a busyLabel. The label's inline grid takes
+ * the button's underline (globals.css `.busy-label`), so the line stays under the old label during the 200 ms gate too.
+ * The pressed one shows the progress cursor, as ui.tsx's buttons do.
  */
-export const textButtonClass = "[&_.busy-now]:underline has-[[data-busy]]:cursor-progress";
+export const textButtonClass = "underline has-[[data-busy]]:cursor-progress";
 
 /**
  * A text button that another action of its widget can block: it dims as ui.tsx's ink buttons do, to 65%, after the
