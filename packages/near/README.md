@@ -1,7 +1,9 @@
 # @probarion/near
 
 Building blocks for NEAR apps, from [Probarion](https://github.com/probarion/probarion), a mandate layer
-for AI agents on NEAR. Probarion's own checks are made of these parts, and they work for any NEAR app.
+for AI agents on NEAR. These are checks on a NEAR payment, written as parts that work for any NEAR app. Today
+Probarion's CLI runs two of them, the outcome proof verifier in `tx prove` and the account lock audit in
+`account audit`; Probarion's verifier, settlement watcher and console do not use them yet (**Planned**).
 
 **Unaudited beta.** Versions 0.x may change the API in a minor release. MIT licensed. This package is in
 the repository and is not on npm yet; it reaches npm with the next release. ESM, with no CommonJS build; Node 24 or newer.
@@ -17,7 +19,7 @@ recorded but rests on behaviour that is not documented. **Planned** is not built
 
 ## Outcome proof verifier
 
-`outcome-proof.ts` and `proof-rpc.ts`. **Built.**
+`outcome-proof.ts` and `proof-rpc.ts`. **Built**, and run by Probarion's CLI as `probarion tx prove`.
 
 Anyone who shows "this receipt ran, with these logs and this status" asks you to take one RPC node's word for
 it. `verifyOutcomeProof(proof, head, expect?)` checks a NEAR `light_client_proof` answer against one block you
@@ -52,7 +54,8 @@ as a failure), with a tamper case for each committed field, a seeded mutation lo
 
 ## Receipt-bound events
 
-`events.ts`. **Built.**
+`events.ts`. **Built.** `probarion tx prove` lists the proven outcomes' events with the unfiltered
+`scanAllEvents`; the bound and typed readers have no Probarion call site yet.
 
 Any contract can log `EVENT_JSON:{"standard":"nep141",...}`, and a receipt that fails keeps the logs it wrote
 before it failed. An event means something when its emitter is the contract it describes and its receipt
@@ -61,9 +64,10 @@ succeeded.
 - `eventsOf(source, { emitters, standard?, event?, status? })` reads NEP-297 events from the contracts you
   name (the list is required) and, by default, from receipts that succeeded. Each event carries its receipt
   id, emitter, log index, status and `proven`.
-- `nep141Events`, `nep245Events` and `nep171Events` type the data: amounts as exact `bigint` values from
-  canonical U128 strings (a number, `"01"`, `"-1"` or 2^128 is refused), valid account ids, matching
-  `token_ids` and `amounts`. Each refused event or item is reported as a problem with a stable code
+- `nep141Events`, `nep245Events` and `nep171Events` type the data: valid account ids for all three; for
+  NEP-141 and NEP-245, amounts as exact `bigint` values from canonical U128 strings (a number, `"01"`, `"-1"`
+  or 2^128 is refused), with NEP-245's `token_ids` and `amounts` of one length; for NEP-171, which carries no
+  amounts, owners and a list of at least one token id. Each refused event or item is reported as a problem with a stable code
   (`malformed_outcome`, `duplicate_outcome`, `malformed_event`, `unknown_status`, `unsupported_version`,
   `bad_data`, `bad_item`) instead of being skipped.
 - `ftDeltas` and `mtDeltas` give each account's net change, with an `ft_transfer_call` refund netted out.
@@ -71,7 +75,8 @@ succeeded.
   diagnostics. `parseEventLog` and `receiptStatusKind` are the pieces.
 
 The source is an RPC `tx` answer or the `ProvenOutcome` list the proof verifier returns; read from proven
-outcomes, each event says `proven: true`. Tested on Probarion's recorded testnet spends, its two mainnet
+outcomes, each event says `proven: true`. `proven` names the input type: the reader does not check proofs, so
+pass it the outcomes `verifyTransactionOutcomes` or `proveTransaction` returned. Tested on Probarion's recorded testnet spends, its two mainnet
 payouts and the expected logs in the unit tests of `near-contract-standards` 5.29.1, with seeded property
 tests. A typed schema for the NEAR Intents `dip4` events is **Planned**; `eventsOf` already returns them by
 name.
@@ -99,7 +104,8 @@ agrees with Probarion's check f. A NEP-330 source metadata check is **Planned**.
 
 ## NEAR Intents POA withdrawal check
 
-`poa.ts` and `poa-rpc.ts`. **Built**; the bridge status reader is **Experimental**.
+`poa.ts` and `poa-rpc.ts`. **Built**, with no Probarion call site yet; the bridge status reader is
+**Experimental**.
 
 - `poaWithdrawCall({ asset, chain, address, amount })` builds the `ft_withdraw` call that pays a NEAR Intents
   balance out to Base or Solana through the POA bridge: token and receiver the asset, memo
@@ -149,11 +155,14 @@ for (const event of scanAllEvents(result.outcomes).events) {
 The `examples/` folder of the repository has one example for each primitive: `prove-receipt.ts`,
 `read-events.ts`, `audit-account.ts` and `check-payout.ts`.
 
-Probarion's CLI runs two of them on the chain. Both read views and proofs over JSON-RPC and sign nothing:
+Probarion's CLI runs two of them on the chain, in the CLI built from this repository (npm 0.1.1 does not have
+these commands). Both read views and proofs over JSON-RPC and sign nothing. From a clone, after
+`pnpm --filter @probarion/core build`, `pnpm --filter @probarion/sdk build`, `pnpm --filter @probarion/near build`
+and `pnpm --filter probarion build`:
 
 ```text
-probarion --network mainnet account audit v0.probarion.near --vault-policy
-probarion --network mainnet tx prove BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9 --signer v0.probarion.near
+node packages/cli/dist/bin.js --network mainnet account audit v0.probarion.near --vault-policy
+node packages/cli/dist/bin.js --network mainnet tx prove BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9 --signer v0.probarion.near
 ```
 
 ## Build and test from a clone
@@ -166,5 +175,7 @@ pnpm --filter @probarion/near build
 pnpm --filter @probarion/near test
 ```
 
-The tests run offline on fixtures recorded from public RPC. `pnpm --filter @probarion/near run record:proofs`
-(and `record:keys`, `record:poa`) records them again: these scripts read public data and sign nothing.
+The tests run offline on recorded fixtures. The proof, key and POA transaction fixtures were recorded by
+opt-in scripts, `pnpm --filter @probarion/near run record:proofs` (and `record:keys`, `record:poa`), which
+read public RPC and sign nothing, and record them again when run. The others are copies of Probarion's earlier
+public records (`docs/evidence`, `apps/web`) and the expected logs of `near-contract-standards` 5.29.1.

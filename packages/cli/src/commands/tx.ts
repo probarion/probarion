@@ -1,6 +1,6 @@
-// `probarion tx prove`: N1 of @probarion/near, the outcome proof verifier, with N2's receipt-bound event reader on
-// the proven outcomes. It reads a head on two providers, the transaction and a light_client_proof for it and for each
-// receipt over JSON-RPC, and signs nothing.
+// `probarion tx prove`: N1 of @probarion/near, the outcome proof verifier, with N2's unfiltered scanAllEvents listing
+// the proven outcomes' events for display (no emitter binding). It reads a head on two providers, the transaction and
+// a light_client_proof for it and for each receipt over JSON-RPC, and signs nothing.
 import { isNearTxHash } from "@probarion/core";
 import {
   type BoundEvent,

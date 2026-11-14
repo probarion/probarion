@@ -4,7 +4,8 @@ import { isRecord } from "./encoding.js";
 import { NearFormatError } from "./errors.js";
 
 /**
- * Any JSON-RPC client. @probarion/sdk's RpcClient fits as is; near-api-js:
+ * Any JSON-RPC client. @probarion/sdk's RpcClient fits the interface; wrap it so that a legacy `result.error`
+ * answer throws, as packages/cli/src/near.ts does. near-api-js:
  * `{ call: (method, params) => provider.sendJsonRpc(method, params) }`. `call` resolves to the answer's `result`
  * and rejects on a JSON-RPC error.
  */
