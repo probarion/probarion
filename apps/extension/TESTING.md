@@ -95,6 +95,9 @@ click's `activeTab` grant lets the extension read.
       invoices now: mandate N is revoked." (N is the mandate's number. The tab keeps the list it read before, which
       is why a revoked mandate can still be chosen.)
 - [ ] Stop `next dev`, then open the popup: "Couldn't reach Probarion. Try again." Start it again → **Retry** works.
+- [ ] Stop `next dev` again. Select some text on a page → right-click → **Send selection as invoice text**. The popup
+      opens on "Couldn't reach Probarion. Try again." without the text, and the badge shows `+`. Start `next dev`
+      again and open the popup: it shows the text, and the badge drops its `+`. Press **Clear**.
 - [ ] On `/extension` press **Revoke** on this browser's row (the newest "Chrome on ..." row). Open the popup: "Your
       connection expired", the badge shows `!`, and **Reconnect** (with `next dev` running) works.
 - [ ] In the service worker's DevTools console (`chrome://extensions` → Inspect views: service worker), set the

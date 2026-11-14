@@ -5,6 +5,7 @@ import {
   browserLabel,
   connectChoices,
   focusTarget,
+  HEADING,
   itemText,
   mandateLabel,
   NOTE,
@@ -266,5 +267,13 @@ describe("where focus goes after an action", () => {
   it("answers null when the screen has no enabled control, so its heading gets focus", () => {
     expect(focusTarget("send", [])).toBeNull();
     expect(focusTarget("send", [control("send", false)])).toBeNull();
+  });
+
+  it("answers null for a HEADING landing, so the heading that says what happened gets focus", () => {
+    // A 401 on Send leads to the expired screen: its heading, not its first control (the address select).
+    const expired = [control("connect-origin"), control("Reconnect"), control("code")];
+    expect(focusTarget("send", expired, HEADING)).toBeNull();
+    // The control that started the action is still there: it keeps focus.
+    expect(focusTarget("Reconnect", expired, HEADING)).toBe(1);
   });
 });

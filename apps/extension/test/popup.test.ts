@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type Deps, handleMenu, MENU_SELECTION, refresh } from "../src/background";
 import { captureSelection, TAB_UNREADABLE } from "../src/capture";
 import {
   type Connection,
   getPending,
+  markExpired,
   type Pending,
   putConnection,
   setPending,
@@ -16,6 +18,7 @@ import {
   json,
   NOW,
   ORIGIN,
+  PDF,
   problem,
   TOKEN,
   TOKEN_B,
@@ -56,6 +59,16 @@ const probarion: Answer = (url, init) =>
   url.endsWith("/api/ext/invoices") && init?.method === "POST"
     ? json(sent, 201)
     : json(inboxBody());
+
+/** Probarion when it can't be reached. */
+const down: Answer = () => Promise.reject(new TypeError("Failed to fetch"));
+
+/** The service worker, on the same fake chrome as the popup, with its own view of Probarion. */
+const worker = (answer: Answer = probarion): Deps => ({
+  chrome: c,
+  fetch: fetchOf(answer).fetch,
+  now: () => NOW,
+});
 
 interface Popup {
   c: FakeChrome;
@@ -206,7 +219,7 @@ describe("sending an invoice", () => {
     expect(mandate.title).toBe("Mandate #5 · 5000 USDC per payment · near:contractor.testnet");
   });
 
-  it("shows the expired screen alone after a 401: one heading, one Reconnect, no second sentence", async () => {
+  it("shows the expired screen alone after a 401, with focus on its heading", async () => {
     const p = await open((url, init) =>
       url.endsWith("/api/ext/invoices") && init?.method === "POST"
         ? problem(
@@ -225,6 +238,9 @@ describe("sending an invoice", () => {
     expect(count(p.text(), "Reconnect")).toBe(2); // the sentence under the heading, and the button
     expect(p.app.querySelector('[role="alert"]')).toBeNull();
     expect(p.app.querySelector("[data-message]")).toBeNull();
+    // No line announces the change, so focus goes to the heading that says it, not to the address select.
+    expect(p.doc.activeElement.tagName).toBe("H2");
+    expect(p.doc.activeElement.text).toBe("Your connection expired");
     expect(p.c.badge.text).toBe("!");
     expect(await getPending(c)).toMatchObject({ state: "ready" }); // the invoice is kept for after reconnecting
   });
@@ -298,12 +314,74 @@ describe("a capture that reaches a popup page already open", () => {
     const p = await open();
     await until(() => expect(p.text()).toContain("Waiting for you (3)"));
     expect(c.badge.text).toBe("3");
-    // The worker's menu click: openPopup failed, so it stored the capture unseen and its refresh set "+".
+    // The worker's menu click, where Chrome opened no new popup: it stored the capture unseen, and its refresh set "+".
     c.badge.text = "+";
     await setPending(c, ready(false));
     await until(() => expect(p.text()).toContain(SELECTION));
     await until(async () => expect(await getPending(c)).toMatchObject({ seen: true }));
     await until(() => expect(c.badge.text).toBe("3"));
+  });
+
+  it("sets the badge from a fresh inbox in the tab view, not the count it read when it opened", async () => {
+    await putConnection(c, ORIGIN, conn());
+    let awaiting = 2;
+    const body = () => {
+      const b = inboxBody();
+      b.counts.awaiting = awaiting;
+      return b;
+    };
+    const p = await open(() => json(body()), "?view=tab");
+    await until(() => expect(p.text()).toContain("Waiting for you (3)"));
+    // Later, 7 more invoices wait on Probarion, and the worker's alarm counts them.
+    awaiting = 9;
+    await refresh(worker(() => json(body())));
+    expect(c.badge.text).toBe("10");
+    // A menu capture lands unseen ("+"), and the tab view, which still lists 3, shows it.
+    c.badge.text = "+";
+    await setPending(c, ready(false));
+    await until(() => expect(p.text()).toContain(SELECTION));
+    await until(async () => expect(await getPending(c)).toMatchObject({ seen: true }));
+    await until(() => expect(c.badge.text).toBe("10"));
+    await settle();
+    expect(c.badge.text).toBe("10");
+  });
+});
+
+describe("a menu capture while Chrome has the popup open", () => {
+  const menu = { menuItemId: MENU_SELECTION, selectionText: SELECTION };
+
+  it("stays unseen behind Connect, and the badge shows +", async () => {
+    const p = await open();
+    await until(() => expect(p.text()).toContain("Connect Probarion"));
+    await handleMenu(worker(), menu);
+    await settle();
+    expect(c.popupOpens).toBe(1);
+    expect(p.text()).not.toContain(SELECTION);
+    expect(await getPending(c)).toMatchObject({ state: "ready", seen: false });
+    expect(c.badge.text).toBe("+");
+  });
+
+  it("stays unseen while Probarion can't be reached, and the badge shows +", async () => {
+    await putConnection(c, ORIGIN, conn());
+    const p = await open(down);
+    await until(() => expect(p.text()).toContain("Couldn't reach Probarion. Try again."));
+    await handleMenu(worker(down), menu);
+    await settle();
+    expect(p.text()).not.toContain(SELECTION);
+    expect(await getPending(c)).toMatchObject({ state: "ready", seen: false });
+    expect(c.badge.text).toBe("+");
+  });
+
+  it("is marked seen once the Send section shows it, and the badge shows the count", async () => {
+    await putConnection(c, ORIGIN, conn());
+    const p = await open();
+    await until(() => expect(p.text()).toContain("Waiting for you (3)"));
+    await handleMenu(worker(), menu);
+    await until(() => expect(p.text()).toContain(SELECTION));
+    await until(async () => expect(await getPending(c)).toMatchObject({ seen: true }));
+    await until(() => expect(c.badge.text).toBe("3"));
+    await settle();
+    expect(c.badge.text).toBe("3");
   });
 });
 
@@ -320,6 +398,49 @@ describe("the tab view", () => {
     expect(p.text()).not.toContain("Your connection expired");
     const inbox = p.calls.filter((x) => x.url.endsWith("/api/ext/inbox"));
     expect(new Headers(inbox.at(-1)?.init?.headers).get("authorization")).toBe(`Bearer ${TOKEN_B}`);
+  });
+
+  it("keeps focus on the screen when the new connection takes Reconnect away", async () => {
+    await putConnection(c, ORIGIN, conn({ expired: true }));
+    const p = await open(probarion, "?view=tab");
+    await until(() => expect(p.text()).toContain("Your connection expired"));
+    press(p.control("Reconnect"));
+    await until(() => expect(p.control("Reconnect").disabled).toBe(false));
+    expect(p.doc.activeElement.dataset.focus).toBe("Reconnect");
+    await putConnection(c, ORIGIN, conn({ token: TOKEN_B }));
+    await until(() => expect(p.text()).toContain("Waiting for you (3)"));
+    await settle();
+    // Reconnect is gone: focus goes to the new screen's first control, not to the page.
+    expect(p.doc.activeElement).not.toBe(p.doc.body);
+    expect(p.doc.activeElement.dataset.focus).toBe("row-0");
+  });
+
+  it("follows a connection that expires while Use the PDF in this tab runs", async () => {
+    await putConnection(c, ORIGIN, conn());
+    c.activeUrl = "https://billing.example/files/7.pdf";
+    let release: (r: Response) => void = () => {};
+    const p = await open(
+      (url, init) =>
+        url.startsWith("https://billing.example/")
+          ? new Promise<Response>((resolve) => {
+              release = resolve;
+            })
+          : probarion(url, init),
+      "?view=tab",
+    );
+    await until(() => expect(p.buttons("Use the PDF in this tab")).toHaveLength(1));
+    press(p.buttons("Use the PDF in this tab")[0] as FakeElement);
+    await until(() =>
+      expect(p.calls.some((x) => x.url.startsWith("https://billing.example/"))).toBe(true),
+    );
+    // The worker's alarm got a 401 meanwhile and marked the connection expired.
+    await markExpired(c, ORIGIN, TOKEN);
+    release(new Response(PDF, { headers: { "content-type": "application/pdf" } }));
+    await until(() => expect(p.text()).toContain("Your connection expired"));
+    await settle();
+    expect(p.text()).not.toContain("Waiting for you");
+    expect(p.app.querySelector('[data-focus="send"]')).toBeNull();
+    expect(await getPending(c)).toMatchObject({ state: "ready", item: { name: "7.pdf" } });
   });
 });
 

@@ -25,6 +25,7 @@ import {
   browserLabel,
   connectChoices,
   focusTarget,
+  HEADING,
   itemText,
   mandateLabel,
   networkText,
@@ -61,6 +62,8 @@ const ui = {
   connectOrigin: connectChoices(OFFERED, DEFAULT_ORIGIN).selected,
   code: "",
   busy: false,
+  /** A stored connection changed while an action ran: the screen reads it again once the action ends. */
+  stale: false,
   message: null as { tone: "ok" | "bad"; text: string; url?: string } | null,
 };
 
@@ -83,8 +86,8 @@ type Focusable = HTMLButtonElement | HTMLSelectElement | HTMLInputElement;
 /**
  * After an action that switched its control off while it worked, or whose control is gone from the new screen (Clear,
  * Choose file), focus fell to the page. It goes back to the control that started the action if it is still there and
- * enabled, else to `landing` (where the action leads), else to the new screen's first control, else to its heading. If
- * the person moved focus elsewhere meanwhile, it stays there.
+ * enabled, else to `landing` (where the action leads), else to the new screen's first control, else to its heading.
+ * A HEADING landing goes to the heading. If the person moved focus elsewhere meanwhile, it stays there.
  */
 function settleFocus(started: string | undefined, landing?: string): void {
   const active = document.activeElement;
@@ -159,10 +162,14 @@ function select(
 
 /**
  * Runs one action at a time: the buttons and selects are off meanwhile, and a failure shows its sentence. `landing` is
- * the control focus goes to when the one that started the action is not on the new screen. The line that says how the
- * action ended can sit below the fold of a tall popup, so it is scrolled into view.
+ * where focus goes when the control that started the action is not on the new screen; a function chooses it once the
+ * action ends. A stored connection that changed meanwhile is read before the buttons come on again. The line that says
+ * how the action ended can sit below the fold of a tall popup, so it is scrolled into view.
  */
-async function act(work: () => Promise<void>, landing?: string): Promise<void> {
+async function act(
+  work: () => Promise<void>,
+  landing?: string | (() => string | undefined),
+): Promise<void> {
   if (ui.busy) return;
   const started = focusedKey();
   ui.busy = true;
@@ -176,9 +183,11 @@ async function act(work: () => Promise<void>, landing?: string): Promise<void> {
       text: error instanceof ApiError ? error.message : "Something went wrong. Try again.",
     };
   } finally {
+    // reload clears `stale`, and a change during that read sets it again.
+    while (ui.stale) await reload().catch(() => {});
     ui.busy = false;
     render();
-    settleFocus(started, landing);
+    settleFocus(started, typeof landing === "function" ? landing() : landing);
     if (ui.message !== null) {
       app.querySelector<HTMLElement>("[data-message]")?.scrollIntoView({ block: "nearest" });
     }
@@ -522,31 +531,35 @@ async function sendInvoice(s: Ok): Promise<void> {
   const mandate = ui.mandate;
   if (p?.state !== "ready" || vault === null || mandate === null) return;
   const role = s.inbox.vaults.find((v) => v.vault === vault)?.role ?? "owner";
-  await act(async () => {
-    try {
-      const sent = await api(s.origin, d.fetch).sendInvoice(s.connection.token, {
-        vault,
-        mandate,
-        file: toBlob(p.item),
-        name: p.item.name,
-      });
-      ui.pending = null;
-      await clearPending(c);
-      ui.message = { tone: "ok", text: sentText(sent, role), url: sent.url };
-      const next = await refresh(d);
-      if (next.kind !== "error") ui.state = next;
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        await markExpired(c, s.origin, s.connection.token);
-        ui.state = await refresh(d);
-        ui.connectOrigin = s.origin;
-        // The expired screen says it in its heading and offers one Reconnect: no second sentence under it.
-        if (ui.state.kind === "expired") return;
+  await act(
+    async () => {
+      try {
+        const sent = await api(s.origin, d.fetch).sendInvoice(s.connection.token, {
+          vault,
+          mandate,
+          file: toBlob(p.item),
+          name: p.item.name,
+        });
+        ui.pending = null;
+        await clearPending(c);
+        ui.message = { tone: "ok", text: sentText(sent, role), url: sent.url };
+        const next = await refresh(d);
+        if (next.kind !== "error") ui.state = next;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          await markExpired(c, s.origin, s.connection.token);
+          ui.state = await refresh(d);
+          ui.connectOrigin = s.origin;
+          // The expired screen says it in its heading and offers one Reconnect: no second sentence under it.
+          if (ui.state.kind === "expired") return;
+        }
+        throw error;
       }
-      throw error;
-    }
-    // Send is off once the invoice is gone: focus goes to the result's Open, which brings the result into view.
-  }, "Open");
+      // Send is off once the invoice is gone: focus goes to the result's Open, which brings the result into view. After a
+      // 401 it goes to the expired screen's heading, which says what happened.
+    },
+    () => (ui.state?.kind === "expired" ? HEADING : "Open"),
+  );
 }
 
 function messageLine(): HTMLElement | null {
@@ -583,6 +596,7 @@ function footer(origin: string): HTMLElement {
 }
 
 async function reload(): Promise<void> {
+  ui.stale = false; // what is stored from here on is read below
   ui.origins = Object.keys((await loadLocal(c)).connections);
   ui.state = await refresh(d);
   if (ui.state.kind === "expired") ui.connectOrigin = ui.state.origin;
@@ -604,6 +618,9 @@ async function current(p: Pending | null): Promise<Pending | null> {
 /**
  * Marks the captured invoice seen once a screen that shows it is on, and sets the badge to match. Only the Send
  * section shows it: behind Connect, an expired connection or an error it stays unseen, and the badge keeps its "+".
+ * The toolbar popup read its inbox as it opened, so the badge takes that count. A tab view can stay open for hours, so
+ * its count can be old: the inbox is read again for the badge, and the old count serves when Probarion can't be
+ * reached.
  */
 async function markSeen(): Promise<void> {
   const p = ui.pending;
@@ -613,6 +630,10 @@ async function markSeen(): Promise<void> {
   // A read still running is stored again by the worker when it ends (handleMenu), and this marks that one.
   if (p.state === "reading") return;
   await setPending(c, ui.pending).catch(() => {});
+  if (inTab) {
+    const fresh = await refresh(d).catch(() => null);
+    if (fresh !== null && fresh.kind !== "error") return;
+  }
   await badgeShown(d, s).catch(() => {});
 }
 
@@ -639,14 +660,25 @@ c.storage.onChanged.addListener((changes, area) => {
       });
     return;
   }
-  // The worker stored a connection (the connect page, while the tab view stays open), or another popup switched or
-  // ended one: the screen follows. While an action runs, that action reads the state again itself.
+  // The worker stored a connection (the connect page, while the tab view stays open) or marked one expired, or another
+  // popup switched or ended one: the screen follows. While an action runs, the change is read once it ends (act).
   if (
     area === "local" &&
-    !ui.busy &&
     (Object.hasOwn(changes, "connections") || Object.hasOwn(changes, "selectedOrigin"))
   ) {
-    void reload();
+    if (ui.busy) {
+      ui.stale = true;
+      return;
+    }
+    // The new screen may lack the control that had focus (Reconnect, once connected): focus then settles as after an
+    // action, and does not fall to the page.
+    const key = focusedKey();
+    const focused = document.activeElement !== null && document.activeElement !== document.body;
+    void reload()
+      .then(() => {
+        if (focused && !ui.busy) settleFocus(key); // an action started meanwhile settles focus itself
+      })
+      .catch(() => {});
   }
 });
 

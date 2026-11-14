@@ -532,18 +532,20 @@ describe("the right-click menus", () => {
     ]);
   });
 
-  it("hand selected text to the popup", async () => {
+  it("hand selected text to the popup, unseen until the popup shows it", async () => {
     await handleMenu(deps(), {
       menuItemId: MENU_SELECTION,
       selectionText: "Invoice INV-7 Total 120 USDC",
       pageUrl: "https://billing.example/inv/7",
     });
     expect(c.popupOpens).toBe(1);
+    // Chrome opened the popup, but the popup marks the invoice seen only once its Send section shows it.
     expect(await getPending(c)).toMatchObject({
       state: "ready",
-      seen: true,
+      seen: false,
       item: { name: "selection.txt", type: "text/plain" },
     });
+    expect(c.badge.text).toBe("+");
   });
 
   it("fetch a link on the page's own site", async () => {

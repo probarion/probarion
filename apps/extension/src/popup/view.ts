@@ -159,11 +159,15 @@ export function connectChoices(
   };
 }
 
+/** A landing that is the new screen's heading, not a control: the heading says where the action led. */
+export const HEADING = "(heading)";
+
 /**
  * Which control of a new screen gets focus once an action that started from `started` (a control's data-focus name)
  * is done: that control if it is still there and enabled, else `landing` (the control the action leads to, such as Send
- * after a file was taken) if it is there and enabled, else the screen's first enabled control; null when it has none.
- * `controls` are the screen's controls in page order, and the answer is an index into them.
+ * after a file was taken) if it is there and enabled, else the screen's first enabled control; null when it has none,
+ * or when `landing` is HEADING (the caller then focuses the screen's heading). `controls` are the screen's controls in
+ * page order, and the answer is an index into them.
  */
 export function focusTarget(
   started: string | undefined,
@@ -172,6 +176,7 @@ export function focusTarget(
 ): number | null {
   for (const key of [started, landing]) {
     if (key === undefined) continue;
+    if (key === HEADING) return null;
     const same = controls.findIndex((c) => c.enabled && c.key === key);
     if (same >= 0) return same;
   }
