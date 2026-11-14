@@ -281,7 +281,9 @@ describe("probarion tx prove", () => {
     expect(code).toBe(0);
     expect(out).toContain(`  ${failed}  v0.probarion.near  block `);
     expect(out).toContain("failure (the proof does not carry the reason)");
-    expect(out).toContain("1 receipt(s) failed: the proof shows they ran and failed");
+    expect(out).toContain(
+      "1 receipt(s) failed: the proof shows they ran and failed, and an event a failed receipt logged did not take effect.",
+    );
   });
 
   it("exits 1 with an error when the two head providers disagree", async () => {
@@ -293,6 +295,21 @@ describe("probarion tx prove", () => {
     expect(out).toBe("");
     expect(err).toMatch(/^error: tx prove could not read a head both providers agree on: block /);
     expect(err).toContain("block_merkle_root");
+    expect(err).not.toContain("run it again");
+  });
+
+  it("exits 1 and says to run it again when the second provider does not know the head yet", async () => {
+    // Tampered: HEAD_B is asked for a block it has not seen (another hash than the one it serves).
+    const fx = tampered((copy) => {
+      copy.head_secondary.hash = "11111111111111111111111111111111";
+    });
+    const { code, out, err } = await run([], fx);
+    expect(code).toBe(1);
+    expect(out).toBe("");
+    expect(err).toMatch(/^error: tx prove could not read a head both providers agree on: block: /);
+    expect(err).toContain(
+      "(a provider a few blocks behind may not know the head yet: run it again)\n",
+    );
   });
 
   it("exits 1 with an error, and no verdict, when the proofs cannot be read", async () => {

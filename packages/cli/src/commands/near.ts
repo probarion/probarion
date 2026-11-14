@@ -8,6 +8,7 @@ import {
   type AccountLockReport,
   type BoundEvent,
   type EventProblem,
+  HeadMismatchError,
   type KeyPolicy,
   matchRecordedBuild,
   type NearRpc,
@@ -273,7 +274,7 @@ export function formatProvenTree(ctx: ProveContext, outcomes: readonly ProvenOut
   }
   if (failed > 0) {
     lines.push(
-      `${failed} receipt(s) failed: the proof shows they ran and failed, and their logs are still listed above.`,
+      `${failed} receipt(s) failed: the proof shows they ran and failed, and an event a failed receipt logged did not take effect.`,
     );
   }
   lines.push(
@@ -429,8 +430,13 @@ export function registerNear(program: Command, io: CliIo): void {
       nearRpc(parsed.primary, io),
       nearRpc(parsed.secondary, io),
     ).catch((error: unknown) => {
+      // A provider a few blocks behind does not know the other's final block yet: that clears on a second run.
+      const hint =
+        error instanceof HeadMismatchError
+          ? ""
+          : " (a provider a few blocks behind may not know the head yet: run it again)";
       throw new CliError(
-        `tx prove could not read a head both providers agree on: ${messageOf(error)}`,
+        `tx prove could not read a head both providers agree on: ${messageOf(error)}${hint}`,
       );
     });
     const result = await proveTransaction(nearRpc(parsed.archivalUrls, io), {
