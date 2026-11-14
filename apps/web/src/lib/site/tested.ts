@@ -22,13 +22,19 @@ const CI_JOB = {
 } as const;
 /** The no-clone verify of `ed41104` (no-clone-verify.yml), and pnpm judge on `main` (judge.yml). */
 const NO_CLONE_RUN = `${ACTIONS}/43533889407`;
+/**
+ * The no-clone workflow as it was at that commit, which ran `probarion@0.1.1`. The file at `main` moves to each later
+ * release, so the row links the version that ran.
+ */
+const NO_CLONE_WORKFLOW = `https://github.com/probarion/probarion/blob/${TESTED_COMMIT}/.github/workflows/no-clone-verify.yml`;
 const JUDGE_RUN = `${ACTIONS}/43465246300`;
 /** The read-only chain read of the team's testnet vaults and of their refused spends, committed as evidence. */
 const CHAIN_READ = "docs/evidence/testnet-reads/2026-11-14.txt";
 
 /**
- * Where a figure was read. `href` is a full address (a CI log), a path of this repository (no leading slash), or a page
- * of the site (a leading slash), which the README links on probarion.xyz.
+ * Where a figure was read. `href` is a full address (a CI log, or a file of this repository at the commit a row names),
+ * a path of this repository (no leading slash), or a page of the site (a leading slash), which the README links on
+ * probarion.xyz.
  */
 export interface TestedSource {
   label: string;
@@ -105,7 +111,7 @@ export const TESTED = {
       at: `CI run of \`${TESTED_COMMIT}\`, ${TESTED_AS_OF} 00:23 UTC`,
       sources: [
         { label: "CI run 43533889407", href: NO_CLONE_RUN },
-        { label: "no-clone-verify.yml", href: ".github/workflows/no-clone-verify.yml" },
+        { label: "no-clone-verify.yml", href: NO_CLONE_WORKFLOW },
       ],
     },
     {

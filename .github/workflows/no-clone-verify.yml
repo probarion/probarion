@@ -3,9 +3,9 @@ name: no-clone verify
 # The README's no-clone check of the mainnet vault, run the way a reader runs it: no checkout, no install, no key
 # and no secret. In an empty folder it downloads the vault's signed ledger, the recorded transactions and spend 1's
 # pre-ledger decision as this commit holds them in apps/web/public/samples/mainnet (the files the site serves at
-# https://probarion.xyz/samples/mainnet), then runs probarion 0.1.1 from npm, which reads mainnet with read-only
+# https://probarion.xyz/samples/mainnet), then runs probarion 0.1.2 from npm, which reads mainnet with read-only
 # RPC requests and signs nothing. It passes when checks a to h pass and check i skips (no factory made the vault).
-# It runs on Node 24, which probarion 0.1.1 declares (engines node >=24), and on Node 22 to learn whether 0.1.1 also
+# It runs on Node 24, which probarion 0.1.2 declares (engines node >=24), and on Node 22 to learn whether 0.1.2 also
 # works there. A Node 22 step that fails is marked failed in the log but does not fail the job, so the commit's check
 # stays green while that leg is an experiment. On a pull request it reads the branch's pushed head commit, not the merge commit GitHub generates.
 # apps/web/test/samples-mainnet.test.ts keeps the served files byte for byte equal to their sources in docs/. The
@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   verify:
-    name: npx probarion@0.1.1 verify, mainnet (Node ${{ matrix.node }})
+    name: npx probarion@0.1.2 verify, mainnet (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -50,7 +50,7 @@ jobs:
           B="$SAMPLES"
           curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \
             -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
-          npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
+          npx -y probarion@0.1.2 verify --network mainnet --vault v0.probarion.near \
             --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json | tee "$RUNNER_TEMP/verify.txt"
       - name: Require checks a to h to pass and check i to skip
         continue-on-error: ${{ matrix.node == 22 }}

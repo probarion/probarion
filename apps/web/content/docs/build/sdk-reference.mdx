@@ -1,4 +1,4 @@
-`@probarion/sdk` lets your agent pay from a vault, only inside the mandates its owner signed. This page lists every export of `@probarion/sdk` and `@probarion/sdk/testing`, grouped by what each is for, with the public members of the classes most code calls. A third entry point, `@probarion/sdk/payee`, is in this repository and not in npm 0.1.1: it exports the payee check's reads, which the root also exports, without the parts that load `node:fs`, so a browser page can import it. A test compares these tables with the package's code, so an export or a type that is added or removed, or a member of a class listed here, fails the docs tests until this page follows.
+`@probarion/sdk` lets your agent pay from a vault, only inside the mandates its owner signed. This page lists every export of `@probarion/sdk` and `@probarion/sdk/testing`, grouped by what each is for, with the public members of the classes most code calls. A third entry point, `@probarion/sdk/payee`, new in release 0.1.2, exports the payee check's reads, which the root also exports, without the parts that load `node:fs`, so a browser page can import it. A test compares these tables with the package's code, so an export or a type that is added or removed, or a member of a class listed here, fails the docs tests until this page follows.
 
 ## Install
 
@@ -6,7 +6,7 @@
 npm install @probarion/sdk @probarion/core
 ```
 
-The SDK's examples import from both packages, so install both. Release 0.1.1 is on npm. It is ESM only and needs Node 24 or newer. [Install the packages](/docs/build/install) covers a build from a clone, the import path of each entry point and the environment variables. The SDK takes `"testnet"` or `"mainnet"`. The vaults run on NEAR testnet today, and one small vault, `v0.probarion.near`, runs on mainnet: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+The SDK's examples import from both packages, so install both. Release 0.1.2 is on npm. It is ESM only and needs Node 24 or newer. [Install the packages](/docs/build/install) covers a build from a clone, the import path of each entry point and the environment variables. The SDK takes `"testnet"` or `"mainnet"`. The vaults run on NEAR testnet today, and one small vault, `v0.probarion.near`, runs on mainnet: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
 
 ## How to read the tables
 

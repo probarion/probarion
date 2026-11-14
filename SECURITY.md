@@ -22,7 +22,7 @@ frozen it, also over that cap, so neither could have paid even if the vault had 
 | Version | Supported |
 | --- | --- |
 | The `dev` branch, where work lands, and `main` | Yes. A fix lands on `dev` first |
-| The npm packages `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` | The latest release, 0.1.1 (published 2026-11-11). A fix ships as a new version |
+| The npm packages `@probarion/near`, `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` | The latest release, 0.1.2 (published 2026-11-14). A fix ships as a new version |
 | The testnet vault `v0.probarion.testnet` | A test deployment. A vault has no upgrade method, so a fix ships as a new vault |
 | The mainnet vault `v0.probarion.near` (2026-11-11, standalone, locked) | Yes. A vault has no upgrade method, so a fix ships as a new vault. Its owner can freeze it and withdraw its USDC ([runbook](docs/runbooks/mainnet-v0.md#if-anything-looks-wrong)) |
 
@@ -176,8 +176,8 @@ snapshot of the ledger and the chain:
   ([why, and what O1b would need](docs/measurement-pin-2026-11.md)).
 - **A8 needs the invoice text.** The ledger stores no invoice text, so only an auditor who holds the
   invoices can show that the model saw the standard request for that invoice. A8 does not show that
-  an invoice is authentic. The CLI built from this repository runs A8 with `--invoice <file>` or
-  `--invoices <dir>`, live or with `--offline`; release 0.1.1 on npm does not have these flags.
+  an invoice is authentic. The CLI runs A8 with `--invoice <file>` or `--invoices <dir>`, live or
+  with `--offline`, from release 0.1.2 on; release 0.1.1 does not have these flags.
   A8 accepts only the standard system prompt unless the auditor adds another with
   `--system-prompt <file>`: the ledger shows each prompt, but which prompts are acceptable is the
   auditor's choice.

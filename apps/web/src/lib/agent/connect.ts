@@ -16,7 +16,8 @@ import { REPO_URL } from "@/lib/proof/cli";
  */
 export const MCP_ON_NPM: boolean = true;
 
-export const MCP_VERSION = "0.1.1";
+/** The npm release the npx lines run: 0.1.2, published 2026-11-14 (the npm packages share one version). */
+export const MCP_VERSION = "0.1.2";
 /** The npx form of the server, pinned to the release. */
 export const MCP_NPX = `npx -y @probarion/mcp@${MCP_VERSION}`;
 /** The built server's bin in a clone (`packages/mcp/package.json` "bin"), run from the repository folder. */

@@ -111,7 +111,7 @@ None of this is built. Each item says what exists today and what is missing.
   and an agent that pays through `@probarion/mcp` under a mandate, then sends the spend id as its proof. It uses
   its own 402 format, not x402. On testnet on 2026-11-09, 20 calls paid 0.01 test USDC each and the 21st was refused
   ([the record](evidence/402-vault/README.md)).
-- **The MCP server.** `npx -y @probarion/mcp@0.1.1 demo` lists its five tools. None takes an address.
+- **The MCP server.** `npx -y @probarion/mcp@0.1.2 demo` lists its five tools. None takes an address.
 
 ## What this page does not show
 

@@ -139,7 +139,9 @@ describe("a finished check", () => {
     expect(t).toContain(
       "node packages/cli/dist/bin.js payee check near:probarion-duong.near --network mainnet --vault v0.probarion.near",
     );
-    expect(t).toContain("Release 0.1.1 on npm does not have this command.");
+    expect(t).toContain(
+      "The CLI on npm has it from release 0.1.2 on: there, start the line with npx probarion instead.",
+    );
     expect(t).toContain("It changes nothing on chain.");
     expect(t).toContain("Read-only: views and block headers, no transaction signed or sent.");
     expect(html).toContain('href="#x"');

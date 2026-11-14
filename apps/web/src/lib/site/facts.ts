@@ -1465,8 +1465,9 @@ export const SAMPLES_MAINNET = "https://probarion.xyz/samples/mainnet";
  * The no-clone verify of the mainnet vault, beside the question (under it on a narrow screen): the same commands for
  * Bash and for Windows PowerShell 5.1, each block with its copy button, folded under the visible title and intro
  * (MainnetAsk.tsx MainnetVerify). They download the vault's ledger and the two files verify reads beside
- * it from this site, then check them against NEAR mainnet with `npx probarion@0.1.1`. The blocks are the README's, as
- * recorded in docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt (there against a local copy of the same files).
+ * it from this site, then check them against NEAR mainnet with `npx probarion@0.1.2`. The blocks are the README's, as
+ * recorded with 0.1.1 in docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt (there against a local copy of the
+ * same files).
  * PowerShell calls curl.exe and npx.cmd: in 5.1, curl is another command, and a Restricted policy blocks npx.ps1.
  */
 export const MAINNET_VERIFY = {
@@ -1486,7 +1487,7 @@ export const MAINNET_VERIFY = {
         `B=${SAMPLES_MAINNET}`,
         'curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \\',
         '  -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"',
-        "npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \\",
+        "npx -y probarion@0.1.2 verify --network mainnet --vault v0.probarion.near \\",
         "  --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json",
       ],
     },
@@ -1498,7 +1499,7 @@ export const MAINNET_VERIFY = {
         "cd probarion-mainnet",
         `$B = "${SAMPLES_MAINNET}"`,
         'curl.exe -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"',
-        "npx.cmd -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json",
+        "npx.cmd -y probarion@0.1.2 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json",
       ],
     },
   ],
@@ -1506,11 +1507,11 @@ export const MAINNET_VERIFY = {
   copy: "Copy",
   copyLabel: "Copy the {shell} commands",
   expected:
-    "Expected: checks a to h PASS, i SKIP (not a factory vault), then `RESULT: PASS`, in about 20 seconds once the package is cached. Check e says A8 not run: version 0.1.1 has no `--invoice`.",
+    "Expected: checks a to h PASS, i SKIP (not a factory vault), then `RESULT: PASS`, in about 20 seconds once the package is cached. Check e says A8 not run: the commands pass no `--invoice`.",
   caveat:
     "Without `--online`, check e does not verify the TEE quotes (O1 and O2), and the TEE measurement is not pinned.",
   evidence: {
-    label: "Recorded runs in Git Bash and PowerShell 5.1, 2026-11-13 UTC",
+    label: "Recorded runs of release 0.1.1 in Git Bash and PowerShell 5.1, 2026-11-13 UTC",
     href: blob("docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt"),
   },
 } as const;
@@ -1823,7 +1824,7 @@ export const STATUS = {
       pill: "Live for the testnet demo vault",
       tone: "live",
     },
-    { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.1 on npm", tone: "live" },
+    { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.2 on npm", tone: "live" },
     { id: "payables-agent", row: "Payables agent", pill: "Live on testnet", tone: "live" },
     {
       id: "attested-model-run",
@@ -1835,7 +1836,7 @@ export const STATUS = {
     {
       id: "mcp-server",
       row: "MCP server",
-      pill: "0.1.1 on npm, run by a real MCP client on testnet",
+      pill: "0.1.2 on npm, run by a real MCP client on testnet",
       tone: "live",
     },
     {
@@ -2323,7 +2324,7 @@ export const STATUS_BOARD = {
           what: "Checks a published ledger against the chain, or a snapshot file against itself, with no server and no account. It also runs in your browser on this page.",
           limit:
             "It does not run the policy again, so a host with the ledger key can sign an allowing decision and `verify` still passes. Check h names the address and the amount; it does not prove the money arrived.",
-          where: { place: "npm 0.1.1", detail: "`@probarion/core` and `probarion`" },
+          where: { place: "npm 0.1.2", detail: "`@probarion/core` and `probarion`" },
           evidence: [
             { kind: "try", label: "run it on a sample", href: "#verify" },
             { kind: "npm", label: "@probarion/core", href: BOARD_LINKS.npmCore },
@@ -2349,7 +2350,7 @@ export const STATUS_BOARD = {
           use: "released",
           what: "The SDK runs an agent's payment: code decides, the contract checks and pays, and the ledger records it. The CLI prints owner and approver transactions for their wallets to sign.",
           where: {
-            place: "npm 0.1.1, with provenance",
+            place: "npm 0.1.2, with provenance",
             detail: "`@probarion/sdk` and `probarion`",
           },
           evidence: [
@@ -2382,7 +2383,7 @@ export const STATUS_BOARD = {
           what: "Five tools an MCP client calls to pay inside a mandate, and none takes an address. On testnet, Claude Code ran it from npm and paid through it.",
           limit:
             "Its decisions are rules-only, with no attested model, and the client read no invoice: the prompt gave the tool arguments.",
-          where: { place: "npm 0.1.1, MCP Registry", detail: "`@probarion/mcp`" },
+          where: { place: "npm 0.1.2, MCP Registry", detail: "`@probarion/mcp`" },
           evidence: [
             { kind: "npm", label: "@probarion/mcp", href: BOARD_LINKS.npmMcp },
             { kind: "registry", label: "MCP Registry entry", href: LINKS.mcpRegistry },
@@ -2763,6 +2764,13 @@ export interface ShipCard {
 }
 
 /**
+ * The version the official MCP Registry lists for `io.github.probarion/probarion`: 0.1.1, listed there on 2026-11-11.
+ * The registry keeps each version as it was published, so listing 0.1.2 takes its own publish (step 6 of "Release
+ * 0.1.2" in docs/RUNBOOK.md), which may come later than npm's. Move this to 0.1.2 once the registry's search lists it.
+ */
+export const MCP_REGISTRY_VERSION = "0.1.1";
+
+/**
  * What Probarion is built on and where to get it. The landing draws two parts of it, both in the closing, as text with
  * no logos: `ships`, the row "Where to get Probarion", and the trademark lead, which is the README's License line
  * (test/built-on.test.ts holds both). What it rests on is STACK, in the #verify section.
@@ -2836,12 +2844,18 @@ export const BUILT_ON = {
       id: "npm",
       name: "npm public registry",
       kind: "Packages",
-      body: "Install the CLI, the SDK, the MCP server and the core they share, each with npm provenance.",
-      ids: ["`probarion`", "`@probarion/sdk`", "`@probarion/mcp`", "`@probarion/core`"],
+      body: "Install the CLI, the SDK, the MCP server, the core they share and the NEAR primitives, each with npm provenance.",
+      ids: [
+        "`probarion`",
+        "`@probarion/sdk`",
+        "`@probarion/mcp`",
+        "`@probarion/core`",
+        "`@probarion/near`",
+      ],
       idsLabel: "Package names",
-      meta: "Version 0.1.1",
+      meta: "Version 0.1.2",
       link: { label: "@probarion/sdk on npm", href: LINKS.npmSdk },
-      short: "4 packages, 0.1.1",
+      short: "5 packages, 0.1.2",
     },
     {
       id: "mcp-registry",
@@ -2850,7 +2864,7 @@ export const BUILT_ON = {
       body: "Find the MCP server in the MCP Registry by the name below. Its entry names the npm package.",
       ids: ["`io.github.probarion/probarion`"],
       idsLabel: "Server name",
-      meta: "Version 0.1.1, from `@probarion/mcp`",
+      meta: `Version ${MCP_REGISTRY_VERSION}, from \`@probarion/mcp\``,
       // The address is the registry's search for the server's name, which lists its entry.
       link: { label: "Probarion in the MCP Registry", href: LINKS.mcpRegistry },
       short: "`io.github.probarion/probarion`",

@@ -439,7 +439,7 @@ const CHAIN: readonly Export[] = [
   [
     "readPayeeSignals",
     "function",
-    "Reads what `assessPayee` (`@probarion/core`) needs about one payee: a NEAR account at the final block and at a block about 7 days back, a Base address's code and nonce on mainnet or wherever `baseRpcUrl` points, and a vault's mandates and spends when one is given. Solana is not read. Read-only; a failed read leaves its signal `unknown`. `@probarion/sdk/payee` exports it, `readKnownPayees`, the four `PAYEE_` constants and its two types on their own, without the root entry, which loads `node:fs`, so a browser page can import them. In this repository, not in npm 0.1.1.",
+    "Reads what `assessPayee` (`@probarion/core`) needs about one payee: a NEAR account at the final block and at a block about 7 days back, a Base address's code and nonce on mainnet or wherever `baseRpcUrl` points, and a vault's mandates and spends when one is given. Solana is not read. Read-only; a failed read leaves its signal `unknown`. `@probarion/sdk/payee` exports it, `readKnownPayees`, the four `PAYEE_` constants and its two types on their own, without the root entry, which loads `node:fs`, so a browser page can import them. In the SDK from release 0.1.2 on.",
     "None",
   ],
   [

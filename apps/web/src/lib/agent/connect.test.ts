@@ -360,9 +360,9 @@ describe("the transactions the two actions return", () => {
 describe("the lines the page shows", () => {
   const VAULT = "research-bot.vaults.probarion.testnet";
 
-  it("shows the npx forms by default, since @probarion/mcp 0.1.1 is on npm", () => {
+  it("shows the npx forms by default, since @probarion/mcp 0.1.2 is on npm", () => {
     expect(MCP_ON_NPM).toBe(true);
-    expect(serverCommand()).toBe("npx -y @probarion/mcp@0.1.1");
+    expect(serverCommand()).toBe("npx -y @probarion/mcp@0.1.2");
     expect(initLines(VAULT, "testnet")).toEqual(initLines(VAULT, "testnet", true));
     expect(statusCommand(VAULT, "testnet")).toEqual(statusCommand(VAULT, "testnet", true));
     expect(clientConfigs(VAULT, "testnet")).toEqual(clientConfigs(VAULT, "testnet", true));
@@ -370,7 +370,7 @@ describe("the lines the page shows", () => {
 
   it("makes the keys with one npx line once the server is on npm", () => {
     expect(initLines(VAULT, "testnet", true)).toEqual({
-      lines: [`npx -y @probarion/mcp@0.1.1 init --vault ${VAULT}`],
+      lines: [`npx -y @probarion/mcp@0.1.2 init --vault ${VAULT}`],
       powershell: null,
     });
   });
@@ -390,8 +390,8 @@ describe("the lines the page shows", () => {
 
   it("runs status with the vault in its environment, in a POSIX shell and in PowerShell", () => {
     expect(statusCommand(VAULT, "testnet", true)).toEqual({
-      posix: `PROBARION_VAULT_ID=${VAULT} npx -y @probarion/mcp@0.1.1 status`,
-      powershell: `$env:PROBARION_VAULT_ID = "${VAULT}"; npx -y @probarion/mcp@0.1.1 status`,
+      posix: `PROBARION_VAULT_ID=${VAULT} npx -y @probarion/mcp@0.1.2 status`,
+      powershell: `$env:PROBARION_VAULT_ID = "${VAULT}"; npx -y @probarion/mcp@0.1.2 status`,
     });
     expect(statusCommand(VAULT, "testnet", false).posix).toBe(
       `PROBARION_VAULT_ID=${VAULT} node packages/mcp/dist/bin.js status`,
@@ -401,7 +401,7 @@ describe("the lines the page shows", () => {
   it("sets NEAR_NETWORK for init and status too, under the client settings' rule", () => {
     // init and status refuse a vault id that does not say its network unless NEAR_NETWORK is set.
     for (const onNpm of [true, false]) {
-      const run = onNpm ? "npx -y @probarion/mcp@0.1.1" : "node packages/mcp/dist/bin.js";
+      const run = onNpm ? "npx -y @probarion/mcp@0.1.2" : "node packages/mcp/dist/bin.js";
       const init = initLines("vault.example", "mainnet", onNpm);
       expect(init.lines.at(-1)).toBe(`NEAR_NETWORK=mainnet ${run} init --vault vault.example`);
       expect(init.powershell).toBe(
@@ -433,10 +433,10 @@ describe("the lines the page shows", () => {
     const npx = clientConfigs(VAULT, "testnet", true);
     expect(npx[2]?.windows).toBe(npx[1]?.windows);
     expect(npx[2]?.windows).toBe(
-      'On Windows: `"command": "cmd"` and `"args": ["/c", "npx", "-y", "@probarion/mcp@0.1.1"]`.',
+      'On Windows: `"command": "cmd"` and `"args": ["/c", "npx", "-y", "@probarion/mcp@0.1.2"]`.',
     );
     expect(npx[3]?.windows).toBe(
-      'On Windows: `command = "cmd"` and `args = ["/c", "npx", "-y", "@probarion/mcp@0.1.1"]`.',
+      'On Windows: `command = "cmd"` and `args = ["/c", "npx", "-y", "@probarion/mcp@0.1.2"]`.',
     );
     // From a clone, node starts as it is: only the path's slashes change.
     const clone = clientConfigs(VAULT, "testnet", false);
@@ -451,18 +451,18 @@ describe("the lines the page shows", () => {
       [
         "claude mcp add probarion \\",
         `  -e PROBARION_VAULT_ID=${VAULT} \\`,
-        "  -- npx -y @probarion/mcp@0.1.1",
+        "  -- npx -y @probarion/mcp@0.1.2",
       ].join("\n"),
     );
     expect(c[0]?.windowsCode).toBe(
-      `claude mcp add probarion -e PROBARION_VAULT_ID=${VAULT} -- cmd /c npx -y @probarion/mcp@0.1.1`,
+      `claude mcp add probarion -e PROBARION_VAULT_ID=${VAULT} -- cmd /c npx -y @probarion/mcp@0.1.2`,
     );
     const json = [
       "{",
       '  "mcpServers": {',
       '    "probarion": {',
       '      "command": "npx",',
-      '      "args": ["-y", "@probarion/mcp@0.1.1"],',
+      '      "args": ["-y", "@probarion/mcp@0.1.2"],',
       `      "env": { "PROBARION_VAULT_ID": "${VAULT}" }`,
       "    }",
       "  }",
@@ -474,19 +474,19 @@ describe("the lines the page shows", () => {
       mcpServers: {
         probarion: {
           command: "npx",
-          args: ["-y", "@probarion/mcp@0.1.1"],
+          args: ["-y", "@probarion/mcp@0.1.2"],
           env: { PROBARION_VAULT_ID: VAULT },
         },
       },
     });
     expect(c[1]?.windows).toBe(
-      'On Windows: `"command": "cmd"` and `"args": ["/c", "npx", "-y", "@probarion/mcp@0.1.1"]`.',
+      'On Windows: `"command": "cmd"` and `"args": ["/c", "npx", "-y", "@probarion/mcp@0.1.2"]`.',
     );
     expect(c[3]?.code).toBe(
       [
         "[mcp_servers.probarion]",
         'command = "npx"',
-        'args = ["-y", "@probarion/mcp@0.1.1"]',
+        'args = ["-y", "@probarion/mcp@0.1.2"]',
         `env = { PROBARION_VAULT_ID = "${VAULT}" }`,
       ].join("\n"),
     );

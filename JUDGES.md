@@ -74,7 +74,7 @@ payment needs no approval. A new payee or a higher cap needs a new mandate, sign
    B=https://probarion.xyz/samples/mainnet
    curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \
      -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
-   npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \
+   npx -y probarion@0.1.2 verify --network mainnet --vault v0.probarion.near \
      --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
    ```
 
@@ -85,7 +85,7 @@ payment needs no approval. A new payee or a higher cap needs a new mandate, sign
    cd probarion-mainnet
    $B = "https://probarion.xyz/samples/mainnet"
    curl.exe -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"
-   npx.cmd -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
+   npx.cmd -y probarion@0.1.2 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json
    ```
 
    Verify checks the ledger's signatures and every file against the chain, so a copy from GitHub verifies the
@@ -94,14 +94,14 @@ payment needs no approval. A new payee or a higher cap needs a new mandate, sign
    `$B = "https://raw.githubusercontent.com/probarion/probarion/main/apps/web/public/samples/mainnet"`) and run
    the same lines.
 
-   On 2026-11-13, with Node.js 24.12.0, each printed checks a to h PASS, i SKIP (`not a factory vault`),
-   `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`, in about 20 s with the package already in the
-   npx cache ([transcripts](docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt); the file is named by the
+   On 2026-11-13, with release 0.1.1 and Node.js 24.12.0, each printed checks a to h PASS, i SKIP (`not a factory
+   vault`), `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`, in about 20 s with the package already in
+   the npx cache ([transcripts](docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt); the file is named by the
    local date, UTC+7, and the runs were from 19:02 to 19:11 UTC on 2026-11-13; the site did not serve the files
-   yet, so those runs fetched the same bytes from a local copy and from GitHub). Release 0.1.1 has no
+   yet, so those runs fetched the same bytes from a local copy and from GitHub). The blocks pass no
    `--invoice`, so check e says `A8 not run`, and without `--online` it does not verify the TEE quotes. In a clone,
    after the install below, the same check with A8 is one command ([the README's](README.md#near-mainnet-2026-11-11)).
-2. **The MCP server, with no clone.** `npx -y @probarion/mcp@0.1.1 demo` lists the five MCP tools (none takes an
+2. **The MCP server, with no clone.** `npx -y @probarion/mcp@0.1.2 demo` lists the five MCP tools (none takes an
    address), asks the testnet demo vault's contract about three amounts, shows an injected recipient refused by the
    schema and runs verify on that vault's public ledger. Its last line ends `Nothing was signed or sent.` The demo
    vault's one mandate made the last of its 5 payments on 2026-11-12, so the contract now answers `UsesExhausted`
@@ -170,7 +170,7 @@ and the live verify of the Canary fails c. Its three SKIPPED rows are the web co
 run: `pnpm --filter @probarion/web test`), the Rust tests (they need Rust), and the online `check-claims` step: the
 testnet archival RPC answered HTTP 429 to that run, so its 16 online checks did not run. The times vary.
 
-- In a clone, run the CLI as `node packages/cli/dist/bin.js`. `npx probarion` runs release 0.1.1 from npm instead,
+- In a clone, run the CLI as `node packages/cli/dist/bin.js`. `npx probarion` runs release 0.1.2 from npm instead,
   with no clone. For example, in a clone,
   `node packages/cli/dist/bin.js verify --offline docs/evidence/demo-vault/snapshot-2026-11-12-video.json` prints
   `9 passed, 0 failed, 0 unproven` and `RESULT: PASS`, with 5 attested decisions passing A1 to A7 ([output](docs/evidence/demo-vault/verify-2026-11-12-video.txt)).
@@ -195,12 +195,12 @@ testnet archival RPC answered HTTP 429 to that run, so its 16 online checks did 
 | S1's two attested decisions on mainnet: false refusals by code | For INV-M002, `z-ai/glm-5.3-flash` and then `Qwen/Qwen3.8-27B` on NEAR AI Cloud proposed paying. Each payee hint named a NEAR account, the mandate's asset account, for a Base payee, and code refused both: rule `mandate.payee_mismatch`, ledger entry 0, and rule `mandate.payee_mismatch`, ledger entry 1. Both proposals had the right amount and Base address, so these were false refusals by a strict rule, at the cost of two tries and no money; [PR #142](https://github.com/probarion/probarion/pull/142) changed the rule after the run, for a model's hint only. Both decisions pass A1 to A7, and A8 with the invoice text; nothing was sent on either, and each was anchored before the next cycle ([the run](docs/evidence/mainnet-v0/s1-2026-11-13/README.md#why-the-payout-was-decided-rules-only)) | [`8REzPLVw…`](https://nearblocks.io/txns/8REzPLVwoQJrkccMQeFCTLaQHu8m7AczxsMzEH9PLvPp), [`6ULZZvGa…`](https://nearblocks.io/txns/6ULZZvGa7M99jR7Uk5f1Md4KCdD1Cnd5au2s8fAZDMqY) (the anchors) |
 | A payment on an attested model's proposal on mainnet | On 2026-11-13, for INV-M003, `z-ai/glm-5.3-flash` on NEAR AI Cloud proposed paying 0.25 USDC under mandate 3, with a payee hint that named the mandate's Base address and no NEAR account. Every code rule passed (ledger entry 4: `allow`, `model+rules`), and spend 3 paid it to the owner's own Base address, a test: 0.25 USDC sent, 0.2476 USDC arrived after the bridge fee. The decision passes A1 to A7, and A8 with the invoice text ([the run](docs/evidence/mainnet-v0/s2-2026-11-13/README.md)), and O1 and O2 in a later read-only run ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)). The TEE measurement is not pinned, so this does not show which model image ran | [`4cmSz4b3…`](https://nearblocks.io/txns/4cmSz4b3zHeWnbcw3HU6RJJ6afZa9zysu4SptE7mXT3T) (mandate 3), [`5amtgb8M…`](https://nearblocks.io/txns/5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH) (spend 3), [`6jRY21z9…`](https://nearblocks.io/txns/6jRY21z9FfGMnx5BbT3V1G3xBZp4FUaQ8p88N3TMbLyG) (the anchor) |
 | A gullible model's 50 USDC ask, refused on chain | The Canary rehearsal of 2026-11-10: a model given a deliberately gullible prompt proposed 50 USDC under a mandate of 1 USDC a payment. Code refused it with `invoice.amount_invalid` (no amount it could read, so the cap rule did not run) and with the Canary's rule that refuses every attempt. The same spend, sent raw with the agent key, was refused on chain with `PROBARION:OverPerPayment` ([evidence](docs/evidence/canary-vault)) | [`6XuxN42d…`](https://testnet.nearblocks.io/txns/6XuxN42dDWaboaqaiCuRGKCoA1UrypcDfvat48v6z8DH) |
-| A receiver check before a mandate names a payee (track 06) | `probarion payee check`, in this repository and not in npm 0.1.1, read-only, on 2026-11-13 at 23:10 UTC: `near:probarion-payee.testnet` printed ALLOW (exit 0); `near:probarion-duonq.near`, one letter off mandate 1's payee on mainnet, printed BLOCK with `lookalike` and `not_found` (exit 1); the owner's own mainnet payees printed WARN, a new account and a Base address with nonce 0 (exit 2). The blocklist is a seed of two testnet names from Probarion's own eval cases and test fixtures, not a reputation service ([runs](docs/evidence/payee-check/2026-11-13.txt)) | None |
+| A receiver check before a mandate names a payee (track 06) | `probarion payee check` (on npm from release 0.1.2; these runs used a build of this repository), read-only, on 2026-11-13 at 23:10 UTC: `near:probarion-payee.testnet` printed ALLOW (exit 0); `near:probarion-duonq.near`, one letter off mandate 1's payee on mainnet, printed BLOCK with `lookalike` and `not_found` (exit 1); the owner's own mainnet payees printed WARN, a new account and a Base address with nonce 0 (exit 2). The blocklist is a seed of two testnet names from Probarion's own eval cases and test fixtures, not a reputation service ([runs](docs/evidence/payee-check/2026-11-13.txt)) | None |
 | Probarion Payables paid two invoices on its own with an attested model | On 2026-11-12 `Qwen/Qwen3.8-27B` proposed paying INV-2009 and then INV-2010, every code rule passed, and spends 4 and 5 paid 2.00 test USDC each to the mandate's payee ([evidence](docs/evidence/demo-vault/README.md#2026-11-12-payables-pays-on-its-own-with-an-attested-model)) | [`EA7MbLts…`](https://testnet.nearblocks.io/txns/EA7MbLtsRjQUBbycfNyh6u1ieLNU5WXtyGy2K8eiPBuU), [`3YEGw5Qd…`](https://testnet.nearblocks.io/txns/3YEGw5Qdp9RbnR5LXFbAKXWPPhgiz7hf6vdDapfXvEE4) |
 | A1 to A8, O1 and O2 on recorded decisions | The demo vault's 5 attested decisions pass A1 to A7 offline, A8 with the committed invoices ([output](docs/evidence/demo-vault/verify-a8-2026-11-12.txt)), and O1 and O2 in a live run at 16:13 UTC on 2026-11-12 ([output](docs/evidence/demo-vault/verify-online-a8-2026-11-12.txt)). The Canary's 2 pass A1 to A7, O1 and O2 ([output](docs/evidence/canary-vault/verify-online-2026-11-11.txt)). On mainnet, the 3 of `v0.probarion.near` of 2026-11-13, entries 0, 1 and 4, pass A1 to A7 and, with the two committed invoices, A8 offline ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-2026-11-13.txt)), and O1 and O2 in a live run at 17:52 UTC on 2026-11-13 ([output](docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)). The TEE measurement is not pinned, so this does not show which model image ran | None |
 | The live TEE check | On 2026-11-12, after the promote that put main at b3baa82, the route and the card passed all four checks for `Qwen/Qwen3.8-27B`, and a cross-site call got `403 bad_origin` ([evidence](docs/evidence/tee-check/live-2026-11-12.json)) | None |
 | Pay per call (HTTP 402) | On 2026-11-09 an agent paid 20 calls at 0.01 test USDC each through the MCP server, and code refused the 21st when the mandate's 20 uses ran out ([evidence](docs/evidence/402-vault)). On 2026-11-11 the agent countered a 0.012 quote once at 0.01 and spend 21 paid it, with one receipt line ([the negotiation](docs/evidence/402-vault/README.md#the-negotiation-demo-2026-11-11)). The example is not an implementation of x402 | [`8q5qwWhz…`](https://testnet.nearblocks.io/txns/8q5qwWhzxKnZYgMbXLGvBJmvVT2HFyLJVQhDqLBf561H) (spend 1), [`4T3zW2KU…`](https://testnet.nearblocks.io/txns/4T3zW2KUAxZsiUPkyGyGwSKPX13pT4fYWrZN6auHNY69) (spend 20) |
-| The MCP server from npm, in a real client | `@probarion/mcp` 0.1.1 is on npm and in the official MCP registry as `io.github.probarion/probarion`. On 2026-11-11 Claude Code, run headless with nothing in its config but the vault id, paid through it on testnet ([evidence](docs/evidence/trial-vault/README.md)) | [`CJu2sN5E…`](https://testnet.nearblocks.io/txns/CJu2sN5E6Z76c9Cfm29hmTNvh8BwpxgELFJmhjDFAfce) (spend 1) |
+| The MCP server from npm, in a real client | `@probarion/mcp` 0.1.2 is on npm, and the official MCP registry lists the server as `io.github.probarion/probarion`. On 2026-11-11 Claude Code, run headless with nothing in its config but the vault id, paid through release 0.1.1 on testnet ([evidence](docs/evidence/trial-vault/README.md)) | [`CJu2sN5E…`](https://testnet.nearblocks.io/txns/CJu2sN5E6Z76c9Cfm29hmTNvh8BwpxgELFJmhjDFAfce) (spend 1) |
 | Eval: the model fully fooled | An offline run hands `decide()` the payment each of 20 synthetic invoices asks a fooled model to make, marked attested: money moved wrongly 0/20 (0.00 USDC), and the code's rules refused all 14 wrong proposals. No model is asked, so this is a simulation, not a measurement, and the contract column is core's mirror of the contract's checks ([results](eval/results/adversary.md)) | None |
 | Eval: the model replay on NEAR AI Cloud | On 2026-11-14 `Qwen/Qwen3.8-27B` on NEAR AI Cloud was asked about the 19 synthetic invoices that reach the model step: 17 answers pass A1 to A8 offline, and 2 calls failed (I-01 timed out, I-06's output was not valid JSON), so those two are decided rules-only. Replayed offline through the same `decide()`: money moved wrongly 0/20; model fooled 0/3 (the injected invoices whose injection it is shown and that have an attested answer); 1/20 false refusals (C-05, a clean invoice, refused by `mandate.payee_mismatch` on the model's malformed Base payee hint); and the model proposed paying 2 of the 7 invoices that must not be paid and reach it (D-02 and M-01), which the code refused. An earlier run with `z-ai/glm-5.3-flash` wrote no answer: 17 answers failed A3 to A5 and 2 calls timed out. The TEE measurement is not pinned, and O1 and O2 were not run on these recordings ([results and run history](eval/README.md#results-today)) | None |
 | Reproducible builds | CI rebuilds both contracts in Docker with cargo-near 0.22.0 and compares their code hashes with [`contracts/code-hashes.json`](contracts/code-hashes.json) ([script](scripts/build-reproducible.sh)). `v0.probarion.near` and the factory's vaults run the recorded build `3cQXYDvf…`; check f of `verify` reads it on chain | None |
@@ -255,9 +255,9 @@ and verifier stay free under the MIT license; the hosted console would be paid, 
   Spend 3's hint named no NEAR account, so the payee rule's later reading of a Base mandate's own asset account in a
   model's hint (PR #142 and PR #144), which the SDK of the run holds, was not exercised on mainnet: the hint gave it
   nothing to read.
-- **The payee check is new, and not on npm.** `probarion payee check` gives allow, warn or block with reasons before
+- **The payee check is new.** `probarion payee check` gives allow, warn or block with reasons before
   a mandate names a payee, read-only: the account exists, a seed blocklist, a lookalike of the vault's payees,
-  contract code, new or code changed in about 7 days, and past payments. It is in this repository, not in npm 0.1.1,
+  contract code, new or code changed in about 7 days, and past payments. It is on npm from release 0.1.2,
   and its browser page `/check` is live from the deploy that ships this commit. The blocklist is a seed of two testnet
   names from Probarion's own eval cases and test fixtures, not a reputation service. On 2026-11-13 the owner's
   mainnet payees printed WARN (a new NEAR account, and a Base address with nonce 0), so neither got an ALLOW on that
