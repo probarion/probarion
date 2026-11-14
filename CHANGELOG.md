@@ -1262,6 +1262,53 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing page goes from 14 sections to 7, in the order of one story: the hero; the problem, which ends with the
+  payee panel (`/#payee`); how a payment works (`/#payment`), with the live check (`/#try`) under its four steps; the
+  use cases (`/#integrate`); real money on mainnet (`/#mainnet`); the record (`/#verify`), with what it rests on
+  (`/#built-on`), the status board (`/#status`) and the known gaps (`/#known-gaps`); and the close.
+  - The hero keeps its headline, its two cards and the TEE line, and drops its step lists, the 2026-11-11 record and
+    the fine print. Under "Try the demo" and "Explore the docs", a quiet line links the demo vault's proof page and
+    the demo video.
+  - The problem drops its numbers band. After its two columns, the line "A cap stops big payments. It does not stop
+    the wrong ones." links the docs, and the payee panel shows the `spend` request's fields with `recipient` struck
+    out, beside three numbers.
+  - How a payment works gives four steps, each with what it runs on, and links "Every step, with its fields and
+    code". The live check under them keeps its scenarios, the mandate select, the amount, the key toggle and the
+    mandate as the chain has it in view, and folds the request it sent.
+  - The use cases are three cards, each with its network, what the mandate controls, its outcome and one link to
+    its record, then one console screenshot at its own 856px, the four ways in and one install line. The code box,
+    the addresses and the groups of doc links are in the docs.
+  - On mainnet, spend 3 stays open with "Read the chain now" and folds its decision trail and verdict; spend 2 stays
+    folded with its own button. "Ask the mainnet contract" and "Verify the vault yourself" sit side by side from
+    961px, the verify commands in a fold under their title, and the transactions of 2026-11-11 are one line.
+  - The record keeps the ledger test. On the landing its checks a to i fold, with any failing check named beside
+    the result, and `/proof` keeps the list open. "What it rests on" gives four rows of text with an account or a
+    command to check each, and no logos. The status board gives each row one line that keeps its id in view and
+    opens to its record. Known gaps keeps "Not proven yet" open and folds the other two lists.
+  - The close offers "Evaluate in 5 minutes", "Try the demo" and "GitHub", the docs, the spec and the demo video as
+    quiet links, "Where to get Probarion" as text links, the trademark notice in one line, and the way into the
+    console last.
+- What left the landing is in the docs, in the same change: the comparison with a limit contract you write in What
+  is Probarion ("Why not a spending-limit contract"), the demo vault's four invoices in How one payment works, the
+  table of attested decisions in Verifier checks ("Attested decisions on record"), the console's held and paid
+  screenshots in Holds and approvals ("A hold in the console"), and the known gaps in What works today too. The smoke
+  run's transactions stay in How one payment works ("See it on testnet"), and Install links the official MCP
+  Registry. `apps/web/test/docs-pages.test.ts` and `apps/web/test/invoice-story.test.ts` hold the moved material to
+  the same constants and records the landing used.
+- Copy fixes on the landing: the hero's lede says the agent pays the payee you named, within the limits you signed;
+  the agent's key can call one method, `spend`; the hijacked prompt's answer says the money does not go to the
+  address in the prompt; a key the owner did not add gets nothing. The header's anchors follow the page's order (How a
+  payment works, Try it, Mainnet, Verify), and the footer's motto is now "The contract protects the money. The ledger
+  records every decision."
+- Every anchor that the README, JUDGES.md, `docs/TRACKS.md`, the docs and the site's other pages link stays on a
+  visible element, each status row's id included, and every live part works as before: the live check, "Read the
+  chain now", "Ask the mainnet contract", the no-clone verify blocks and the ledger test. Each fold is a native
+  `details`, so folded text stays in the page's HTML, and the page works without JavaScript. On `/`, the a11y
+  spec's 12px floor and its 1.4.8 line and paragraph checks pass at 1440px: the use cases' outcome, the console
+  shot's title (now an h3), the mainnet section's last two lines, the ledger test's verdict and the board's parts
+  keep 2.5em from line to line. `Compare.tsx` and `ShipLogos.tsx` and the CSS of the comparison and the smoke run's
+  list are removed. Check: `pnpm --filter @probarion/web exec vitest run`, then
+  `pnpm --filter @probarion/web exec playwright test e2e/landing.spec.ts e2e/a11y.spec.ts`.
 - The README, JUDGES.md, `docs/TRACKS.md` and the docs follow the other changes of 2026-11-13. They now say what
   the payee check is: `probarion payee check` and the `/check` page give allow, warn or block with reasons,
   read-only, in this repository and not in npm 0.1.1, and `/check` is live from the deploy that ships it. On
