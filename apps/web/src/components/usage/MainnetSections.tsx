@@ -259,9 +259,9 @@ export function MainnetRecordCard({ record = MAINNET_RECORD }: { record?: Mainne
           ) : null}
         </p>
       ) : null}
-      <p className={c.fresh}>
+      <div className={c.fresh}>
         <Linked parts={C.source(record.updatedAt)} path={SOURCES.proof} />
-      </p>
+      </div>
     </section>
   );
 }

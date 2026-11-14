@@ -2077,6 +2077,10 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- `/usage` passes the e2e reading check (`a11y.spec.ts`, WCAG 1.4.8 at 1440px), which CI does not run. The source
+  line under the mainnet proof ran to 121 characters, so `.fresh` now keeps the site's measure. The check then found 32
+  paragraph breaks under 2.5em: the testing rows' label and "Read:" line, the tiles' counts and the proof's source
+  line. None of them is a paragraph, so they are divs.
 - The browser extension's popup (`apps/extension`, still version 0.1.0), after a test in a real Chromium. After
   **Send to Probarion**, focus moves to the result's **Open** and the result line scrolls into view. The Vault and
   Mandate selects are off during a send and show their whole text on hover, and a mandate names its per-payment amount

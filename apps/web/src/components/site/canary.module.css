@@ -417,6 +417,7 @@
   font-size: 14px;
 }
 .fresh {
+  max-width: var(--container-measure);
   margin-top: 12px;
   font-size: 13px;
   color: var(--color-mute);
