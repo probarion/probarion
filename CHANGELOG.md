@@ -20,7 +20,7 @@ The software is an unaudited beta.
   TypeScript job, 12,655 of them TypeScript and 476 JavaScript Node script tests, then 301 Rust and 18 sandbox; the
   Playwright end-to-end tests run locally and are not counted), the vault's property tests and error-code coverage,
   the CI checks (the reproducible code hashes, the secret scan, and the no-clone verify of the mainnet vault on
-  Node v22.23.4 and on Node v24.22.2), the eval with the model fooled in an offline run, the mainnet and testnet
+  Node v22.23.4 and on Node v24.22.2), the eval with the model fooled in an offline run and its replay of the answers `Qwen/Qwen3.8-27B` gave on NEAR AI Cloud, the mainnet and testnet
   records from the committed evidence and read-only view calls, the Canary rehearsals, what the claim checker covers
   and the live checks, each row with the run, the file or the chain read it was counted at, and a link to check it.
   The testnet chain read is committed as `docs/evidence/testnet-reads/2026-11-14.txt`: the 10 team vaults' mandates,
