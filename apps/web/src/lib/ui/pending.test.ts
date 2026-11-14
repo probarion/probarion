@@ -1,11 +1,14 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   ACTION_READ_TIMEOUT_MS,
   CONFIRM_HINT_MS,
-  chainTimedOut,
+  consoleTimedOut,
+  EASE,
   ELAPSED_FROM_MS,
   FADE_MS,
   formatElapsed,
+  JOB_WAIT_MS,
   MIN_SHOW_MS,
   POLL_EVERY_MS,
   SAVE_UNCLEAR,
@@ -20,6 +23,7 @@ import {
   SLOW_HINT,
   serverTimedOut,
   slowHint,
+  TEE_TIMEOUT_MS,
   TRY_AGAIN_BUSY,
   TRY_AGAIN_LABEL,
   TX_PHASE_LABEL,
@@ -44,7 +48,7 @@ function allCopy(): string[] {
     SIGN_IN_CLOSED,
     TRY_AGAIN_LABEL,
     TRY_AGAIN_BUSY,
-    chainTimedOut(),
+    consoleTimedOut(),
     serverTimedOut(20_000),
     SAVE_UNCLEAR,
   ].filter(Boolean);
@@ -56,9 +60,37 @@ function allLabels(): string[] {
 }
 
 describe("the timing tokens", () => {
-  it("are the spec's numbers, which globals.css mirrors as CSS delays", () => {
+  it("are the spec's numbers", () => {
     expect([SHOW_DELAY_MS, MIN_SHOW_MS, FADE_MS, ELAPSED_FROM_MS]).toEqual([200, 400, 150, 5000]);
     expect([WALLET_HINT_MS, CONFIRM_HINT_MS, POLL_EVERY_MS]).toEqual([20_000, 15_000, 5000]);
+  });
+
+  // The 200 ms gate and the 150 ms fade are CSS, never a JS timer: what CSS holds must be these numbers.
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const css = read("../../app/globals.css");
+  /** A CSS custom property's or rule's value, by the text that leads to it. */
+  const value = (from: RegExp) => {
+    const m = css.match(from);
+    if (!m?.[1]) throw new Error(`not in globals.css: ${from}`);
+    return m[1];
+  };
+
+  it("are the delays and the fade globals.css draws with, reduced motion included", () => {
+    const pendingIn = [...css.matchAll(/--animate-pending-in:([^;]*);/g)].map((m) => m[1] ?? "");
+    expect(pendingIn).toHaveLength(2);
+    expect(pendingIn[0]).toContain(`${FADE_MS}ms ${EASE} ${SHOW_DELAY_MS}ms`);
+    // Reduced motion keeps the gate: it prevents a flash and is not motion.
+    expect(pendingIn[1]).toContain(`1ms linear ${SHOW_DELAY_MS}ms`);
+    expect(value(/\.busy-echo \{\s*animation:([^;]*);/)).toContain(`${SHOW_DELAY_MS}ms`);
+    expect(value(/--animate-route-bar:([^;]*);/)).toContain(`${EASE} ${SHOW_DELAY_MS}ms`);
+  });
+
+  it("are the delays and the fade of the Tailwind classes that dim a blocked button or a last answer", () => {
+    const delay = `delay-${SHOW_DELAY_MS}`;
+    expect(read("../../components/ui.tsx")).toContain(`aria-disabled:${delay}`);
+    const look = read("../../components/console/form-look.ts");
+    expect(look).toContain(`aria-disabled:${delay}`);
+    expect(look).toContain(`[&>div]:${delay} [&>div]:duration-${FADE_MS}`);
   });
 });
 
@@ -79,7 +111,7 @@ describe("formatElapsed", () => {
 });
 
 describe("each kind of wait", () => {
-  it("never times out a write, the wallet or the chain confirm, and retries reads only", () => {
+  it("never aborts a write, a job, the wallet or the chain confirm, and retries reads only", () => {
     for (const kind of ["action-write", "job", "wallet", "confirm"] as const) {
       expect(WAIT[kind].timeoutMs, kind).toBeNull();
       expect(WAIT[kind].autoRetry, kind).toBe(false);
@@ -87,6 +119,16 @@ describe("each kind of wait", () => {
     expect(KINDS.filter((k) => WAIT[k].autoRetry)).toEqual(["read"]);
     expect(WAIT["action-read"].timeoutMs).toBe(ACTION_READ_TIMEOUT_MS);
     expect(ACTION_READ_TIMEOUT_MS).toBe(20_000);
+  });
+
+  it("stops waiting on a job at the job's own deadline, after its slow mark, and on the TEE check at 35 s", () => {
+    // The invoice route and the Canary's run up to 90 s, the client waits 5 s more; the faucet's mint 25 s.
+    expect(JOB_WAIT_MS).toEqual({ invoice: 95_000, canary: 95_000, faucet: 25_000 });
+    for (const [job, ms] of Object.entries(JOB_WAIT_MS)) {
+      expect(ms, job).toBeGreaterThan(ELAPSED_FROM_MS);
+    }
+    expect(JOB_WAIT_MS.invoice).toBeGreaterThan(WAIT.job.slowMs ?? Infinity);
+    expect(TEE_TIMEOUT_MS).toBe(35_000);
   });
 
   it("has its slow mark before its timeout, so the hint shows while there is still time", () => {
@@ -178,8 +220,13 @@ describe("the phases", () => {
 });
 
 describe("the outcomes", () => {
-  it("say what failed and that a read changed nothing", () => {
-    expect(chainTimedOut()).toBe("The chain did not answer in 20 s. Nothing was changed.");
+  it("say what failed, and that nothing changed only where the path proves it", () => {
+    // A server action the console stopped waiting for runs on and writes the console's copy, so it may still finish.
+    expect(consoleTimedOut()).toBe(
+      "The console did not answer in 20 s. It may still finish: reload the page to see, or try again.",
+    );
+    expect(consoleTimedOut()).not.toMatch(/Nothing was|chain/);
+    // One of our API routes that only reads.
     expect(serverTimedOut(35_000)).toBe(
       "The server did not answer in 35 s. Nothing was changed. Try again.",
     );

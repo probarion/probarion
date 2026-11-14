@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { buttonClass, Field, inputClass, Notice } from "@/components/ui";
+import { useState } from "react";
+import { busyLabel } from "@/components/pending/busy-label";
+import { blockableButtonClass, Field, inputClass, Notice } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
 import type { DangerTone } from "@/lib/console/confirm-dialog";
@@ -10,6 +11,10 @@ import type { KeepState, KeyPurpose, KeySyncState, VaultCode } from "@/lib/keys/
 import { lockKeyFor } from "@/lib/near/lock";
 import type { DescribeResult, TxResult } from "@/lib/near/outcome";
 import type { WalletTx } from "@/lib/near/tx";
+import { consoleTimedOut, SAVE_UNCLEAR } from "@/lib/ui/pending";
+import { readAction, saveAction } from "@/lib/ui/server-action";
+import { staleNoticeClass, textButtonClass } from "./form-look";
+import { answerText, tryAgainButton, useFormRun } from "./form-run";
 
 // The keys page's client parts. They hold no secret and never could: the server actions they call
 // return a public key inside a transaction, or a status message.
@@ -67,47 +72,119 @@ export function KeyTxButton(props: {
   );
 }
 
-/** "Check on-chain status": any member. Shows what changed and why a key stayed pending. */
+/** What the sync shows: the server's answer, or the console's own when the call gave none, with a Try again. */
+type SyncShown = KeySyncState | { ok: false; error: string; retry: true };
+
+/**
+ * "Check on-chain status": any member. Shows what changed and why a key stayed pending. It re-reads the chain and
+ * records each key's status (compare-and-set, so a repeat is harmless): the console stops waiting for it after 20 s and
+ * says it may still finish, and a call that gave no answer offers Try again.
+ */
 export function KeySyncButton({ sync }: { sync: Sync }) {
-  const [state, action, pending] = useActionState(sync, null);
+  const run = useFormRun<SyncShown>(
+    (prev, formData) =>
+      readAction<SyncShown>(
+        () => sync(prev, formData),
+        (why) => ({
+          ok: false,
+          error: why === "timeout" ? consoleTimedOut() : "The console could not check the keys.",
+          retry: true,
+        }),
+      ),
+    null,
+    { kind: "action-read", retryable: (s) => s !== null && !s.ok && "retry" in s },
+  );
+  const state = run.state;
   return (
-    <form action={action}>
-      <button className={buttonClass} type="submit" disabled={pending}>
-        {pending ? "Checking…" : "Check on-chain status"}
+    <form action={run.action} onSubmit={run.onSubmit}>
+      <button
+        ref={run.refs.button}
+        className={blockableButtonClass}
+        type="submit"
+        aria-disabled={run.pending || undefined}
+        onClick={run.press("button")}
+      >
+        {busyLabel("Check on-chain status", "Reading the chain…", run.busy.button)}
       </button>
-      {state?.ok === false ? <p className="mt-1 text-xs text-bad">{state.error}</p> : null}
-      {state?.ok ? (
-        <div className="mt-1 text-xs text-mute">
-          <p>{state.message}</p>
-          {state.notes.length > 0 ? (
-            <ul className="list-disc pl-4">
-              {state.notes.map((n) => (
-                <li key={n}>{n}</li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
+      <div role="status" aria-atomic="false">
+        {state?.ok === false ? (
+          <>
+            {/* The last error stays while the sync runs again, in the mute colour after the 200 ms gate. */}
+            <p
+              className={`mt-1 text-xs ${run.pending ? "text-mute transition-colors delay-200" : "text-bad"}`}
+            >
+              {answerText(run.answer, state.error)}
+            </p>
+            {"retry" in state
+              ? tryAgainButton({
+                  ref: run.refs.retry,
+                  type: "submit",
+                  busy: run.busy.retry,
+                  held: run.pending,
+                  onClick: run.press("retry"),
+                })
+              : null}
+          </>
+        ) : null}
+        {state?.ok ? (
+          // Keyed by the answer, as answerText keys a line: the same result again is read out again, notes included.
+          <div key={run.answer} className="mt-1 text-xs text-mute">
+            <p>{state.message}</p>
+            {state.notes.length > 0 ? (
+              <ul className="list-disc pl-4">
+                {state.notes.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+        {run.hint}
+      </div>
     </form>
   );
 }
 
+/** What Keep shows: the server's answer, or, when the call gave none, that it may have kept the key. */
+type KeepShown = KeepState | { ok: false; message: string; unclear: true };
+
 /**
  * Owner only: Keep a discarded key that is on the vault after all. It always shows what happened, also
- * when nothing changed (W-T10-R3).
+ * when nothing changed (W-T10-R3). It saves, so a call that fails on the way says to reload, not to try again.
  */
 export function KeyKeepButton({ keep }: { keep: Keep }) {
-  const [state, action, pending] = useActionState(keep, null);
+  const run = useFormRun<KeepShown>(
+    (prev, formData) =>
+      saveAction<KeepShown>(() => keep(prev, formData), {
+        ok: false,
+        message: SAVE_UNCLEAR,
+        unclear: true,
+      }),
+    null,
+    { kind: "action-write" },
+  );
+  const state = run.state;
   return (
-    <form action={action}>
-      <button type="submit" className="text-xs text-mute underline" disabled={pending}>
-        {pending ? "Checking…" : "Keep"}
+    <form action={run.action} onSubmit={run.onSubmit}>
+      <button
+        ref={run.refs.button}
+        type="submit"
+        className={`text-xs text-mute ${textButtonClass}`}
+        aria-disabled={run.pending || undefined}
+        onClick={run.press("button")}
+      >
+        {busyLabel("Keep", "Reading the chain…", run.busy.button)}
       </button>
-      {state ? (
-        <Notice tone={state.ok ? "good" : "warn"}>
-          <span role="status">{state.message}</span>
-        </Notice>
-      ) : null}
+      <div role="status" aria-atomic="false">
+        {state ? (
+          <div className={run.pending ? staleNoticeClass : undefined}>
+            <Notice tone={state.ok ? "good" : "unclear" in state ? "bad" : "warn"}>
+              {answerText(run.answer, state.message)}
+            </Notice>
+          </div>
+        ) : null}
+        {run.hint}
+      </div>
     </form>
   );
 }

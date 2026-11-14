@@ -162,11 +162,14 @@ code,
  * A button's pending label (components/pending/busy-label.tsx). Every label shares one grid cell, so the button keeps
  * the widest one's width: the idle label, and each busy label with room for the 1em spinner and its 0.5em gap. The
  * sizers and the echo are aria-hidden and draw their words from data-label. Pressed, the old label stays for 200 ms
- * (the echo), then the spinner and the busy label fade in; the accessible name has already changed.
+ * (the echo), then the spinner and the busy label fade in; the accessible name has already changed. An inline grid takes
+ * no underline from its button (text decorations stop at atomic inlines), so it takes the button's own: an underlined
+ * text button keeps its line under the idle label, the echo and the busy label alike, and never under the spinner.
  */
 .busy-label {
   display: inline-grid;
   place-items: center;
+  text-decoration: inherit;
 }
 .busy-label > * {
   grid-area: 1 / 1;

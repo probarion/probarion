@@ -57,9 +57,9 @@ export interface Wait {
 /**
  * Each kind's timeout, slow mark and retry. An `api` route's timeout is its server cap plus 5 s and differs per route
  * (the quote 20 s, top-up status 8 s, the TEE check 35 s, a sample 10 s): the 8 s here is the status poll's, and its
- * slow mark is half of whichever timeout the caller passes to slowHint. A `job` is never aborted: the page stops waiting
- * at its own deadline and says where to check. The chain confirm is bounded by the page's maxDuration (60 s), then the
- * TxButton lock. A poll's failed request waits for the next tick.
+ * slow mark is half of whichever timeout the caller passes to slowHint. A `job` is never aborted, so it has no timeout
+ * here: the page stops waiting at the job's own deadline (JOB_WAIT_MS) and says where to check. The chain confirm is
+ * bounded by the page's maxDuration (60 s), then the TxButton lock. A poll's failed request waits for the next tick.
  */
 export const WAIT: Readonly<Record<WaitKind, Wait>> = {
   read: { timeoutMs: 8_000, slowMs: 6_000, autoRetry: true },
@@ -71,6 +71,14 @@ export const WAIT: Readonly<Record<WaitKind, Wait>> = {
   confirm: { timeoutMs: null, slowMs: CONFIRM_HINT_MS, autoRetry: false },
   poll: { timeoutMs: 8_000, slowMs: null, autoRetry: false },
 };
+
+/**
+ * Where the page stops waiting on a long job (spec 4.2), which runs on: the invoice cycle and a Canary attempt (their
+ * routes' 90 s plus 5 s) and the faucet's mint. The page then says where to look before trying again.
+ */
+export const JOB_WAIT_MS = { invoice: 95_000, canary: 95_000, faucet: 25_000 } as const;
+/** The TEE check, a long read: the route's 30 s cap plus 5 s, then an error and Try again. */
+export const TEE_TIMEOUT_MS = 35_000;
 
 /** Elapsed time as m:ss ("0:07", "1:12"), whole seconds rounded down. */
 export function formatElapsed(ms: number): string {
@@ -192,9 +200,13 @@ export const TRY_AGAIN_BUSY = "Trying again…";
 
 const seconds = (ms: number) => `${Math.round(ms / 1000)} s`;
 
-/** A read-only server action that did not answer within its timeout. It only read, so nothing changed. */
-export function chainTimedOut(ms: number = ACTION_READ_TIMEOUT_MS): string {
-  return `The chain did not answer in ${seconds(ms)}. Nothing was changed.`;
+/**
+ * A read-only server action that did not answer within its timeout (register, key sync, Re-sync). The wait covers the
+ * console's one-at-a-time queue as well as the chain, and the action runs on, writing the console's copy of what it
+ * read, so the line names the console and does not say that nothing changed.
+ */
+export function consoleTimedOut(ms: number = ACTION_READ_TIMEOUT_MS): string {
+  return `The console did not answer in ${seconds(ms)}. It may still finish: reload the page to see, or try again.`;
 }
 
 /** One of our read-only API routes that did not answer within its timeout. */

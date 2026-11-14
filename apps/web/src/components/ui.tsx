@@ -27,17 +27,24 @@ const pillButton = `inline-flex min-h-11 items-center justify-center rounded-ful
 // A disabled control is exempt from WCAG 1.4.3, and its label still reads at 4.5:1 or more. Ink dims to 65% (about
 // 6:1: the ink pill's label is 5.97:1 over a white card). Red dims to 75% (4.89:1): at 65% it would be 3.8:1.
 // While an action runs (components/pending), its buttons are aria-disabled, not disabled, so they keep the focus. The
-// pressed one holds a busy label ([data-busy]): it stays at full opacity and shows the progress cursor. A button it
-// blocks dims as a disabled one does, after the 200 ms gate. The full opacity is a stacked variant: a plain
-// has-[[data-busy]]:opacity-100 would lose to aria-disabled:opacity-65, which Tailwind writes later at the same weight.
-const busyLook =
-  "aria-disabled:delay-200 aria-disabled:has-[[data-busy]]:opacity-100 has-[[data-busy]]:cursor-progress";
-const button = `${pillButton} disabled:opacity-65 aria-disabled:opacity-65 ${busyLook}`;
-const redButton = `${pillButton} disabled:opacity-75 aria-disabled:opacity-75 ${busyLook}`;
+// pressed one holds a busy label ([data-busy]) and shows the progress cursor, at full opacity.
+const button = `${pillButton} disabled:opacity-65 has-[[data-busy]]:cursor-progress`;
+const redButton = `${pillButton} disabled:opacity-75 has-[[data-busy]]:cursor-progress`;
 /** The main button: an ink pill. Its transparent edge shows in forced colours, which drop the fill. */
 export const buttonClass = `${button} border border-transparent bg-ink text-paper hover:bg-ink/85`;
 /** A second choice beside the main one, such as a dialog's Cancel: an ink outline. */
 export const lineButtonClass = `${button} border border-ink/15 bg-surface text-ink hover:bg-ink/5`;
+// A button that another action of its widget blocks (Save while Re-sync runs, a form's button while its Try again runs)
+// dims as a disabled one does, after the 200 ms gate, and the pressed one keeps full opacity. Opt-in, not on every ink
+// pill: a button marked aria-disabled while it works itself, with no busy label yet (the payee check), would dim its own
+// busy words. The full opacity is a stacked variant: a plain has-[[data-busy]]:opacity-100 would lose to
+// aria-disabled:opacity-65, which Tailwind writes later at the same weight.
+const blockedLook =
+  "aria-disabled:opacity-65 aria-disabled:delay-200 aria-disabled:has-[[data-busy]]:opacity-100";
+/** buttonClass for a button that another action of its widget can block. */
+export const blockableButtonClass = `${buttonClass} ${blockedLook}`;
+/** lineButtonClass for a button that another action of its widget can block (Try again). */
+export const blockableLineButtonClass = `${lineButtonClass} ${blockedLook}`;
 /** The action button of a confirm dialog for something that cannot be taken back. */
 export const dangerButtonClass = `${redButton} border border-transparent bg-bad text-white hover:bg-bad/90`;
 /** A button for something that cannot be taken back, beside other actions (Reject next to Approve): a red outline. */
