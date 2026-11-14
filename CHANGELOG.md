@@ -1444,8 +1444,9 @@ The software is an unaudited beta.
   approver approved it from their own key, with the held and approved testnet transactions). "Open the screenshot"
   (formerly "Open full size") opens the capture, and the docs keep all three screenshots. The values are
   `INVOICE_BOARD` in `apps/web/src/lib/site/facts.ts`, and `apps/web/test/console-shots.test.ts` holds them to
-  entries 7, 8 and 9 of `docs/evidence/demo-vault/ledger-2026-11-11.jsonl`, the deployment record and the shots'
-  transactions. The demo vault's evidence README records the upload time the console showed, 17:33 UTC.
+  entries 7, 8 and 9 of `docs/evidence/demo-vault/ledger-2026-11-11.jsonl`, the chain snapshot of that day
+  (`snapshot-2026-11-11.json`: mandate 1's 3 USDC approval limit and spend 3, paid), the deployment record and the
+  shots' transactions. The demo vault's evidence README records the upload time the console showed, 17:33 UTC.
 - Release 0.1.2 is on npm: `@probarion/near`, `@probarion/core`, `@probarion/sdk`, `probarion` and
   `@probarion/mcp` 0.1.2 were published on 2026-11-14 from the tag `sdk-v0.1.2`. The commands a reader runs
   against npm name 0.1.2: the no-clone verify (the README, `JUDGES.md`, the site's block and

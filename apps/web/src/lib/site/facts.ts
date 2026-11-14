@@ -1581,10 +1581,16 @@ const INV_2004_RULES = [
   { id: "invoice.amount_invalid", text: "The amount, 4 USDC, is valid." },
   { id: "mandate.over_per_payment", text: "4 USDC is under the 5 USDC cap for one payment." },
   { id: "mandate.uses_exhausted", text: "2 of its 5 payments were used before this one." },
-  { id: "mandate.over_total", text: "10 of the 20 USDC cap, this one included." },
+  {
+    id: "mandate.over_total",
+    text: "With this one, the mandate's payments come to 10 of its 20 USDC.",
+  },
   { id: "invoice.duplicate", text: "The invoice and its reference are unused." },
-  { id: "vault.daily_backstop", text: "10 of the vault's 500 USDC for the day." },
-  { id: "intents.balance_low", text: "Not an Intents payee." },
+  {
+    id: "vault.daily_backstop",
+    text: "With this one, the day's payments come to 10 of the vault's 500 USDC.",
+  },
+  { id: "intents.balance_low", text: "The payee is a NEAR account, not an Intents payee." },
   { id: "custom.owner_confirmed", text: "The owner signed the amount with NEP-413." },
 ] as const satisfies readonly { id: string; text: string }[];
 
@@ -3232,7 +3238,7 @@ export const INTEGRATE = {
   lede: "Three jobs an agent can do under a mandate. Each ran on our own vaults, on testnet or mainnet, and links its record.",
   /** How a developer plugs in, under the ways in. */
   sub: "You keep your model and your prompts. The owner creates a vault and a mandate from their own wallet, gives the agent a key that can call one method, `spend`, and the agent pays through the SDK.",
-  /** After the uses and the console's shot, an h3 over the four cards. */
+  /** After the uses and the console's invoice board, an h3 over the four cards. */
   waysTitle: "Four ways in",
   /** Read before every pill of the section, by a screen reader only. */
   statusPrefix: "Status: ",

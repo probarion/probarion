@@ -1,8 +1,9 @@
 // The console on the site: three real testnet captures of the demo vault, taken while INV-2004 went through it, are in
 // the docs; the landing redraws one of them, the invoice's page, as a board in the use cases (#integrate), from the
 // record, and links the capture itself. Every value on the board is held here to the demo vault's ledger of
-// 2026-11-11 (entries 7, 8 and 9), its deployment record and the shots' transactions. The files' sizes are read from
-// their headers, so the docs never stretch an image they do not have. Nothing scrolls sideways.
+// 2026-11-11 (entries 7, 8 and 9), its chain snapshot of that day (mandate 1 and spend 3), its deployment record and
+// the shots' transactions. The files' sizes are read from their headers, so the docs never stretch an image they do
+// not have. Nothing scrolls sideways.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,6 +54,44 @@ const LEDGER = readFileSync(join(EVIDENCE, "ledger-2026-11-11.jsonl"), "utf8")
 const entry = (seq: number) => {
   const found = LEDGER.find((e) => e.body.seq === seq);
   if (found === undefined) throw new Error(`no ledger entry ${seq}`);
+  return found;
+};
+
+/** The vault's state as the chain gave it at the end of 2026-11-11: its mandates and its spends. */
+type Snapshot = {
+  vault: string;
+  network: string;
+  chain: {
+    mandates: {
+      id: number;
+      label: string;
+      approval_above: string;
+      max_total: string;
+      expires_at_ns: string;
+    }[];
+    spends: {
+      id: number;
+      mandate_id: number;
+      amount: string;
+      invoice_hash: string;
+      ref: string;
+      decision_hash: string;
+      destination: { type: string; account_id: string };
+      status: string;
+    }[];
+  };
+};
+const SNAPSHOT = JSON.parse(
+  readFileSync(join(EVIDENCE, "snapshot-2026-11-11.json"), "utf8"),
+) as Snapshot;
+const mandate = (id: number) => {
+  const found = SNAPSHOT.chain.mandates.find((m) => m.id === id);
+  if (found === undefined) throw new Error(`no mandate ${id}`);
+  return found;
+};
+const spend = (id: number) => {
+  const found = SNAPSHOT.chain.spends.find((x) => x.id === id);
+  if (found === undefined) throw new Error(`no spend ${id}`);
   return found;
 };
 
@@ -220,6 +259,32 @@ describe("the landing's invoice board, held to the demo vault's record", () => {
     );
   });
 
+  it("holds the invoice, its mandate and spend 3 to the vault's chain snapshot of 2026-11-11", () => {
+    expect([SNAPSHOT.vault, SNAPSHOT.network]).toEqual([demo.account, "testnet"]);
+    // Spend 3 is INV-2004: its hash, its reference, the payee, entry 8's decision, and paid.
+    const s3 = spend(3);
+    expect(s3.id).toBe(e9.contract?.spend_id);
+    expect(s3.mandate_id).toBe(e8.mandate_id);
+    expect(s3.amount).toBe(e8.amount);
+    expect(s3.invoice_hash).toBe(B.invoice.hash.value);
+    expect(s3.ref).toBe(B.invoice.ref);
+    expect(s3.destination).toEqual({ type: "near", account_id: demo.payee });
+    expect(s3.decision_hash).toBe(entry(8).body_hash);
+    expect(s3.status).toBe("paid");
+    // Mandate 1 is the purchase order's: its label names it, and the sheet says the two together.
+    const m1 = mandate(s3.mandate_id);
+    const po = m1.label.match(/PO-\d+/)?.[0];
+    expect(po).toBe("PO-1001");
+    expect(B.invoice.rows.find((r) => r.term === "Purchase order")?.value).toBe(
+      `${po}, mandate ${m1.id}`,
+    );
+    // The expiry and the cap the rules name are the mandate's on chain.
+    const rule = (id: string) => B.rules.list.find((r) => r.id === id)?.text ?? "";
+    const until = new Date(Number(m1.expires_at_ns.slice(0, 13))).toISOString().slice(0, 10);
+    expect(rule("mandate.expired")).toBe(`Mandate ${m1.id} runs until ${until}.`);
+    expect(rule("mandate.over_total")).toContain(`of its ${Number(m1.max_total) / 1e6} USDC.`);
+  });
+
   it("lists the code's rules as entry 8 records them, every one passed, and its verdict", () => {
     expect(B.rules.list.map((r) => r.id)).toEqual(e8.rules.map((r) => r.id));
     expect(e8.rules).toHaveLength(15);
@@ -290,7 +355,14 @@ describe("the landing's invoice board, held to the demo vault's record", () => {
     const did = row("Contract did");
     expect(did.text).toContain(`held it as spend ${e9.contract?.spend_id}.`);
     expect(did.text).toContain(`paid 4 test USDC to \`${demo.payee}\`.`);
-    expect(did.text).toContain("above the 3 USDC approval limit");
+    // The limit is mandate 1's on chain, in USDC (6 decimals), and the amount is above it: so the vault held it.
+    const limit = Number(mandate(e8.mandate_id).approval_above) / 1e6;
+    expect(limit).toBe(3);
+    expect(Number(e8.amount)).toBeGreaterThan(Number(mandate(e8.mandate_id).approval_above));
+    expect(did.text).toContain(`above the ${limit} USDC approval limit`);
+    // Its stamps are spend 3's statuses: held in entry 9, paid in the chain snapshot.
+    expect(did.stamps.map((x) => x.tone)).toEqual([e9.contract?.status, spend(3).status]);
+    expect(did.stamps.map((x) => x.label.toLowerCase())).toEqual(["held", "paid"]);
     expect(did.txs).toEqual([shot("held").link, shot("paid").link]);
     expect(did.txs?.[0]?.url).toBe(explorerTxUrl("testnet", e9.contract?.tx_hash ?? ""));
     expect(did.entry).toBeUndefined();
@@ -326,9 +398,13 @@ describe("the landing's invoice board, held to the demo vault's record", () => {
     expect(cap).toContain(`<p class="${site.eyebrow}">${L.eyebrow}</p>`);
     expect(cap).toContain(`<h3 class="${c.title}" id="integrate-invoice">${L.title}</h3>`);
     expect(text(cap)).toContain(`${L.eyebrow} ${L.title} ${L.body}`);
+    // The amount and the limit are the ledger's and mandate 1's on chain, in USDC (6 decimals).
+    const asked = Number(e8.amount) / 1e6;
+    const limit = Number(mandate(e8.mandate_id).approval_above) / 1e6;
     expect(L.body).toBe(
-      "INV-2004 went through Payables on testnet. It asked for 4 test USDC, above the mandate's 3 USDC approval limit. Each step links its proof.",
+      `INV-2004 went through Payables on testnet. It asked for ${asked} test USDC, above the mandate's ${limit} USDC approval limit. Each step links its proof.`,
     );
+    expect([asked, limit]).toEqual([4, 3]);
     expect(cap).toContain(`<dl class="${c.record}">`);
     expect(text(cap)).toContain(`Network Testnet Captured 2026-11-09 Vault ${demo.account}`);
     expect(cap).toContain(`<dd><code>${demo.account}</code></dd>`);
@@ -368,6 +444,14 @@ describe("the landing's invoice board, held to the demo vault's record", () => {
     );
     expect(sheet).toContain(`<code title="${B.invoice.hash.value}">${B.invoice.hash.short}</code>`);
     expect(sheet).toContain(`<code title="${demo.owner}">${B.confirm.short}</code>`);
+    // The confirm's date stays whole, and its minute stays with its zone: neither "11-09" nor "UTC" wraps alone.
+    const at = B.confirm.meta.lastIndexOf(", ");
+    const day = e8.at.slice(0, 10);
+    const head = B.confirm.meta.slice(0, at).replace(day, `<span class="${pm.keep}">${day}</span>`);
+    expect(B.confirm.meta.slice(at + 2)).toBe(`${e8.at.slice(11, 16)} UTC`);
+    expect(sheet).toContain(
+      `<p class="${c.sigMeta}">${head}, <span class="${pm.keep}">${B.confirm.meta.slice(at + 2)}</span></p>`,
+    );
     // The rows: a heading and its stamps, the sentence, then its proof.
     const verdicts = board.slice(board.indexOf(`<div class="${c.verdicts}">`));
     const heads = [...verdicts.matchAll(/<h4 class="([^"]*)">([^<]*)<\/h4>/g)];
@@ -458,6 +542,25 @@ describe("the landing's invoice board, held to the demo vault's record", () => {
     );
     expect(css).toMatch(
       /\.vlink \{\s*padding-block: 11px;[^}]*font-size: 15px;[^}]*line-height: 1\.5;/,
+    );
+    // Two proof links that wrap keep 44px each: the row, not each link, takes the -6px under its last line, so a
+    // wrapped link never starts inside the one above it.
+    expect(css).toMatch(/\.vlinks \{[^}]*flex-wrap: wrap;[^}]*margin-bottom: -6px;/);
+    const vlink = rules.filter((r) => r.selectors.includes(".vlink"));
+    expect(vlink).toHaveLength(1);
+    for (const r of vlink) expect(r.body).not.toMatch(/margin/);
+    // A rule id is set at 13px, so its line is 20.8px and the mark's 5px sits at its middle.
+    expect(rules.find((r) => r.selectors.includes(".ruleId"))?.body).toMatch(
+      /font-size: 13px;[^}]*line-height: 1\.6;/,
+    );
+    expect(css).toMatch(/\.ruleList li > svg \{\s*margin-top: 5px;/);
+    // Below 900px the hand-off's 36px circle stands 18px up into the sheet's pane: 28px or more under the note.
+    expect(css).toMatch(/\.handoff \{[^}]*top: -18px;[^}]*height: 36px;/);
+    expect(css).toMatch(
+      /\n\.doc \{[^}]*padding: clamp\(16px, 3vw, 40px\) clamp\(16px, 3vw, 40px\) max\(28px, 3vw\);/,
+    );
+    expect(css).toMatch(
+      /@media \(min-width: 900px\) \{[\s\S]*?\.doc \{\s*padding-bottom: clamp\(16px, 3vw, 40px\);/,
     );
     expect(css).toMatch(
       /\.rulesSummary \{[^}]*padding: 10px 16px;\s*border: 1px solid var\(--color-line\);[^}]*font-size: 15px;[^}]*line-height: 1\.5;/,

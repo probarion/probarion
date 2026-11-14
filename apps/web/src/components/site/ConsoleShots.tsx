@@ -34,6 +34,21 @@ function Stamps({ stamps }: { stamps: readonly BoardStamp[] }) {
   );
 }
 
+/**
+ * A line that ends in a day and a minute ("…, 2026-11-09, 17:37 UTC"): the date kept whole (KeepRich), and the time
+ * after the last ", " on one line with its zone, so neither the date nor "UTC" wraps alone.
+ */
+function Stamped({ text }: { text: string }) {
+  const cut = text.lastIndexOf(", ") + 2;
+  if (cut < 2) return <KeepRich text={text} />;
+  return (
+    <>
+      <KeepRich text={text.slice(0, cut)} />
+      <span className={p.keep}>{text.slice(cut)}</span>
+    </>
+  );
+}
+
 /** The invoice as a sheet of paper: its number, its total, the recorded fields and the owner's signed confirm. */
 function Sheet() {
   const B = CONSOLE_SHOTS.landing.board;
@@ -83,7 +98,9 @@ function Sheet() {
           <p className={c.sigWho}>
             <code title={B.confirm.owner}>{B.confirm.short}</code>
           </p>
-          <p className={c.sigMeta}>{B.confirm.meta}</p>
+          <p className={c.sigMeta}>
+            <Stamped text={B.confirm.meta} />
+          </p>
         </div>
       </article>
       <p className={c.docNote}>{B.note}</p>
