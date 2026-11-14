@@ -84,7 +84,7 @@ describe("parseEventLog (seeded properties)", () => {
     }
   });
 
-  it("never throws on random text after the prefix, and agrees with an independent oracle", () => {
+  it("does not throw on random text after the prefix, and agrees with an independent oracle", () => {
     const next = mulberry32(SEED + 1);
     const pieces = [
       '{"standard":"a","version":"1.0.0","event":"e"',

@@ -42,7 +42,7 @@ function excerpt(value: unknown): string {
  * One log line as NEP-297 reads it. The prefix is exact (case and position: `event_json:` or a leading space is a
  * plain log). The rest must be one JSON value (JSON allows whitespace around it) that is an object, not an array,
  * with non-empty string `standard`, `version` and `event`; `data`, when present, is kept as it is, and other fields
- * are dropped. Total: never throws, whatever it is given.
+ * are dropped. Total: it does not throw, whatever it is given.
  */
 export function parseEventLog(log: string): EventLogParse {
   if (typeof log !== "string") return { kind: "malformed", problem: "the log is not a string" };
@@ -358,7 +358,7 @@ export function eventsOf(source: OutcomeSource, query: EventQuery): BoundEvent[]
 /**
  * Every NEP-297 event of every outcome, any emitter and any status, plus every malformed EVENT_JSON: log and
  * malformed outcome. For diagnostics and display: none of it is bound to a contract, so none of it is evidence
- * that a token moved. Never throws.
+ * that a token moved. It does not throw.
  */
 export function scanAllEvents(source: OutcomeSource): {
   events: BoundEvent[];

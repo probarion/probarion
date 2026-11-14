@@ -110,7 +110,7 @@ describe("nep141Events on the recorded testnet trees", () => {
     ]);
   });
 
-  it("drops a failed token receipt with no problem (its logs never count)", () => {
+  it("drops a failed token receipt with no problem (its logs do not count)", () => {
     // Derived from the real `paid` tree, labelled: the token's receipt marked failed.
     const failed = structuredClone(TREES.paid);
     const token = failed.receipts_outcome.find(

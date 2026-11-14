@@ -127,7 +127,7 @@ describe("parseEventLog", () => {
     expect(extra.kind === "event" && "extra" in extra.event).toBe(false);
   });
 
-  it("never throws, also on a value that is not a string", () => {
+  it("does not throw, also on a value that is not a string", () => {
     expect(parseEventLog(42 as unknown as string)).toEqual({
       kind: "malformed",
       problem: "the log is not a string",
