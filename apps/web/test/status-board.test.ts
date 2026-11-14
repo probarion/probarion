@@ -144,19 +144,19 @@ const BACKING: Readonly<Record<string, { proof: readonly Quote[]; use?: readonly
   },
   "offline-verifier": {
     proof: [["judges", "prints `9 passed, 0 failed, 0 unproven` and `RESULT: PASS`"]],
-    use: [["readme", "**Shipped**, on npm as `@probarion/core` 0.1.1"]],
+    use: [["readme", "**Shipped**, on npm as `@probarion/core` 0.1.2"]],
   },
   "sdk-and-cli": {
     proof: [["judges", "for the owner's own Base address with the SDK"]],
     use: [
-      ["readme", "**Shipped**, on npm as `@probarion/sdk` 0.1.1"],
-      ["readme", "**Shipped**, on npm as `probarion` 0.1.1"],
+      ["readme", "**Shipped**, on npm as `@probarion/sdk` 0.1.2"],
+      ["readme", "**Shipped**, on npm as `probarion` 0.1.2"],
       ["readme", "with npm provenance"],
     ],
   },
   "mcp-server": {
     proof: [["readme", "**Shipped** and tested, and run by a real MCP client on NEAR testnet"]],
-    use: [["readme", "It is on npm as `@probarion/mcp` 0.1.1"]],
+    use: [["readme", "It is on npm as `@probarion/mcp` 0.1.2"]],
   },
   "chrome-extension": {
     proof: [
@@ -936,7 +936,7 @@ describe("the status board's evidence", () => {
     expect(SOURCES.readme).toContain(LINKS.npmSdk);
     // The verifier's page: the README's row for `@probarion/core` links it, and it has the form of the SDK's.
     expect(SOURCES.readme).toContain(
-      "**Shipped**, on npm as `@probarion/core` 0.1.1 | [`packages/core`](packages/core), [npm](https://www.npmjs.com/package/@probarion/core) |",
+      "**Shipped**, on npm as `@probarion/core` 0.1.2 | [`packages/core`](packages/core), [npm](https://www.npmjs.com/package/@probarion/core) |",
     );
     expect(BOARD_LINKS.npmCore).toBe(LINKS.npmSdk.replace("@probarion/sdk", "@probarion/core"));
     // Every address outside the repository is one the README or JUDGES.md links too: none is made up here.

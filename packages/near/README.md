@@ -6,7 +6,7 @@ Probarion's CLI runs two of them, the outcome proof verifier in `tx prove` and t
 `account audit`; Probarion's verifier, settlement watcher and console do not use them yet (**Planned**).
 
 **Unaudited beta.** Versions 0.x may change the API in a minor release. MIT licensed. This package is on
-npm once release 0.1.2 is published; until then, build it from a clone (below). ESM, with no CommonJS build;
+npm from release 0.1.2 (`npm install @probarion/near`), and a clone builds it too (below). ESM, with no CommonJS build;
 Node 24 or newer.
 
 The pure functions use no network, no filesystem and no Node built-in, so they run the same in Node and in a

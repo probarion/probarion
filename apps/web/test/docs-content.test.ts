@@ -119,8 +119,14 @@ const BANNED: readonly [RegExp, string][] = [
   [/\bplease\b/i, "please"],
 ];
 
-/** The packages release 0.1.1 published to npm: the only ones an install line may name. */
-const PUBLISHED = ["@probarion/core", "@probarion/sdk", "probarion", "@probarion/mcp"];
+/** The packages release 0.1.2 published to npm: the only ones an install line may name. */
+const PUBLISHED = [
+  "@probarion/core",
+  "@probarion/sdk",
+  "probarion",
+  "@probarion/mcp",
+  "@probarion/near",
+];
 const NPM_INSTALL = /(?<![\w-])npm (?:install|i)\b([^\n`]*)/gi;
 
 /** The npm installs in the text that name anything but the published packages (or `-g`). */

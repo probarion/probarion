@@ -204,9 +204,10 @@ describe("the page with its numbers", () => {
     for (const l of own) expect(PLANNED_ROUTES).not.toContain(l);
     const out = links.filter((l) => !own.includes(l));
     expect(out.length).toBeGreaterThan(10);
+    // A file of the repository is at main, or at the commit a record was made at (the testing card's no-clone row).
     for (const l of out) {
       expect(l, l).toMatch(
-        /^https:\/\/(nearblocks\.io\/txns\/|basescan\.org\/tx\/0x|github\.com\/probarion\/probarion\/(blob\/main\/|actions\/runs\/\d+(\/job\/\d+)?$|issues\/new\?template=pilot\.yml$))/,
+        /^https:\/\/(nearblocks\.io\/txns\/|basescan\.org\/tx\/0x|github\.com\/probarion\/probarion\/(blob\/(main|[0-9a-f]{7,40})\/|actions\/runs\/\d+(\/job\/\d+)?$|issues\/new\?template=pilot\.yml$))/,
       );
     }
   });

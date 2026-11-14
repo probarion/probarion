@@ -118,6 +118,14 @@ describe("every figure is dated and sourced", () => {
   it("points at files that exist, and at CI runs of this repository", () => {
     for (const s of ROWS.flatMap((r) => r.sources)) {
       if (s.href.startsWith("https://")) {
+        // A file as it was at the commit the table was read at, where the file at main has moved on.
+        const atCommit = new RegExp(
+          `^https://github\\.com/probarion/probarion/blob/${TESTED_COMMIT}/([^#]+)$`,
+        ).exec(s.href);
+        if (atCommit) {
+          expect(existsSync(join(ROOT, atCommit[1] ?? "")), s.href).toBe(true);
+          continue;
+        }
         expect(s.href).toMatch(
           /^https:\/\/github\.com\/probarion\/probarion\/actions\/runs\/\d+(\/job\/\d+)?$/,
         );
@@ -136,6 +144,16 @@ describe("every figure is dated and sourced", () => {
     expect(doc).toContain("## Baseline, 2026-11-13 20:45 UTC");
     expect(doc).toContain("15 PASS, 1 WARN, 0 FAIL, 1 SKIP");
     expect(live.figure).toContain("15 PASS, 1 WARN, 0 FAIL, 1 SKIP");
+  });
+
+  it("links the no-clone workflow as it was at the commit that ran it, with the release the row names", () => {
+    const noClone = row("Mainnet verify, no clone");
+    const wf = noClone.sources.find((s) => s.label === "no-clone-verify.yml");
+    expect(wf?.href).toBe(
+      `https://github.com/probarion/probarion/blob/${TESTED_COMMIT}/.github/workflows/no-clone-verify.yml`,
+    );
+    expect(noClone.at).toContain(`CI run of \`${TESTED_COMMIT}\``);
+    expect(noClone.figure).toContain("`npx probarion@0.1.1 verify`");
   });
 
   it("adds up: the totals of every CI suite, of the TypeScript job and of the contract tests", () => {

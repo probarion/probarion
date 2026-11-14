@@ -1,4 +1,4 @@
-The `probarion` CLI dry-runs a spend, checks a payee, audits an account, proves a transaction, verifies a vault, exports the ledger, generates keys and prints the transactions that a vault's owner and approvers sign. It signs nothing itself: for each owner or approver call it checks your input against the contract's rules, writes the arguments to a file and prints the near-cli-rs command for that person to sign. The tables below list every command and option of the CLI, version 0.1.2, as `packages/cli/src/program.ts` builds it in this repository, and a test fails when the code gains or loses a command or an option that they do not list. `payee check`, `account audit` and `tx prove` are in this repository and newer than 0.1.1, the release on npm, so `npx probarion` does not have them yet: run them in a clone, as `node packages/cli/dist/bin.js payee check ...`.
+The `probarion` CLI dry-runs a spend, checks a payee, audits an account, proves a transaction, verifies a vault, exports the ledger, generates keys and prints the transactions that a vault's owner and approvers sign. It signs nothing itself: for each owner or approver call it checks your input against the contract's rules, writes the arguments to a file and prints the near-cli-rs command for that person to sign. The tables below list every command and option of the CLI, version 0.1.2, as `packages/cli/src/program.ts` builds it in this repository, and a test fails when the code gains or loses a command or an option that they do not list. `payee check`, `account audit` and `tx prove` are new in release 0.1.2: `npx probarion` runs them from npm, and a clone runs them as `node packages/cli/dist/bin.js payee check ...`.
 
 ## How to read the tables
 
@@ -123,19 +123,19 @@ Both mandate commands print a call the owner signs. A mandate has no edit call: 
 
 ## Payee commands
 
-`payee check` is advice for the owner before a mandate names a payee: it reads the chain, signs nothing and changes nothing on chain. A read it could not make warns, so a check with a failed read does not answer `ALLOW`. It is in this repository and newer than npm 0.1.1. [Mandates](/docs/concepts/mandates#why-a-mandate-cannot-be-edited) explains why a mandate's payee never changes.
+`payee check` is advice for the owner before a mandate names a payee: it reads the chain, signs nothing and changes nothing on chain. A read it could not make warns, so a check with a failed read does not answer `ALLOW`. It is in the CLI from release 0.1.2 on. [Mandates](/docs/concepts/mandates#why-a-mandate-cannot-be-edited) explains why a mandate's payee never changes.
 
 <RefTable id="cli-commands-payee" />
 
 ## Account commands
 
-`account audit` runs the account lock audit of `@probarion/near` (`packages/near`) on any NEAR account: it reads two views at one block, signs nothing and changes nothing on chain. It is in this repository and newer than npm 0.1.1.
+`account audit` runs the account lock audit of `@probarion/near` (`packages/near`) on any NEAR account: it reads two views at one block, signs nothing and changes nothing on chain. It is in the CLI from release 0.1.2 on.
 
 <RefTable id="cli-commands-account" />
 
 ## Transaction commands
 
-`tx prove` runs the outcome proof verifier of `@probarion/near` on any NEAR transaction: it checks each outcome against a head that two RPC providers agree on, so the logs and statuses it prints do not rest on one node. The head itself is trusted, not proven. It is in this repository and newer than npm 0.1.1.
+`tx prove` runs the outcome proof verifier of `@probarion/near` on any NEAR transaction: it checks each outcome against a head that two RPC providers agree on, so the logs and statuses it prints do not rest on one node. The head itself is trusted, not proven. It is in the CLI from release 0.1.2 on.
 
 <RefTable id="cli-commands-tx" />
 

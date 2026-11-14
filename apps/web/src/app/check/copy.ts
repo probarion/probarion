@@ -64,7 +64,7 @@ export const CHECK_PAGE = {
     json: "The signals and the assessment as JSON",
     cli: "The same check in a terminal",
     cliNote:
-      "In a clone of the repository, once the CLI is built. Release 0.1.1 on npm does not have this command.",
+      "In a clone of the repository, once the CLI is built. The CLI on npm has it from release 0.1.2 on: there, start the line with npx probarion instead.",
     readOnly: "Read-only: views and block headers, no transaction signed or sent.",
     advice:
       "The verdict is advice for the owner who writes this payee into a mandate. It changes nothing on chain.",
