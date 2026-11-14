@@ -177,6 +177,9 @@ describe("poaWithdrawCall", () => {
       ["a number amount", { amount: 1_000_000 as unknown as bigint }],
       ["intents not an account id", { intents: "Intents.near" }],
       ["an unknown chain", { chain: "ethereum" as "base" }],
+      // The native-asset POA tokens: the vault refuses them too, and their releases are not ERC-20 Transfers.
+      ["ETH on Base", { asset: "base.omft.near" }],
+      ["SOL", { asset: "sol.omft.near", chain: "solana", address: SOL_ADDR }],
     ];
     for (const [label, overrides] of refused) {
       expect(() => poaWithdrawCall(request(overrides)), label).toThrow(TypeError);
@@ -206,6 +209,7 @@ describe("parsePoaWithdrawalStatus", () => {
         contractAddress: USDC_ON_BASE,
         accountId: "v0.probarion.near",
         amount: 1_000_000n,
+        amountExact: true,
         fee: 2_400n,
         received: 997_600n,
         createdAt: "2026-11-13T07:24:37.896Z",
@@ -248,7 +252,20 @@ describe("parsePoaWithdrawalStatus", () => {
     expect(text?.amount).toBe(1_000_000n);
   });
 
-  it("refuses an unsafe JSON number amount and names every refused field", () => {
+  it("keeps an amount above 2^53 - 1 marked inexact, as an 18-decimal token's would be", () => {
+    const read = (amount: number) => {
+      const answer = statusAnswer("poa-status-s1.json");
+      const list = answer.withdrawals as { data: Record<string, unknown> }[];
+      (list[0]?.data as Record<string, unknown>).amount = amount;
+      return parsePoaWithdrawalStatus(answer)[0];
+    };
+    // 0.01 of an 18-decimal token, the size of a small WETH withdrawal on Base.
+    expect(read(1e16)).toMatchObject({ amount: 10n ** 16n, amountExact: false, fee: 2_400n });
+    expect(read(2 ** 53)).toMatchObject({ amount: 2n ** 53n, amountExact: false });
+    expect(read(2 ** 53 - 1)).toMatchObject({ amount: 2n ** 53n - 1n, amountExact: true });
+  });
+
+  it("refuses a non-integer or negative JSON number amount and names every refused field", () => {
     const refusal = (edit: (data: Record<string, unknown>) => void): NearFormatError => {
       const answer = statusAnswer("poa-status-s1.json");
       const list = answer.withdrawals as { data: Record<string, unknown> }[];
@@ -263,9 +280,20 @@ describe("parsePoaWithdrawalStatus", () => {
     };
     expect(
       refusal((d) => {
-        d.amount = 2 ** 53;
+        d.amount = 1e40;
       }).what,
     ).toBe("withdrawals[0].data.amount");
+    // The fee and the released amount are compared exactly, so neither may be an inexact number.
+    expect(
+      refusal((d) => {
+        d.withdrawal_fee = 2 ** 53;
+      }).what,
+    ).toBe("withdrawals[0].data.withdrawal_fee");
+    expect(
+      refusal((d) => {
+        d.withdraw_amount = 1e16;
+      }).what,
+    ).toBe("withdrawals[0].data.withdraw_amount");
     expect(
       refusal((d) => {
         d.amount = 1.5;
@@ -344,6 +372,8 @@ describe("findErc20Transfer", () => {
         to: PAYEE.toLowerCase(),
         value: 997_600n,
         logIndex: null,
+        // 2026-11-13T07:24:38Z, as mainnet.base.org added it to the log.
+        blockTimestamp: 0x6af6bb36n,
       },
     });
     const three = findErc20Transfer(
@@ -439,6 +469,11 @@ describe("findErc20Transfer", () => {
     expect(
       code((r) => {
         firstLog(r).logIndex = "0x01";
+      }),
+    ).toBe("malformed");
+    expect(
+      code((r) => {
+        firstLog(r).blockTimestamp = 1_794_554_678;
       }),
     ).toBe("malformed");
     expect(

@@ -63,6 +63,51 @@ describe("examples/check-payout.ts", () => {
     expect(garbled.base.calls).toEqual([]);
   });
 
+  it("does not ask Base about a release that is not a Base transaction hash, and reports it", async () => {
+    // A Solana signature, say: base58, not 0x and 64 hex digits. A real Base node would answer invalid params.
+    const answer = structuredClone(
+      readFixture<{ answer: { withdrawals: { data: Record<string, unknown> }[] } }>(
+        "poa/poa-status-s1.json",
+      ).answer,
+    );
+    const signature =
+      "5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW";
+    (answer.withdrawals[0] as { data: Record<string, unknown> }).data.transfer_tx_hash = signature;
+    const { near, base, bridge } = endpoints(answer);
+    const verdict = await checkPayout(near, base, bridge, PAYOUT);
+    expect(base.calls).toEqual([]);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.checks.find((c) => c.id === "bridge_record")?.detail).toBe(
+      `the bridge's release ${signature} is not a Base transaction hash`,
+    );
+  });
+
+  it("passes releaseFrom and countedReleases through to the verdict", async () => {
+    const sender = "0x2cff890f0378a11913b6129b2e97417a2c302680";
+    const pinned = endpoints();
+    const verdict = await checkPayout(pinned.near, pinned.base, pinned.bridge, {
+      ...PAYOUT,
+      releaseFrom: [sender],
+    });
+    expect(verdict.ok).toBe(true);
+    const other = endpoints();
+    const elsewhere = await checkPayout(other.near, other.base, other.bridge, {
+      ...PAYOUT,
+      releaseFrom: [`0x${"5".repeat(40)}`],
+    });
+    expect(elsewhere.checks.find((c) => c.id === "destination_transfer")?.detail).toBe(
+      `the Transfer is from ${sender}, which is not in expect.releaseFrom`,
+    );
+    const counted = endpoints();
+    const again = await checkPayout(counted.near, counted.base, counted.bridge, {
+      ...PAYOUT,
+      countedReleases: [RELEASE],
+    });
+    expect(again.checks.find((c) => c.id === "bridge_record")?.detail).toMatch(
+      /is in expect\.countedReleases/,
+    );
+  });
+
   it("fails the verdict when the payout was meant for another address", async () => {
     const { near, base, bridge } = endpoints();
     const verdict = await checkPayout(near, base, bridge, {

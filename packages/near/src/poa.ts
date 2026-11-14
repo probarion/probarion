@@ -29,6 +29,10 @@ export const ERC20_TRANSFER_TOPIC =
 export type PoaChain = "base" | "solana";
 
 const DEFAULT_INTENTS = "intents.near";
+/** Base as the POA bridge names it in a `withdrawal_status` record (`data.chain`): chain id 8453. */
+const BASE_CHAIN = "eth:8453";
+const NS_PER_MS = 1_000_000n;
+const NS_PER_SECOND = 1_000_000_000n;
 const ASSET_PREFIX: Readonly<Record<PoaChain, string>> = { base: "base-", solana: "sol-" };
 /** validate.rs `is_evm_address`: `0x` and 40 hex digits in any case (EIP-55 checksummed or not). */
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -83,6 +87,10 @@ export interface PoaWithdrawCall {
  * chain), memo `WITHDRAW_TO:<address>`, `msg` null, 1 yoctoNEAR attached and 100 Tgas. `msg` stays null as in the
  * vault: a string `msg` makes intents.near call `ft_transfer_call` on the token instead of `ft_transfer`. The caller
  * signs and sends the call; this builds it and signs nothing.
+ *
+ * The native-asset POA tokens, `base.omft.near` (ETH on Base) and `sol.omft.near` (SOL), have no `base-` or `sol-`
+ * prefix and are refused, as the vault refuses them; their releases make no ERC-20 Transfer, so verifyPoaSettlement
+ * does not read them either.
  *
  * Throws TypeError for a chain other than base or solana; an asset that is not a NEAR account id with the chain's
  * prefix; a Base address that is not `0x` and 40 hex digits (the case is kept, so an EIP-55 checksummed address
@@ -172,15 +180,22 @@ interface FtBurnEntry {
 }
 
 /**
- * Pairs, in source order, the intents contract's NEP-245 `mt_burn` entries of `nep141:<asset>` with the POA token's
- * NEP-141 `ft_burn` items whose `owner_id` is the intents contract and whose memo starts `WITHDRAW_TO:`, from
- * receipts that succeeded, each event bound to the contract that logged it (the receipt-bound reader of
- * events.ts: an `ft_burn` logged by the vault or any other account is not read). Both counts and each pair's two
- * amounts must be equal, which the SDK's `findBurnPair` does not ask. Anything that stands in the way of a clean
- * pairing is a problem: unequal counts or amounts, an event of either contract that breaks its standard's schema,
- * a matching event whose receipt status is missing (a trimmed record), a malformed source. `burns` is empty
- * whenever `problems` is not, so a caller who reads `burns` alone gets no pair out of a doubtful record. It
- * does not throw: invalid options are a problem too.
+ * Pairs the intents contract's NEP-245 `mt_burn` entries of `nep141:<asset>` with the POA token's NEP-141 `ft_burn`
+ * items whose `owner_id` is the intents contract and whose memo starts `WITHDRAW_TO:`, from receipts that
+ * succeeded, each event bound to the contract that logged it (the receipt-bound reader of events.ts: an `ft_burn`
+ * logged by the vault or any other account is not read). The pairing follows the receipts, not the list order:
+ * each `ft_burn` belongs to the nearest receipt that holds an `mt_burn` of the asset and is its own receipt (the
+ * testnet intents-stub logs both events in one) or one it descends from through `receipt_ids` (`receiptIds` for
+ * proven outcomes; on mainnet the token's receipt is a child of the intents receipt). Both counts, the counts under
+ * each such receipt and each pair's two amounts must be equal, which the SDK's `findBurnPair` does not ask. When one
+ * receipt holds several `mt_burn` entries, they pair in source order when every order gives the same burns (the
+ * entries share owner and amount, or the `ft_burn` items share amount, memo and receipt), and not otherwise.
+ *
+ * Anything that stands in the way of a clean pairing is a problem: unequal counts or amounts, an `ft_burn` under no
+ * receipt with an `mt_burn` of the asset, several burns in one receipt that would pair differently in another order,
+ * an event of either contract that breaks its standard's schema, a matching event whose receipt status is missing
+ * (a trimmed record), a malformed source. `burns` is empty whenever `problems` is not, so a caller who reads
+ * `burns` alone gets no pair out of a doubtful record. It does not throw: invalid options are a problem too.
  */
 export function findPoaBurns(
   source: OutcomeSource,
@@ -212,6 +227,7 @@ export function findPoaBurns(
   const tokenId = `nep141:${asset}`;
   const mts: MtBurnEntry[] = [];
   const fts: FtBurnEntry[] = [];
+  const links = outcomeLinks(source);
   try {
     const mt = nep245Events(source, intents);
     note("nep245", mt.problems);
@@ -225,7 +241,7 @@ export function findPoaBurns(
         }
       });
     }
-    const order = outcomeOrder(source);
+    const { order } = links;
     for (const emitter of new Set(emitters)) {
       const ft = nep141Events(source, emitter);
       note("nep141", ft.problems);
@@ -252,16 +268,17 @@ export function findPoaBurns(
     problems.add(`reader: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  let pairs: (readonly [MtBurnEntry, FtBurnEntry])[] = [];
   if (mts.length !== fts.length) {
     problems.add(
       `${mts.length} mt_burn of ${tokenId} by ${intents} and ${fts.length} WITHDRAW_TO ft_burn by ` +
         `${[...new Set(emitters)].join(", ")}: they do not pair`,
     );
+  } else if (problems.size === 0) {
+    pairs = pairByReceipt(mts, fts, links, tokenId, problems);
   }
   const burns: PoaBurn[] = [];
-  mts.forEach((mt, i) => {
-    const ft = fts[i];
-    if (ft === undefined) return;
+  pairs.forEach(([mt, ft], i) => {
     if (mt.amount !== ft.amount) {
       problems.add(
         `pair ${i}: mt_burn of ${mt.amount} (receipt ${mt.source.event.receiptId}) and ft_burn of ` +
@@ -287,24 +304,122 @@ export function findPoaBurns(
   };
 }
 
-/** Each outcome id's position in the source (transaction_outcome at 0), for sorting events read per emitter. */
-function outcomeOrder(outcomes: OutcomeSource): Map<string, number> {
+interface OutcomeLinks {
+  /** Each outcome id's position in the source (transaction_outcome at 0), for sorting events read per emitter. */
+  order: Map<string, number>;
+  /** Each outcome id's `receipt_ids` (`receiptIds` for proven outcomes): the receipts it created. */
+  children: Map<string, readonly string[]>;
+}
+
+/** The order of a source's outcomes and the receipts each created. A missing or malformed list counts as none. */
+function outcomeLinks(outcomes: OutcomeSource): OutcomeLinks {
   const order = new Map<string, number>();
+  const children = new Map<string, readonly string[]>();
   const source: unknown = outcomes;
-  const ids: unknown[] = Array.isArray(source)
-    ? source.map((o: unknown) => (isRecord(o) ? o.id : undefined))
+  const proven = Array.isArray(source);
+  const list: unknown[] = proven
+    ? source
     : isRecord(source)
       ? [
-          isRecord(source.transaction_outcome) ? source.transaction_outcome.id : undefined,
-          ...(Array.isArray(source.receipts_outcome)
-            ? source.receipts_outcome.map((o: unknown) => (isRecord(o) ? o.id : undefined))
-            : []),
+          source.transaction_outcome,
+          ...(Array.isArray(source.receipts_outcome) ? source.receipts_outcome : []),
         ]
       : [];
-  ids.forEach((id, i) => {
-    if (typeof id === "string" && !order.has(id)) order.set(id, i);
+  list.forEach((o, i) => {
+    if (!isRecord(o) || typeof o.id !== "string" || order.has(o.id)) return;
+    order.set(o.id, i);
+    const ids: unknown = proven
+      ? o.receiptIds
+      : isRecord(o.outcome)
+        ? o.outcome.receipt_ids
+        : undefined;
+    children.set(
+      o.id,
+      Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [],
+    );
   });
-  return order;
+  return { order, children };
+}
+
+/**
+ * The pairs of findPoaBurns, in `mts` order: each ft_burn goes to the nearest receipt, its own or an ancestor, that
+ * holds an mt_burn of the token. Adds a problem, and leaves the receipt's burns unpaired, for an ft_burn under no
+ * such receipt, a receipt whose two counts differ, and a receipt whose several burns would pair differently in
+ * another order.
+ */
+function pairByReceipt(
+  mts: readonly MtBurnEntry[],
+  fts: readonly FtBurnEntry[],
+  links: OutcomeLinks,
+  tokenId: string,
+  problems: Set<string>,
+): (readonly [MtBurnEntry, FtBurnEntry])[] {
+  const parent = new Map<string, string>();
+  for (const [id, kids] of links.children) {
+    for (const kid of kids) {
+      const known = parent.get(kid);
+      if (known === undefined) parent.set(kid, id);
+      else if (known !== id)
+        problems.add(`receipt ${kid} is listed as created by both ${known} and ${id}`);
+    }
+  }
+  const mtsAt = new Map<string, MtBurnEntry[]>();
+  for (const mt of mts) {
+    const at = mt.source.event.receiptId;
+    mtsAt.set(at, [...(mtsAt.get(at) ?? []), mt]);
+  }
+  const ftsAt = new Map<string, FtBurnEntry[]>();
+  for (const ft of fts) {
+    const own = ft.source.event.receiptId;
+    let at: string | undefined = own;
+    const seen = new Set<string>();
+    while (at !== undefined && !mtsAt.has(at) && !seen.has(at)) {
+      seen.add(at);
+      at = parent.get(at);
+    }
+    if (at === undefined || !mtsAt.has(at)) {
+      problems.add(
+        `ft_burn (receipt ${own}) does not descend from a receipt with an mt_burn of ${tokenId}`,
+      );
+      continue;
+    }
+    ftsAt.set(at, [...(ftsAt.get(at) ?? []), ft]);
+  }
+  const paired = new Map<MtBurnEntry, FtBurnEntry>();
+  for (const [at, here] of mtsAt) {
+    const under = ftsAt.get(at) ?? [];
+    if (under.length !== here.length) {
+      problems.add(
+        `receipt ${at} holds ${here.length} mt_burn of ${tokenId} and ${under.length} WITHDRAW_TO ft_burn ` +
+          "descend from it: they do not pair",
+      );
+      continue;
+    }
+    const [mt0, ...mtRest] = here;
+    const [ft0, ...ftRest] = under;
+    const sameMt = mtRest.every((m) => m.owner === mt0?.owner && m.amount === mt0?.amount);
+    const sameFt = ftRest.every(
+      (f) =>
+        f.amount === ft0?.amount &&
+        f.memo === ft0?.memo &&
+        f.source.event.receiptId === ft0?.source.event.receiptId,
+    );
+    if (!sameMt && !sameFt) {
+      problems.add(
+        `receipt ${at} holds ${here.length} mt_burn of ${tokenId} that differ, and the receipts do not tell ` +
+          "which ft_burn is whose",
+      );
+      continue;
+    }
+    here.forEach((mt, i) => {
+      const ft = under[i];
+      if (ft !== undefined) paired.set(mt, ft);
+    });
+  }
+  return mts.flatMap((mt) => {
+    const ft = paired.get(mt);
+    return ft === undefined ? [] : [[mt, ft] as const];
+  });
 }
 
 // ---------- the POA bridge record ----------
@@ -324,8 +439,13 @@ export interface PoaBridgeWithdrawal {
   contractAddress: string | null;
   /** `data.account_id`: the NEAR Intents account that withdrew. */
   accountId: string;
-  /** `data.amount`: base units burned, as the bridge reports them. */
+  /**
+   * `data.amount`: base units burned, as the bridge reports them. When the bridge sent a JSON number above
+   * 2^53 - 1, this is that number's own value and `amountExact` is false: the digits past it may be lost.
+   */
   amount: bigint;
+  /** False when `amount` came from a JSON number above 2^53 - 1; `fee + received` then stand for it exactly. */
+  amountExact: boolean;
   /** `data.withdrawal_fee`: base units the bridge kept. */
   fee: bigint;
   /** `data.withdraw_amount`: base units released on the destination chain. */
@@ -336,8 +456,10 @@ export interface PoaBridgeWithdrawal {
 /**
  * The POA bridge's answer to `withdrawal_status` (the JSON-RPC `result`): `{ withdrawals: [{ status, data }] }`, or
  * one `{ status, data }`. The recorded mainnet answers carry both; `withdrawals` wins when present, and an empty list
- * gives `[]`. `amount` arrives as a JSON number, so a number above 2^53 - 1 (digits may already be lost) is refused;
- * a canonical decimal string is accepted too. `withdrawal_fee` and `withdraw_amount` are decimal strings. Throws
+ * gives `[]`. `amount` arrives as a JSON number. A number above 2^53 - 1 (an 18-decimal token above about 0.009 of
+ * it, say) may already have lost digits: it is kept with `amountExact` false, and verifyPoaSettlement then settles
+ * on `withdrawal_fee + withdraw_amount`. A canonical decimal string is accepted too. `withdrawal_fee` and
+ * `withdraw_amount` are decimal strings, and as JSON numbers they must be at most 2^53 - 1. Throws
  * NearFormatError, `what` naming the refused field (for example `withdrawals[0].data.amount`). Status values other
  * than `COMPLETED` are not documented in what we read; a record without a fee or a released amount is refused
  * rather than guessed.
@@ -381,15 +503,26 @@ function parseWithdrawal(item: unknown, at: string): PoaBridgeWithdrawal {
       ? value
       : bad(`data.${field}`, "is not text or null");
   };
-  const units = (field: string): bigint => {
+  /** A field's base units and whether they are exact (a JSON number above 2^53 - 1 is not; `amount` alone may be). */
+  const units = (field: string, inexactOk: boolean): [bigint, boolean] => {
     const value = data[field];
     if (typeof value === "number") {
-      return Number.isSafeInteger(value) && value >= 0
-        ? BigInt(value)
-        : bad(`data.${field}`, "is a JSON number that is not a safe non-negative integer");
+      if (!Number.isInteger(value) || value < 0) {
+        return bad(`data.${field}`, "is a JSON number that is not a non-negative integer");
+      }
+      if (Number.isSafeInteger(value)) return [BigInt(value), true];
+      if (!inexactOk) {
+        return bad(`data.${field}`, "is a JSON number above 2^53 - 1, whose digits may be lost");
+      }
+      const big = BigInt(value);
+      return big <= U128_MAX ? [big, false] : bad(`data.${field}`, "is above 2^128 - 1");
     }
-    return parseU128(value) ?? bad(`data.${field}`, "is not a decimal amount");
+    const parsed = parseU128(value);
+    return parsed === null ? bad(`data.${field}`, "is not a decimal amount") : [parsed, true];
   };
+  const [amount, amountExact] = units("amount", true);
+  const [fee] = units("withdrawal_fee", false);
+  const [received] = units("withdraw_amount", false);
   return {
     status,
     burnTxHash,
@@ -398,9 +531,10 @@ function parseWithdrawal(item: unknown, at: string): PoaBridgeWithdrawal {
     nearTokenId,
     contractAddress: text("address"),
     accountId,
-    amount: units("amount"),
-    fee: units("withdrawal_fee"),
-    received: units("withdraw_amount"),
+    amount,
+    amountExact,
+    fee,
+    received,
     createdAt: text("created_at"),
   };
 }
@@ -417,6 +551,8 @@ export interface Erc20Transfer {
   value: bigint;
   /** The log's `logIndex`; null when the receipt does not carry it (a trimmed record). */
   logIndex: number | null;
+  /** The log's `blockTimestamp`, seconds since 1970; null when the RPC does not add it to logs (not all do). */
+  blockTimestamp: bigint | null;
 }
 
 export type Erc20Match =
@@ -435,11 +571,13 @@ type Erc20Failure = Extract<Erc20Match, { ok: false }>;
  * `contract` and its topic0 is the Transfer topic, and such a log must be ERC-20 shaped: exactly 3 topics, `from` and
  * `to` topics of 12 zero bytes and an address (dirty high bytes do not pass for an address), 32 bytes of data; else
  * the receipt is `malformed`. Logs marked `removed: true` do not count. Exactly one counted log may go to `to` (two
- * are `ambiguous`), and its value must equal `want.value` when given. Hex is compared lowercase. A malformed `want`
- * is reported as `malformed`. It does not throw.
+ * are `ambiguous`), and its value must equal `want.value` when given. Hex is compared lowercase. A log's
+ * `blockTimestamp`, which some RPCs add, is read when present and must then be a quantity. A malformed `want` is
+ * reported as `malformed`. It does not throw.
  *
  * The receipt comes from a Base RPC and is not proven here. One Base transaction could be offered for two burns: a
- * caller that settles many payouts keeps the destination transaction hashes it has already counted.
+ * caller that settles many payouts keeps the destination transaction hashes it has already counted (the
+ * `countedReleases` of verifyPoaSettlement).
  */
 export function findErc20Transfer(
   receipt: unknown,
@@ -528,6 +666,13 @@ export function findErc20Transfer(
       }
       logIndex = Number(index);
     }
+    let blockTimestamp: bigint | null = null;
+    if (log.blockTimestamp !== undefined) {
+      blockTimestamp = quantity(log.blockTimestamp);
+      if (blockTimestamp === null) {
+        return fail("malformed", `logs[${i}].blockTimestamp is not a quantity`);
+      }
+    }
     if (log.removed === true) {
       removed += 1;
       continue;
@@ -536,7 +681,16 @@ export function findErc20Transfer(
       others += 1;
       continue;
     }
-    matches.push({ txHash, blockNumber, contract, from, to, value: BigInt(log.data), logIndex });
+    matches.push({
+      txHash,
+      blockNumber,
+      contract,
+      from,
+      to,
+      value: BigInt(log.data),
+      logIndex,
+      blockTimestamp,
+    });
   }
   const [transfer, ...more] = matches;
   if (transfer === undefined) {
@@ -603,20 +757,35 @@ interface CheckResult {
 }
 
 /**
- * One verdict on a payout from NEAR Intents to a Base (EVM) address, across three independent records:
+ * One verdict on a payout from NEAR Intents to a Base (EVM) address, across three records: the NEAR burn, the POA
+ * bridge's record of it, and the Base release that record names.
  *
  * - `near_burn`: the NEAR transaction (`near`, an RPC `tx` answer or proven outcomes) holds exactly one POA burn
  *   pair of `expect.asset` (findPoaBurns), with `expect.owner` and `expect.amount` when given. It is tied to
- *   `nearTxHash`: an RPC answer's `transaction.hash` and `transaction_outcome.id` must equal it when present, and
- *   proven outcomes must include the transaction's own outcome (pass those of proveTransaction or
- *   verifyTransactionOutcomes, which check that every receipt descends from it).
+ *   `nearTxHash`: an RPC answer's `transaction.hash` must equal it when present and its `transaction_outcome.id`
+ *   must equal it, proven outcomes must include the transaction's own outcome, and both burn receipts must descend
+ *   from that outcome through `receipt_ids` (`receiptIds`). Proven outcomes are those of proveTransaction or
+ *   verifyTransactionOutcomes.
  * - `memo_address`: the burn's memo is `WITHDRAW_TO:` and `expect.address`, byte for byte.
- * - `bridge_record`: the bridge answer (`withdrawal_status`) holds exactly one record of `nearTxHash`, COMPLETED, for
- *   the asset and the burn's owner, with the burned amount, `fee + received` equal to it, a release transaction,
- *   and `expect.erc20` as its token contract when it names one.
+ * - `bridge_record`: the bridge answer (`withdrawal_status`) holds exactly one record of `nearTxHash`, COMPLETED, on
+ *   Base (`eth:8453`), for the asset and the burn's owner, with the burned amount (when the bridge's `amount` is an
+ *   inexact JSON number, it must round to the same number as the burn's), `fee + received` equal to the burn, a
+ *   release that is a Base transaction hash and not in `expect.countedReleases`, and `expect.erc20` as its token
+ *   contract when it names one.
  * - `destination_transfer`: the Base receipt is that release, and findErc20Transfer finds one Transfer of
- *   `expect.erc20` to `expect.address` of exactly the received amount.
- * - `amounts`: something was released, and the fee is at most `expect.maxFee` when given.
+ *   `expect.erc20` to `expect.address` of exactly the received amount; it comes from one of `expect.releaseFrom`
+ *   when that is given; and its Base block time is not earlier than the second of the `ft_burn`'s NEAR block when
+ *   both times are known (proven outcomes carry NEAR block times, an RPC `tx` answer does not; the log's
+ *   `blockTimestamp` is there when the Base RPC adds it). Its detail says which of these were checked.
+ * - `amounts`: something was released, and the fee is at most `expect.maxFee`, which is required.
+ *
+ * What it trusts. Nothing in the Base receipt names the NEAR burn: the release it reads is a plain ERC-20
+ * Transfer, so which Base transaction is this burn's release, and the fee, are the bridge's word. The checks above
+ * bound that word: with `fee + received` equal to the burn and the fee at most `maxFee`, the release the bridge
+ * names must move the same token to the same address, at least `amount - maxFee` of it; `releaseFrom` pins the
+ * sender; the time order rules out a release made before the burn; and `countedReleases` keeps one release from
+ * settling two burns. A caller that settles many payouts passes there the release hashes it has already counted
+ * (each verdict's `transfer.txHash`). Within those bounds, the bridge's choice of release is trusted.
  *
  * The destination address is taken from the burn, not from the bridge answer (its `address` is the token
  * contract), and the amount from the burn; the bridge's figures are compared with it. A later check that
@@ -632,11 +801,16 @@ export function verifyPoaSettlement(input: {
     asset: string;
     address: string;
     erc20: string;
+    /** The largest fee, in the asset's base units, the caller accepts. There is no default: see "What it trusts". */
+    maxFee: bigint;
     amount?: bigint;
     owner?: string;
     intents?: string;
     ftBurnEmitters?: readonly string[];
-    maxFee?: bigint;
+    /** The bridge's Base senders: the Transfer must come from one of them. Not checked when absent. */
+    releaseFrom?: readonly string[];
+    /** Base release hashes already counted for other burns: a record that names one fails `bridge_record`. */
+    countedReleases?: readonly string[];
   };
 }): PoaSettlement {
   const checks: { id: PoaCheckId; ok: boolean; detail: string }[] = [];
@@ -697,6 +871,15 @@ export function verifyPoaSettlement(input: {
         `${found.burns.length} POA withdrawal burns of ${expect.asset} in ${nearTxHash}; this reads one`,
       );
     }
+    const tied = descendantsOf(near, nearTxHash);
+    if (typeof tied === "string") return no(tied);
+    for (const id of [single.mtBurnReceiptId, single.ftBurnReceiptId]) {
+      if (!tied.has(id)) {
+        return no(
+          `receipt ${id} of the burn does not descend from the outcome of transaction ${nearTxHash}`,
+        );
+      }
+    }
     if (expect.owner !== undefined && single.owner !== expect.owner) {
       return no(`the burn is from ${single.owner}, not ${String(expect.owner)}`);
     }
@@ -750,14 +933,24 @@ export function verifyPoaSettlement(input: {
     bridge = record;
     if (record.status !== "COMPLETED")
       return no(`the bridge's status is ${record.status}, not COMPLETED`);
+    if (record.chain !== BASE_CHAIN) {
+      return no(`the bridge's record is for chain ${record.chain}, not ${BASE_CHAIN} (Base)`);
+    }
     if (record.nearTokenId !== b.asset) {
       return no(`the bridge's record is of ${record.nearTokenId}, not ${b.asset}`);
     }
     if (record.accountId !== b.owner) {
       return no(`the bridge's record is for ${record.accountId}, but ${b.owner} burned`);
     }
-    if (record.amount !== b.amount) {
-      return no(`the bridge's record says ${record.amount} burned, the burn is of ${b.amount}`);
+    // An inexact JSON number is compared as a number: the burn's amount must round to it.
+    if (
+      record.amountExact ? record.amount !== b.amount : Number(record.amount) !== Number(b.amount)
+    ) {
+      return no(
+        `the bridge's record says ${record.amount} burned` +
+          (record.amountExact ? "" : " (a JSON number above 2^53 - 1)") +
+          `, the burn is of ${b.amount}`,
+      );
     }
     if (record.fee + record.received !== b.amount) {
       return no(
@@ -770,6 +963,18 @@ export function verifyPoaSettlement(input: {
     if (!EVM_WORD_RE.test(record.transferTxHash)) {
       return no(`the bridge's release ${record.transferTxHash} is not a Base transaction hash`);
     }
+    const { countedReleases } = expect;
+    if (countedReleases !== undefined) {
+      if (!Array.isArray(countedReleases) || !countedReleases.every((h) => typeof h === "string")) {
+        return no("expect.countedReleases is not a list of transaction hashes");
+      }
+      const release = record.transferTxHash.toLowerCase();
+      if (countedReleases.some((h) => h.toLowerCase() === release)) {
+        return no(
+          `the bridge's release ${release} is in expect.countedReleases: it was counted for another burn`,
+        );
+      }
+    }
     if (
       record.contractAddress !== null &&
       isEvmAddress(expect.erc20) &&
@@ -781,7 +986,10 @@ export function verifyPoaSettlement(input: {
     }
     return yes(
       `${record.status} on ${record.chain}: release ${record.transferTxHash}, fee ${record.fee}, ` +
-        `released ${record.received}`,
+        `released ${record.received}` +
+        (record.amountExact
+          ? ""
+          : "; its amount is an inexact JSON number, so fee + released stand for it"),
     );
   });
 
@@ -794,10 +1002,43 @@ export function verifyPoaSettlement(input: {
       value: record.received,
     });
     if (!match.ok) return no(`${match.code}: ${match.detail}`);
-    transfer = match.transfer;
+    const t = match.transfer;
+    const { releaseFrom } = expect;
+    let sender = "; the sender is not checked (no expect.releaseFrom)";
+    if (releaseFrom !== undefined) {
+      if (
+        !Array.isArray(releaseFrom) ||
+        releaseFrom.length === 0 ||
+        !releaseFrom.every(isEvmAddress)
+      ) {
+        return no("expect.releaseFrom is not a non-empty list of EVM addresses");
+      }
+      if (!releaseFrom.some((a) => a.toLowerCase() === t.from)) {
+        return no(`the Transfer is from ${t.from}, which is not in expect.releaseFrom`);
+      }
+      sender = ", a sender in expect.releaseFrom";
+    }
+    const burnedAtNs = provenBlockTime(near, (burn as PoaBurn).ftBurnReceiptId);
+    let order: string;
+    if (burnedAtNs === null) {
+      order = "; the order in time is not checked (the NEAR record carries no block times)";
+    } else if (t.blockTimestamp === null) {
+      order = "; the order in time is not checked (the Base log carries no blockTimestamp)";
+    } else if (t.blockTimestamp < burnedAtNs / NS_PER_SECOND) {
+      return no(
+        `the release's Base block time ${isoMs(t.blockTimestamp * 1000n)} is earlier than the burn's NEAR ` +
+          `block time ${isoMs(burnedAtNs / NS_PER_MS)}: it is not this burn's release`,
+      );
+    } else {
+      order =
+        `, at ${isoMs(t.blockTimestamp * 1000n)}, not before the burn's NEAR block at ` +
+        isoMs(burnedAtNs / NS_PER_MS);
+    }
+    transfer = t;
     return yes(
-      `${match.transfer.contract} moved ${match.transfer.value} from ${match.transfer.from} to ` +
-        `${match.transfer.to} in ${match.transfer.txHash} (block ${match.transfer.blockNumber})`,
+      `${t.contract} moved ${t.value} from ${t.from} to ${t.to} in ${t.txHash} (block ${t.blockNumber})` +
+        sender +
+        order,
     );
   });
 
@@ -805,14 +1046,17 @@ export function verifyPoaSettlement(input: {
     const b = burn as PoaBurn;
     const record = bridge as PoaBridgeWithdrawal;
     const { maxFee } = expect;
-    if (maxFee !== undefined && (typeof maxFee !== "bigint" || maxFee < 0n)) {
-      return no("expect.maxFee is not a non-negative bigint");
+    if (typeof maxFee !== "bigint" || maxFee < 0n) {
+      return no(
+        "expect.maxFee is not a non-negative bigint: it is required, since the bridge sets the fee and a free " +
+          "fee would let it name a smaller release to the same address",
+      );
     }
     if (record.received <= 0n) return no(`the bridge released nothing of the burned ${b.amount}`);
-    if (maxFee !== undefined && record.fee > maxFee)
-      return no(`the fee ${record.fee} is above ${maxFee}`);
-    const bound = maxFee === undefined ? "" : ` (at most ${maxFee})`;
-    return yes(`burned ${b.amount}, released ${record.received}, fee ${record.fee}${bound}`);
+    if (record.fee > maxFee) return no(`the fee ${record.fee} is above ${maxFee}`);
+    return yes(
+      `burned ${b.amount}, released ${record.received}, fee ${record.fee} (at most ${maxFee})`,
+    );
   });
 
   return settlement();
@@ -843,4 +1087,47 @@ function untiedReason(near: unknown, txHash: string): string | null {
     return `the NEAR record's transaction outcome is ${String(outcomeId)}, not ${txHash}`;
   }
   return null;
+}
+
+/**
+ * The ids of transaction `txHash`'s outcome and every receipt that descends from it through `receipt_ids`
+ * (`receiptIds`), or why the record does not hold that outcome.
+ */
+function descendantsOf(near: OutcomeSource, txHash: string): Set<string> | string {
+  const source: unknown = near;
+  const hasOutcome = Array.isArray(source)
+    ? source.some((o: unknown) => isRecord(o) && o.id === txHash)
+    : isRecord(source) &&
+      isRecord(source.transaction_outcome) &&
+      source.transaction_outcome.id === txHash;
+  if (!hasOutcome) {
+    return `the NEAR record has no outcome of transaction ${txHash}, so its receipts are not tied to it`;
+  }
+  const { children } = outcomeLinks(near);
+  const reached = new Set<string>([txHash]);
+  const queue = [txHash];
+  for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+    for (const kid of children.get(id) ?? []) {
+      if (!reached.has(kid)) {
+        reached.add(kid);
+        queue.push(kid);
+      }
+    }
+  }
+  return reached;
+}
+
+/** The block time, in nanoseconds, of a proven outcome; null for an RPC tx answer, which carries none. */
+function provenBlockTime(near: OutcomeSource, id: string): bigint | null {
+  if (!Array.isArray(near)) return null;
+  const found: unknown = near.find((o: unknown) => isRecord(o) && o.id === id);
+  if (!isRecord(found) || !isRecord(found.block)) return null;
+  const { timestampNs } = found.block;
+  return typeof timestampNs === "bigint" ? timestampNs : null;
+}
+
+/** Milliseconds since 1970 as an ISO time, or as a number when out of the Date range. */
+function isoMs(ms: bigint): string {
+  const n = Number(ms);
+  return Math.abs(n) <= 8.64e15 ? new Date(n).toISOString() : `${ms} ms`;
 }

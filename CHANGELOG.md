@@ -63,11 +63,18 @@ The software is an unaudited beta.
   - **NEAR Intents POA withdrawal check** (`src/poa.ts`, `src/poa-rpc.ts`). Built; the bridge status reader
     `readPoaWithdrawalStatus` is Experimental (statuses other than `COMPLETED` are not documented in what was
     read). `poaWithdrawCall` builds the `ft_withdraw` call with its `WITHDRAW_TO:` memo, byte for byte the call
-    the vault sent in mainnet spends 2 and 3; `findPoaBurns` pairs `intents.near`'s `mt_burn` with the POA
-    token's `ft_burn`, each bound to the contract that logged it; `verifyPoaSettlement` gives one verdict with five
-    named checks across the NEAR receipts (or their proven outcomes), the POA bridge's `withdrawal_status` record
-    and the ERC-20 `Transfer` on Base. It settles both mainnet payouts (1000000 burned, 997600 received, a fee of
-    2400; 250000, 247600, 2400): 38 tests. Solana settlement is Planned.
+    the vault sent in mainnet spends 2 and 3; like the vault, it refuses the native-asset tokens `base.omft.near`
+    and `sol.omft.near`. `findPoaBurns` pairs `intents.near`'s `mt_burn` with the POA token's `ft_burn` by
+    receipt, not by list order, each bound to the contract that logged it. `verifyPoaSettlement` gives one verdict
+    with five named checks across the NEAR receipts (or their proven outcomes), the POA bridge's
+    `withdrawal_status` record and the ERC-20 `Transfer` on Base. The burn's receipts must descend from the
+    transaction's own outcome, and the bridge record must be on Base (`eth:8453`). Which Base transaction is the
+    burn's release, and the fee, are the bridge's word. The verdict bounds them with a required `maxFee`, the
+    release's sender when `releaseFrom` names it, its Base block time against the burn's NEAR block when both are
+    known (proven outcomes carry it), and the releases a caller has already counted (`countedReleases`). A bridge
+    amount above 2^53 - 1, sent as a JSON number, settles on the exact fee and released amount. It settles both
+    mainnet payouts (1000000 burned, 997600 received, a fee of 2400; 250000, 247600, 2400): 48 tests. Solana
+    settlement is Planned.
 
   The package's other 68 tests cover its JSON-RPC client, its encoding helpers, the no-network and browser-safe
   guards, and its exports (`packages/near/test/exports.test.ts` pins the 42 values and 50 types of the API):

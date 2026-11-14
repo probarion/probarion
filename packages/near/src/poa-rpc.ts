@@ -13,10 +13,11 @@ export const POA_BRIDGE_RPC_URL = "https://bridge.chaindefuser.com/rpc";
  * `withdrawal_status` with params `[{ withdrawal_hash: burnTxHash }]` on a client pointed at the bridge: the bridge's
  * records of the withdrawals in that NEAR transaction, parsed by parsePoaWithdrawalStatus. A record that names
  * another burn transaction is refused (NearFormatError): the answer is about something else. The records are a
- * pointer to the release (`transferTxHash`), not proof of it: verifyPoaSettlement checks them against the burn and
- * the destination receipt. Throws TypeError for a hash that is not a NEAR transaction hash, the client's error
- * (NearRpcError for httpJsonRpc) when the call fails, and NearFormatError for an answer it cannot read. Sends
- * nothing else and signs nothing.
+ * pointer to the release (`transferTxHash`), not proof of it: verifyPoaSettlement checks them against the burn,
+ * the destination receipt and the caller's bounds (`maxFee`, and `releaseFrom` and `countedReleases` when given),
+ * and within those bounds which release the bridge names is still its word. Throws TypeError for a hash that is
+ * not a NEAR transaction hash, the client's error (NearRpcError for httpJsonRpc) when the call fails, and
+ * NearFormatError for an answer it cannot read. Sends nothing else and signs nothing.
  */
 export async function readPoaWithdrawalStatus(
   bridge: NearRpc,
