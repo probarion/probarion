@@ -17,6 +17,7 @@ describe("package.json", () => {
     expect(build.slice(clean, compile)).toContain("&&");
     expect(Object.keys(pkg.dependencies).sort()).toEqual([
       "@probarion/core",
+      "@probarion/near",
       "@probarion/sdk",
       "commander",
     ]);

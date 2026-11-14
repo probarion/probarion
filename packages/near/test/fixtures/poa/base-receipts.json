@@ -1,0 +1,41 @@
+{
+  "_source": "Base mainnet eth_getTransactionReceipt results of the two POA releases (spend 2: 0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71, spend 3: 0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7), copied from payouts[i].reads.base of apps/web/src/lib/site/mainnet-payout-recorded.json, which apps/web/scripts/record-mainnet-payout.ts read from mainnet.base.org on 2026-11-13T14:09:12.787Z. Reads of public data, nothing signed. Trimmed when recorded there: each log keeps address, topics, data and blockTimestamp (no logIndex, no removed).",
+  "receipts": {
+    "spend-2": {
+      "status": "0x1",
+      "transactionHash": "0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71",
+      "blockHash": "0x2f4f4a81d7b0393c8f44453aa594f9aa99d698af95af98eff58a5a71783a304c",
+      "blockNumber": "0x363070a",
+      "logs": [
+        {
+          "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+          "topics": [
+            "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+            "0x0000000000000000000000002cff890f0378a11913b6129b2e97417a2c302680",
+            "0x000000000000000000000000b22eacdf11177d6d635e8956bbbbdd54b3e6eb27"
+          ],
+          "data": "0x00000000000000000000000000000000000000000000000000000000000f38e0",
+          "blockTimestamp": "0x6af6bb36"
+        }
+      ]
+    },
+    "spend-3": {
+      "status": "0x1",
+      "transactionHash": "0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7",
+      "blockHash": "0xe9a1733e567d5f5ad205aabcb4682ee27356b303c3bcd6320a636e0c97eef0df",
+      "blockNumber": "0x36433de",
+      "logs": [
+        {
+          "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+          "topics": [
+            "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+            "0x0000000000000000000000002cff890f0378a11913b6129b2e97417a2c302680",
+            "0x000000000000000000000000b22eacdf11177d6d635e8956bbbbdd54b3e6eb27"
+          ],
+          "data": "0x000000000000000000000000000000000000000000000000000000000003c730",
+          "blockTimestamp": "0x6af6f760"
+        }
+      ]
+    }
+  }
+}

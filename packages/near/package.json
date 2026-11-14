@@ -1,0 +1,64 @@
+{
+  "name": "@probarion/near",
+  "version": "0.1.1",
+  "description": "Building blocks for NEAR apps: verify light_client_proof outcome proofs, read NEP-297 events bound to the contract that emitted them and to receipts that succeeded, audit an account's access keys and code identity, and check a NEAR Intents POA withdrawal. Pure TypeScript; the online helpers take any JSON-RPC client and sign nothing.",
+  "license": "MIT",
+  "keywords": [
+    "near",
+    "near-protocol",
+    "light-client",
+    "merkle-proof",
+    "nep-297",
+    "nep-141",
+    "nep-245",
+    "nep-171",
+    "near-intents",
+    "access-keys"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build",
+    "prepublishOnly": "node -e \"if(process.env.CI!=='true'||process.env.GITHUB_WORKFLOW!=='release'){console.error('Refusing to publish: only the GitHub release workflow publishes. Push a tag such as sdk-v0.1.0 instead.');process.exit(1)}\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "record:proofs": "tsx scripts/record-proofs.ts",
+    "record:keys": "tsx scripts/record-keys.ts",
+    "record:poa": "tsx scripts/record-poa.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/probarion/probarion.git",
+    "directory": "packages/near"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "bs58": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12"
+  }
+}

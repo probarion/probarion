@@ -1,0 +1,39 @@
+{
+  "_source": "The POA bridge's withdrawal_status answer (the JSON-RPC result) for mainnet spend 2 of v0.probarion.near, copied verbatim from docs/evidence/mainnet-v0/s1-2026-11-13/poa-status.json, which the owner's kit read from bridge.chaindefuser.com/rpc on 2026-11-13. Reads of public data, nothing signed. Wrapped here as \"answer\"; the test checks it still equals the evidence file.",
+  "answer": {
+    "withdrawals": [
+      {
+        "status": "COMPLETED",
+        "data": {
+          "tx_hash": "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9",
+          "transfer_tx_hash": "0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71",
+          "chain": "eth:8453",
+          "defuse_asset_identifier": "eth:8453:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+          "near_token_id": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+          "decimals": 6,
+          "amount": 1000000,
+          "account_id": "v0.probarion.near",
+          "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+          "created_at": "2026-11-13T07:24:37.896Z",
+          "withdrawal_fee": "2400",
+          "withdraw_amount": "997600"
+        }
+      }
+    ],
+    "status": "COMPLETED",
+    "data": {
+      "tx_hash": "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9",
+      "transfer_tx_hash": "0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71",
+      "chain": "eth:8453",
+      "defuse_asset_identifier": "eth:8453:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "near_token_id": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+      "decimals": 6,
+      "amount": 1000000,
+      "account_id": "v0.probarion.near",
+      "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "created_at": "2026-11-13T07:24:37.896Z",
+      "withdrawal_fee": "2400",
+      "withdraw_amount": "997600"
+    }
+  }
+}

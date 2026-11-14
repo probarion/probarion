@@ -11,6 +11,7 @@
       "!eval/recorded",
       "!packages/core/test/fixtures/valid-snapshot.json",
       "!packages/core/test/fixtures/valid-ledger.jsonl",
+      "!packages/near/test/fixtures",
       "!apps/web/src/lib/site/valid-snapshot.json",
       "!apps/web/public/samples/valid-snapshot.json"
     ]

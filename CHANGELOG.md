@@ -1,8 +1,9 @@
 # Changelog
 
 All notable changes to this repository: the NEAR contracts in `contracts/`, the npm packages
-`@probarion/core`, `@probarion/sdk`, `probarion` (the CLI) and `@probarion/mcp` (the MCP server, in
-`packages/mcp`), and the web console in `apps/web`.
+`@probarion/core`, `@probarion/sdk`, `probarion` (the CLI), `@probarion/mcp` (the MCP server, in
+`packages/mcp`) and `@probarion/near` (building blocks for NEAR builders, in `packages/near`, on npm from
+the next release), and the web console in `apps/web`.
 
 Versions follow semver. The npm packages share one version, released by the tag `sdk-v<version>`;
 0.1.0 was published on 2026-11-09, and 0.1.1, the first release of `@probarion/mcp`, on 2026-11-11.
@@ -15,6 +16,100 @@ The software is an unaudited beta.
 
 ### Added
 
+- `@probarion/near` (`packages/near`), a new package of building blocks for NEAR builders. It is in this
+  repository and not on npm yet: it reaches npm with the next release, at the version the other packages share,
+  and the release publishes it before `@probarion/core` (`PUBLISHED_DIRS` in `scripts/release-check.ts`). Its
+  dependencies are `@noble/hashes` and `bs58`; its pure functions use no network and no Node built-in, and its
+  online helpers take any JSON-RPC client (the SDK's `RpcClient` fits the interface) and sign nothing. Four primitives,
+  each with an example in `packages/near/examples`:
+  - **Outcome proof verifier** (`src/outcome-proof.ts`, `src/proof-rpc.ts`). Built, and run by the CLI's
+    `tx prove`. `verifyOutcomeProof` checks a
+    `light_client_proof` answer against a block the caller trusts: it recomputes the outcome's Merkle leaf, the
+    chunk and block outcome roots, the block hash from `block_header_lite`, and that block's path to the head's
+    `block_merkle_root`, so a receipt's logs, status, gas and receipt ids no longer rest on the RPC node that served
+    them. `verifyTransactionOutcomes` and `proveTransaction` prove a transaction and every receipt it led to under
+    one head: they refuse a receipt the transaction did not lead to (`not_linked`) and a tree that leaves out a
+    receipt a proven outcome created (`incomplete`), so the set of receipts does not rest on one node's `tx` answer
+    either (`complete: false` proves a linked subset instead); `readCrossCheckedHead` reads the head on one provider
+    and matches it on another. It does not prove the head itself: checking it by validator signatures is Planned.
+    The block it reports for an outcome is the block that commits it, a block or more after the one the receipt ran
+    in. Tested on recorded mainnet proofs of payout spend 2 (`BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9`, all 11
+    outcomes) and of the drill's refused spend (`G6WJcTZA67NBSrLV8zhS7Ay5BQKt6qCSao7dndm1tF1c`, its failed receipt
+    proven as a failure, and its tree refused as `incomplete` when the failed receipt is left out), with a tamper
+    case for each committed field and a seeded mutation loop of 500 runs: 167 tests.
+  - **Receipt-bound events** (`src/events.ts`). Built, and not used by Probarion yet: `tx prove` lists the
+    proven outcomes' events with the unfiltered `scanAllEvents`, and the bound and typed readers have no Probarion
+    call site. NEP-297 events counted from the contracts named as
+    emitters and, by default, from receipts that succeeded, so a line another contract logs, or one a failed
+    receipt left, does not count. NEP-141 and NEP-245 data are typed with exact U128 amounts, NEP-171 data with
+    checked owners and token ids, and each refused event or item is reported as a problem; `ftDeltas` and `mtDeltas` give each account's net change,
+    with an `ft_transfer_call` refund netted out. Every receipt an outcome lists as created must be in the source:
+    one it lacks, such as a refund an RPC hides, is a `missing_outcome` problem, so a partial tree does not read as
+    a complete one (an RPC outcome without `receipt_ids`, as in a trimmed record, cannot be checked this way). It
+    reads RPC `tx` answers or the verifier's proven outcomes; each event then says `proven: true`, which names the
+    input type: the reader does not check proofs itself. Tested on the recorded testnet spends, the two mainnet
+    payouts (spend 2 also with its POA burn left out of the proven list) and the expected logs in the unit tests
+    of `near-contract-standards` 5.29.1, with seeded properties: 64 tests. A typed schema for the NEAR Intents
+    `dip4` events is Planned.
+  - **Account lock audit** (`src/access-keys.ts`, `src/code-identity.ts`, `src/account-rpc.ts`). Built, and run
+    by the CLI. What each access key can do if it leaks (full access, receiver and exact methods, gas allowance,
+    NEP-611 gas keys, which take no allowance and pay for gas from their own balance; a permission it cannot read,
+    or a gas key that sets an allowance, counts as full access), checked against a policy of exact method sets,
+    pinned public keys, allowance bounds and gas key balance bounds, and the account's code identity, NEP-591
+    global contracts included, matched against a code-hashes record; both views are read at one block. A key for
+    every method of the account's own code is named in the verdict. Text from the chain is escaped, so each line
+    stays one line. Tested on `v0.probarion.near` and a testnet factory vault recorded from public RPC and on the
+    drill's `view_access_key` answers: 53 tests. Gas keys are tested on the near-api-js 7.4.0 shape, as no gas key
+    is in the recorded evidence. `packages/cli/test/near-lock-agreement.test.ts` checks that it agrees with the
+    verifier's check f on the 13 recorded verifier snapshots: 16 tests. A NEP-330 source metadata check is
+    Planned.
+  - **NEAR Intents POA withdrawal check** (`src/poa.ts`, `src/poa-rpc.ts`). Built, and not used by Probarion
+    yet; the bridge status reader
+    `readPoaWithdrawalStatus` is Experimental (statuses other than `COMPLETED` are not documented in what was
+    read). `poaWithdrawCall` builds the `ft_withdraw` call with its `WITHDRAW_TO:` memo, byte for byte the call
+    the vault sent in mainnet spends 2 and 3; like the vault, it refuses the native-asset tokens `base.omft.near`
+    and `sol.omft.near`. `findPoaBurns` pairs `intents.near`'s `mt_burn` with the POA token's `ft_burn` by
+    receipt, not by list order, each bound to the contract that logged it. `verifyPoaSettlement` gives one verdict
+    with five named checks across the NEAR receipts (or their proven outcomes), the POA bridge's
+    `withdrawal_status` record and the ERC-20 `Transfer` on Base. The burn's receipts must descend from the
+    transaction's own outcome, and the bridge record must be on Base (`eth:8453`). Which Base transaction is the
+    burn's release, and the fee, are the bridge's word. The verdict bounds them with a required `maxFee`, the
+    release's sender when `releaseFrom` names it, its Base block time against the burn's NEAR block when both are
+    known (proven outcomes carry it), and the releases a caller has already counted (`countedReleases`). A bridge
+    amount above 2^53 - 1, sent as a JSON number, settles on the exact fee and released amount. It settles both
+    mainnet payouts (1000000 burned, 997600 received, a fee of 2400; 250000, 247600, 2400): 48 tests. Solana
+    settlement is Planned.
+
+  The package's other 68 tests cover its JSON-RPC client, its encoding helpers, the no-network and browser-safe
+  guards, and its exports (`packages/near/test/exports.test.ts` pins the 42 values and 50 types of the API):
+  400 tests in all, offline, from `pnpm --filter @probarion/near test`. The proof, key and POA transaction
+  fixtures were recorded on 2026-11-14 by opt-in scripts (`pnpm --filter @probarion/near run record:proofs`,
+  `record:keys` and `record:poa`) that read public RPC and sign nothing. The others are copies of Probarion's
+  earlier public records (`docs/evidence`, `apps/web`) and the expected logs of `near-contract-standards`
+  5.29.1. Planned, not in this package: Probarion's verifier, its
+  settlement watcher and the console moving onto these modules, an MCP tool that proves a receipt, and a NEP-641
+  resolver. The root README's new section [Primitives for NEAR Builders](README.md#primitives-for-near-builders)
+  lists each primitive with its NEAR area, status, a usage snippet and links to its source, tests and example, and
+  the areas researched and not built, with the reason.
+- `probarion account audit <account> [--vault-policy] [--builds <file>] [--json]` and
+  `probarion tx prove <tx-hash> --signer <account> [--head-rpc <urls>] [--archival-rpc <urls>] [--json]`
+  (`packages/cli/src/commands/account.ts` and `tx.ts`), in the CLI built from this repository and not in release
+  0.1.1 on npm. `account audit` runs the account lock audit on any NEAR account (exit 0 locked, 2 warnings to
+  read, 1 not locked or a blocking finding, 64 a usage error); `--vault-policy` holds it to a Probarion vault's
+  `spend` and `anchor` keys and recorded builds. `tx prove` reads the head on two RPC origins, proves the
+  transaction and every receipt it led to with `light_client_proof`, and lists the NEP-297 events of the proven
+  outcomes (exit 0 proven, 1 not proven, 64 a usage error); a `tx` answer that leaves out a receipt a proven
+  outcome created, such as a failed receipt or the POA burn, is not proven (`incomplete`). Both read over JSON-RPC
+  and sign nothing. 41 tests (`near-account-audit`, `near-tx-prove`) run them on the recorded fixtures, among them
+  `--vault-policy` and check f side by side on the 13 recorded vault snapshots in `docs/evidence`: they agree but
+  for three terms, the anchor key not pinned to the ledger key, and an unlimited allowance and a scoped gas key
+  refused. `account audit v0.probarion.near --vault-policy` and `tx prove` of spend 2 and of the drill's refused
+  spend were run by hand on mainnet during the build, on earlier code (not recorded). At this commit the tests run
+  the same commands on the fixtures recorded at 05:09 and 05:15 UTC on 2026-11-14: the audit passes the vault
+  under `--vault-policy`, and `tx prove` proves spend 2 (11 outcomes) and the drill's refused spend (3 outcomes,
+  one failed), each with exit 0. The CLI
+  reference and architecture pages of the docs, `packages/cli/README.md` and `docs/RUNBOOK.md` (five packages,
+  `@probarion/near` published before `@probarion/core`) name them.
 - One loading system for the web console and its public pages. Work that ends within 200 ms shows nothing: no
   spinner, no grey bars and no dimming. A pressed button keeps its width, and after 200 ms a spinner and a label that
   says who is working take the old label's place, such as "Reading the chain…", "Checking the chain…" or "Saving…"; a
