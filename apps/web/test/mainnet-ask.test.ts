@@ -296,14 +296,14 @@ describe("the no-clone verify block", () => {
     expect(renderToStaticMarkup(createElement(MainnetAsk))).not.toContain(MAINNET_VERIFY.title);
   });
 
-  it("downloads the three files verify reads from this site, then runs probarion 0.1.1 on mainnet", () => {
+  it("downloads the three files verify reads from this site, then runs probarion 0.1.2 on mainnet", () => {
     expect(SAMPLES_MAINNET).toBe("https://probarion.xyz/samples/mainnet");
     expect(bash?.lines).toEqual([
       "mkdir -p probarion-mainnet && cd probarion-mainnet",
       "B=https://probarion.xyz/samples/mainnet",
       'curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \\',
       '  -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"',
-      "npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \\",
+      "npx -y probarion@0.1.2 verify --network mainnet --vault v0.probarion.near \\",
       "  --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json",
     ]);
     // PowerShell 5.1: curl.exe (curl is another command there), npx.cmd (a Restricted policy blocks npx.ps1), no &&.
@@ -312,12 +312,12 @@ describe("the no-clone verify block", () => {
       "cd probarion-mainnet",
       '$B = "https://probarion.xyz/samples/mainnet"',
       'curl.exe -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"',
-      "npx.cmd -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json",
+      "npx.cmd -y probarion@0.1.2 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json",
     ]);
     for (const b of MAINNET_VERIFY.blocks) {
       const all = b.lines.join(" ");
       for (const file of MAINNET_VERIFY.files) expect(all).toContain(`-o ${file} "$B/${file}"`);
-      // 0.1.1 has no --invoice, and the block runs offline: what it does not check is said under it.
+      // The block passes no --invoice and no --online: what it does not check is said under it.
       expect(all).not.toContain("--invoice");
       expect(all).not.toContain("--online");
     }
@@ -336,10 +336,12 @@ describe("the no-clone verify block", () => {
     for (const file of MAINNET_VERIFY.files)
       expect(existsSync(join(served, ...file.split("/"))), file).toBe(true);
     const runs = readFileSync(evidence, "utf8");
-    // Every line but the one that names the host: the runs fetched the same bytes from a local copy.
+    // Every line but the one that names the host: the runs fetched the same bytes from a local copy. They ran
+    // release 0.1.1, as the record's title says; the blocks run 0.1.2 with the same options.
+    expect(runs.split("\n")[0]).toContain("with probarion 0.1.1 from npm");
     for (const b of MAINNET_VERIFY.blocks)
       for (const line of b.lines.filter((l) => !l.includes(SAMPLES_MAINNET)))
-        expect(runs, line).toContain(line.trim());
+        expect(runs, line).toContain(line.trim().replace("probarion@0.1.2 ", "probarion@0.1.1 "));
     expect(runs).toMatch(/i\s+factory-version\s+SKIP\s+not a factory vault/);
     expect(runs).toContain("8 passed, 0 failed, 0 unproven, 1 skipped");
     expect(runs).toContain("RESULT: PASS");

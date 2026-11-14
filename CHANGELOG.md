@@ -2,13 +2,12 @@
 
 All notable changes to this repository: the NEAR contracts in `contracts/`, the npm packages
 `@probarion/core`, `@probarion/sdk`, `probarion` (the CLI), `@probarion/mcp` (the MCP server, in
-`packages/mcp`) and `@probarion/near` (building blocks for NEAR builders, in `packages/near`, reaching
-npm with release 0.1.2), and the web console in `apps/web`.
+`packages/mcp`) and `@probarion/near` (building blocks for NEAR builders, in `packages/near`, on npm
+from release 0.1.2), and the web console in `apps/web`.
 
 Versions follow semver. The npm packages share one version, released by the tag `sdk-v<version>`;
-0.1.0 was published on 2026-11-09, and 0.1.1, the first release of `@probarion/mcp`, on 2026-11-11.
-0.1.2, which adds `@probarion/near`, is prepared and not published yet: its heading carries the
-planned tag day, and the OWNER publishes it by pushing the tag `sdk-v0.1.2`.
+0.1.0 was published on 2026-11-09, 0.1.1, the first release of `@probarion/mcp`, on 2026-11-11,
+and 0.1.2, which adds `@probarion/near`, on 2026-11-14.
 A contract crate carries its own version, and each build of it is identified
 by the code hash of its reproducible build in `contracts/code-hashes.json`. The web console is not
 versioned yet, and it deploys from `main` to <https://probarion.xyz>. While the version is 0.x, a minor version may change the API.
@@ -18,22 +17,23 @@ The software is an unaudited beta.
 
 ### Added
 
-- Release 0.1.2 is prepared, and not published: `@probarion/near`, `@probarion/core`, `@probarion/sdk`,
+- Release 0.1.2 was prepared before its publish: `@probarion/near`, `@probarion/core`, `@probarion/sdk`,
   `probarion` and `@probarion/mcp` are at 0.1.2, with a `## 0.1.2` section below, and
   `packages/mcp/server.json` names 0.1.2 at the top and on its npm package.
   `pnpm run release:check -- sdk-v0.1.2` passes, and its `--pack` run checks five tarballs, the CLI's with
   `@probarion/near` 0.1.2 as a dependency. `docs/RUNBOOK.md` has the OWNER's steps under "Release 0.1.2":
   the annotated tag on `main`, the `npm-release` approval, what to do if the publish stops at
-  `@probarion/near` (the release publishes it before the others, and npm does not have it yet), the npm
-  checks of the five packages, and the MCP registry's new version. The commands a reader runs against npm
-  today (`npx probarion@0.1.1`, `npx -y @probarion/mcp@0.1.1`) stay at 0.1.1 until npm has 0.1.2. The
-  `@probarion/near` README says the package is on npm once release 0.1.2 is published. The READMEs of the
+  `@probarion/near` (the release publishes it before the others, and npm did not have it yet), the npm
+  checks of the five packages, and the MCP registry's new version. The commands a reader ran against npm
+  then (`npx probarion@0.1.1`, `npx -y @probarion/mcp@0.1.1`) stayed at 0.1.1 until npm had 0.1.2, and the
+  `@probarion/near` README said the package would be on npm once release 0.1.2 was published (both changed
+  with the publish, under Changed). The READMEs of the
   CLI, core and the SDK say their new parts are in the packages from release 0.1.2 on, and not in 0.1.1,
   and the docs page "Verify a vault yourself" says the same of `--invoice` and `--invoices`. In a clone,
   `node packages/cli/dist/bin.js --version` prints 0.1.2.
-- `@probarion/near` (`packages/near`), a new package of building blocks for NEAR builders. It is in this
-  repository and not on npm yet: it reaches npm with the next release, at the version the other packages share,
-  and the release publishes it before `@probarion/core` (`PUBLISHED_DIRS` in `scripts/release-check.ts`). Its
+- `@probarion/near` (`packages/near`), a new package of building blocks for NEAR builders. It reached npm
+  with release 0.1.2, at the version the other packages share, and the release publishes it before
+  `@probarion/core` (`PUBLISHED_DIRS` in `scripts/release-check.ts`). Its
   dependencies are `@noble/hashes` and `bs58`; its pure functions use no network and no Node built-in, and its
   online helpers take any JSON-RPC client (the SDK's `RpcClient` fits the interface) and sign nothing. Four primitives,
   each with an example in `packages/near/examples`:
@@ -1436,6 +1436,15 @@ The software is an unaudited beta.
 
 ### Changed
 
+- Release 0.1.2 is on npm: `@probarion/near`, `@probarion/core`, `@probarion/sdk`, `probarion` and
+  `@probarion/mcp` 0.1.2 were published on 2026-11-14 from the tag `sdk-v0.1.2`. The commands a reader runs
+  against npm name 0.1.2: the no-clone verify (the README, `JUDGES.md`, the site's block and
+  `.github/workflows/no-clone-verify.yml`), the MCP server's npx lines (the docs, the `@probarion/mcp` README and
+  the console's Agent (MCP) tab, through `MCP_VERSION`) and `scripts/smoke-live.mjs`. The README has a row for
+  0.1.2, Shipped, and the lines that said `@probarion/near`, `payee check`, `account audit`, `tx prove`,
+  `verify --invoice` and `@probarion/sdk/payee` were not on npm say they are, from 0.1.2. The site's pills read
+  0.1.2, and its npm card lists five packages, with `@probarion/near`. `SECURITY.md` supports 0.1.2. Records of
+  runs made with 0.1.1 keep 0.1.1, and the sentences that cite them now say so.
 - The landing page goes from 14 sections to 7, in the order of one story: the hero; the problem, which ends with the
   payee panel (`/#payee`); how a payment works (`/#payment`), with the live check (`/#try`) under its four steps; the
   use cases (`/#integrate`); real money on mainnet (`/#mainnet`); the record (`/#verify`), with what it rests on

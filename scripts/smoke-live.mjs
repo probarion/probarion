@@ -139,7 +139,7 @@ const SAMPLES_DIR = "apps/web/public/samples/mainnet";
  */
 export const VERIFY_ARGS = [
   "-y",
-  "probarion@0.1.1",
+  "probarion@0.1.2",
   "verify",
   "--network",
   "mainnet",
@@ -155,7 +155,7 @@ export const VERIFY_ARGS = [
 ];
 /** Checks a to h pass, i skips: no factory made the vault (judge.mjs LIVE_VAULTS.mainnetV0, without A8's invoices). */
 export const VERIFY_EXPECT = { exit: 0, checks: { ...ALL_PASS, i: "skip" } };
-export const MCP_DEMO_ARGS = ["-y", "@probarion/mcp@0.1.1", "demo"];
+export const MCP_DEMO_ARGS = ["-y", "@probarion/mcp@0.1.2", "demo"];
 
 /** The pages a judge opens first, and the ledger file the MCP demo downloads. */
 export const PAGES = [
@@ -702,7 +702,7 @@ async function samplesRow(ctx) {
   const stale = v.result === "FAIL" && /check [cd] is fail/.test(v.detail);
   return {
     result: v.result,
-    detail: `npx probarion@0.1.1 verify on ${base}: ${v.detail}${stale ? `. The served ledger may be older than the chain: refresh ${SAMPLES_DIR}` : ""}`,
+    detail: `npx probarion@0.1.2 verify on ${base}: ${v.detail}${stale ? `. The served ledger may be older than the chain: refresh ${SAMPLES_DIR}` : ""}`,
   };
 }
 
@@ -892,7 +892,7 @@ export const ROWS = [
   },
   {
     id: "mcp-demo",
-    title: "npx -y @probarion/mcp@0.1.1 demo exits 0, nothing signed",
+    title: "npx -y @probarion/mcp@0.1.2 demo exits 0, nothing signed",
     run: mcpDemoRow,
   },
   { id: "tee-check", title: "/api/tee/check: 4 of 4 checks pass", run: teeRow },

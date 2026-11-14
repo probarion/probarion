@@ -245,7 +245,7 @@ describe("where to get Probarion (#get-probarion)", () => {
 
   it("links each place by its name, in a new tab with the arrow, then says what is there", () => {
     expect(BUILT_ON.ships.map((s) => [s.name, s.short])).toEqual([
-      ["npm public registry", "4 packages, 0.1.1"],
+      ["npm public registry", "5 packages, 0.1.2"],
       ["Official MCP Registry", "`io.github.probarion/probarion`"],
       ["GitHub", "MIT"],
       ["Chrome Web Store", "Probarion 0.1.0"],
@@ -272,7 +272,7 @@ describe("where to get Probarion (#get-probarion)", () => {
 
   it("holds every name and version to the packages, server.json, the license and the extension", () => {
     const [npm, mcp, github, store] = BUILT_ON.ships;
-    const pkgs = ["cli", "sdk", "mcp", "core"].map(
+    const pkgs = ["cli", "sdk", "mcp", "core", "near"].map(
       (dir) =>
         JSON.parse(text(ROOT, "packages", dir, "package.json")) as {
           name: string;
@@ -284,11 +284,12 @@ describe("where to get Probarion (#get-probarion)", () => {
       "@probarion/sdk",
       "@probarion/mcp",
       "@probarion/core",
+      "@probarion/near",
     ]);
     expect(npm.ids).toEqual(pkgs.map((p) => `\`${p.name}\``));
     // The card names the release npm has, the one the site's npx lines run (MCP_VERSION; the packages share one
-    // version). While the next one is prepared and not published (0.1.2, which adds @probarion/near), the packages
-    // here share a higher version; the pull request after the publish moves MCP_VERSION and the card together.
+    // version). While a next release is prepared and not published, the packages here share a higher version; the
+    // pull request after its publish moves MCP_VERSION and the card together, as the one after 0.1.2's did.
     const NPM_RELEASE = MCP_VERSION;
     const here = pkgs[0]?.version ?? "";
     for (const pkg of pkgs) expect(pkg.version, pkg.name).toBe(here);

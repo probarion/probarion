@@ -140,9 +140,9 @@ describe("ConnectAgentPanel for the owner", () => {
   it("uses the npx forms once MCP_ON_NPM is true", () => {
     const html = render({ onNpm: true });
     const code = blocks(html).join("\n");
-    expect(code).toContain(`npx -y @probarion/mcp@0.1.1 init --vault ${VAULT}`);
-    expect(code).toContain("-- npx -y @probarion/mcp@0.1.1");
-    expect(code).toContain(`PROBARION_VAULT_ID=${VAULT} npx -y @probarion/mcp@0.1.1 status`);
+    expect(code).toContain(`npx -y @probarion/mcp@0.1.2 init --vault ${VAULT}`);
+    expect(code).toContain("-- npx -y @probarion/mcp@0.1.2");
+    expect(code).toContain(`PROBARION_VAULT_ID=${VAULT} npx -y @probarion/mcp@0.1.2 status`);
     expect(code).not.toContain("git clone");
     expect(html).not.toContain("Use the full path of your clone");
     expect(html).toContain("It needs Node 24 or later.");

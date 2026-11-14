@@ -1,4 +1,4 @@
-// The mainnet vault's files the site serves under /samples/mainnet, so that `npx -y probarion@0.1.1 verify --network
+// The mainnet vault's files the site serves under /samples/mainnet, so that `npx -y probarion@0.1.2 verify --network
 // mainnet` passes in an empty folder with no clone: each one a byte-for-byte copy of its source in docs/, at an
 // address that keeps its name when the ledger is refreshed. A new mainnet spend or anchor changes the judge's
 // MAINNET_V0_LEDGER, and this test then fails until the served copy is refreshed in the same change.
@@ -105,7 +105,7 @@ describe("the mainnet samples the site serves", () => {
     );
     expect(preLedger.map((s) => s.id)).toEqual([1]);
     const evidence = SERVED.filter((f) => f.path.startsWith("evidence/"));
-    // probarion 0.1.1 reads every v0-decision-*.json in --evidence <dir>, and nothing else there.
+    // probarion (0.1.1 and 0.1.2 alike) reads every v0-decision-*.json in --evidence <dir>, and nothing else there.
     for (const f of evidence) expect(f.path).toMatch(/^evidence\/v0-decision-[^/]+\.json$/);
     expect(evidence.map((f) => sha256(served(f.path)))).toEqual(
       preLedger.map((s) => s.decision_hash),
@@ -131,7 +131,7 @@ describe("the no-clone workflow", () => {
     expect(wf).toMatch(/^ {8}node: \[22, 24\]\n/m);
   });
 
-  it("downloads the served files of the pushed commit and verifies with probarion 0.1.1", () => {
+  it("downloads the served files of the pushed commit and verifies with probarion 0.1.2", () => {
     expect(wf).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: a GitHub Actions expression, plain text here
       "https://raw.githubusercontent.com/probarion/probarion/${{ github.event.pull_request.head.sha || github.sha }}/apps/web/public/samples/mainnet",
@@ -140,7 +140,7 @@ describe("the no-clone workflow", () => {
       expect(wf).toContain(`-o ${f.path} "$B/${f.path}"`);
     }
     expect(wf).toContain(
-      "npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \\\n",
+      "npx -y probarion@0.1.2 verify --network mainnet --vault v0.probarion.near \\\n",
     );
     expect(wf).toContain("--ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json");
   });
