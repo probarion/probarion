@@ -2764,6 +2764,13 @@ export interface ShipCard {
 }
 
 /**
+ * The version the official MCP Registry lists for `io.github.probarion/probarion`: 0.1.1, listed there on 2026-11-11.
+ * The registry keeps each version as it was published, so listing 0.1.2 takes its own publish (step 6 of "Release
+ * 0.1.2" in docs/RUNBOOK.md), which may come later than npm's. Move this to 0.1.2 once the registry's search lists it.
+ */
+export const MCP_REGISTRY_VERSION = "0.1.1";
+
+/**
  * What Probarion is built on and where to get it. The landing draws two parts of it, both in the closing, as text with
  * no logos: `ships`, the row "Where to get Probarion", and the trademark lead, which is the README's License line
  * (test/built-on.test.ts holds both). What it rests on is STACK, in the #verify section.
@@ -2857,7 +2864,7 @@ export const BUILT_ON = {
       body: "Find the MCP server in the MCP Registry by the name below. Its entry names the npm package.",
       ids: ["`io.github.probarion/probarion`"],
       idsLabel: "Server name",
-      meta: "Version 0.1.2, from `@probarion/mcp`",
+      meta: `Version ${MCP_REGISTRY_VERSION}, from \`@probarion/mcp\``,
       // The address is the registry's search for the server's name, which lists its entry.
       link: { label: "Probarion in the MCP Registry", href: LINKS.mcpRegistry },
       short: "`io.github.probarion/probarion`",

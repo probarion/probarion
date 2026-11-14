@@ -22,6 +22,7 @@ import {
   BUILT_ON,
   CLOSING,
   LINKS,
+  MCP_REGISTRY_VERSION,
   STACK,
   type StackRow,
   TAMPER_COPY,
@@ -287,16 +288,21 @@ describe("where to get Probarion (#get-probarion)", () => {
       "@probarion/near",
     ]);
     expect(npm.ids).toEqual(pkgs.map((p) => `\`${p.name}\``));
-    // The card names the release npm has, the one the site's npx lines run (MCP_VERSION; the packages share one
+    // The npm card names the release npm has, the one the site's npx lines run (MCP_VERSION; the packages share one
     // version). While a next release is prepared and not published, the packages here share a higher version; the
-    // pull request after its publish moves MCP_VERSION and the card together, as the one after 0.1.2's did.
+    // pull request after its publish moves MCP_VERSION and the npm card together, as the one after 0.1.2's did.
     const NPM_RELEASE = MCP_VERSION;
     const here = pkgs[0]?.version ?? "";
     for (const pkg of pkgs) expect(pkg.version, pkg.name).toBe(here);
     expect(here.localeCompare(NPM_RELEASE, "en", { numeric: true })).toBeGreaterThanOrEqual(0);
     expect(npm.short).toBe(`${pkgs.length} packages, ${NPM_RELEASE}`);
     expect(npm.meta).toBe(`Version ${NPM_RELEASE}`);
-    expect(mcp.meta).toBe(`Version ${NPM_RELEASE}, from \`@probarion/mcp\``);
+    // The registry card names the version the MCP Registry lists (MCP_REGISTRY_VERSION). Listing a release there is
+    // its own publish after npm's (RUNBOOK "Release 0.1.2" step 6), so it can be behind npm but not ahead of it.
+    expect(
+      MCP_REGISTRY_VERSION.localeCompare(NPM_RELEASE, "en", { numeric: true }),
+    ).toBeLessThanOrEqual(0);
+    expect(mcp.meta).toBe(`Version ${MCP_REGISTRY_VERSION}, from \`@probarion/mcp\``);
     const server = JSON.parse(text(ROOT, "packages", "mcp", "server.json")) as { name: string };
     expect(mcp.short).toBe(`\`${server.name}\``);
     expect(new URL(LINKS.mcpRegistry).searchParams.get("q")).toBe(server.name);

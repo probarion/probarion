@@ -1443,8 +1443,11 @@ The software is an unaudited beta.
   the console's Agent (MCP) tab, through `MCP_VERSION`) and `scripts/smoke-live.mjs`. The README has a row for
   0.1.2, Shipped, and the lines that said `@probarion/near`, `payee check`, `account audit`, `tx prove`,
   `verify --invoice` and `@probarion/sdk/payee` were not on npm say they are, from 0.1.2. The site's pills read
-  0.1.2, and its npm card lists five packages, with `@probarion/near`. `SECURITY.md` supports 0.1.2. Records of
-  runs made with 0.1.1 keep 0.1.1, and the sentences that cite them now say so.
+  0.1.2, and its npm card lists five packages, with `@probarion/near`. Its MCP Registry card names the version
+  the registry lists, 0.1.1, through `MCP_REGISTRY_VERSION`: listing 0.1.2 there is a publish of its own, and a
+  later pull request moves it. `SECURITY.md` supports 0.1.2. Records of runs made with 0.1.1 keep 0.1.1, and
+  the sentences that cite them now say so; the Tested in numbers row of the 0.1.1 no-clone run links the
+  workflow as it was at `ed41104`.
 - The landing page goes from 14 sections to 7, in the order of one story: the hero; the problem, which ends with the
   payee panel (`/#payee`); how a payment works (`/#payment`), with the live check (`/#try`) under its four steps; the
   use cases (`/#integrate`); real money on mainnet (`/#mainnet`); the record (`/#verify`), with what it rests on

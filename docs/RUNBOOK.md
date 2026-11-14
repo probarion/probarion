@@ -877,7 +877,9 @@ The steps start after the promote pull request that carries the 0.1.2 versions i
    of step 1 here, from its root: the lines of step 6 go into `packages/mcp` with `cd packages/mcp`, and
    the token file goes under `.keys/` at that root. `publish` ends with
    `Server io.github.probarion/probarion version 0.1.2`, and the JSON of the listing check holds an entry
-   with the version `0.1.2`.
+   with the version `0.1.2`. The site's MCP Registry card names the registry's version, kept apart from
+   npm's in `MCP_REGISTRY_VERSION` (`apps/web/src/lib/site/facts.ts`). Once the listing check shows
+   `0.1.2`, a pull request moves it to 0.1.2.
 
 7. Then a pull request changes what the repository says about npm, as step 8 of 0.1.1 did. Once npm's
    `latest` is 0.1.2, the lines that name 0.1.1 as the npm release, and the "not on npm yet" lines for
