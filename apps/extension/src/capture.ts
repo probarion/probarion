@@ -26,6 +26,11 @@ export type CaptureResult = { ok: true; item: Captured } | { ok: false; text: st
 export const TOO_LARGE = "The invoice must be 4 MiB at most.";
 export const NOT_INVOICE = "Send a PDF or a plain text (.txt) file.";
 export const LINK_ELSEWHERE = "Couldn't read this link. Download it and drag the file here.";
+export const LINK_NOT_INVOICE = "This link isn't a PDF or a text file.";
+/** The same two refusals for the popup's "Use the PDF in this tab": the person pressed a button, not a link. */
+export const TAB_UNREADABLE =
+  "Couldn't read the PDF in this tab. Download it and drag the file here.";
+export const TAB_NOT_INVOICE = "This tab isn't showing a PDF or a text file.";
 export const TOO_LONG =
   "This text is over 50,000 characters, more than Probarion reads. Send only the invoice part.";
 export const NOT_UTF8 =
@@ -190,22 +195,27 @@ function lastPart(u: URL): string {
  * The file at a web address: the PDF in the tab, or the target of a right-clicked link. It is fetched with the
  * person's own cookies for that site, as their tab loaded it, and only a file that came from that same origin is kept
  * (a redirect to another address is refused). A PDF is known by its first bytes, whatever the server calls it; a text
- * file by its text/plain type.
+ * file by its text/plain type. `from` says where the address came from, so a refusal names the link or the tab.
  */
-export async function captureUrl(url: string, fetchFn: Fetch): Promise<CaptureResult> {
+export async function captureUrl(
+  url: string,
+  fetchFn: Fetch,
+  from: "link" | "tab" = "link",
+): Promise<CaptureResult> {
+  const unreadable = from === "tab" ? TAB_UNREADABLE : LINK_ELSEWHERE;
   let u: URL;
   try {
     u = new URL(url);
   } catch {
-    return { ok: false, text: LINK_ELSEWHERE };
+    return { ok: false, text: unreadable };
   }
-  if (u.protocol !== "https:" && u.protocol !== "http:") return { ok: false, text: LINK_ELSEWHERE };
+  if (u.protocol !== "https:" && u.protocol !== "http:") return { ok: false, text: unreadable };
   let res: Response;
   try {
     // 25 s, not 30: an idle service worker can be stopped at 30 s.
     res = await fetchFn(u.href, { credentials: "include", signal: AbortSignal.timeout(25_000) });
   } catch {
-    return { ok: false, text: LINK_ELSEWHERE };
+    return { ok: false, text: unreadable };
   }
   // The request carries the person's cookies for this site, and a redirect can send it elsewhere (to another Probarion
   // address, say). The file counts only if it came from the address that was asked for: its origin is the page's.
@@ -218,7 +228,7 @@ export async function captureUrl(url: string, fetchFn: Fetch): Promise<CaptureRe
     }
     if (landed !== u.origin) {
       await res.body?.cancel().catch(() => {});
-      return { ok: false, text: LINK_ELSEWHERE };
+      return { ok: false, text: unreadable };
     }
   }
   if (!res.ok) {
@@ -237,7 +247,7 @@ export async function captureUrl(url: string, fetchFn: Fetch): Promise<CaptureRe
   try {
     bytes = await readCapped(res, MAX_FILE_BYTES);
   } catch {
-    return { ok: false, text: LINK_ELSEWHERE }; // the download broke off, or took too long
+    return { ok: false, text: unreadable }; // the download broke off, or took too long
   }
   if (bytes === null) return { ok: false, text: TOO_LARGE };
   const name = cleanName(lastPart(u), "");
@@ -256,7 +266,7 @@ export async function captureUrl(url: string, fetchFn: Fetch): Promise<CaptureRe
       "text/plain",
     );
   }
-  return { ok: false, text: "This link isn't a PDF or a text file." };
+  return { ok: false, text: from === "tab" ? TAB_NOT_INVOICE : LINK_NOT_INVOICE };
 }
 
 export function toBlob(item: Captured): Blob {

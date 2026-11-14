@@ -15,6 +15,7 @@ import {
   sizeText,
   usdc,
   utc,
+  vaultLabel,
   vaultsWithMandates,
   waitingCount,
   waitingRows,
@@ -94,14 +95,21 @@ describe("the popup's text", () => {
     expect(usdc("unreadable")).toBe("an unreadable amount");
   });
 
-  it("labels a mandate as label · payee · per-payment", () => {
+  it("labels a mandate as label · per-payment · payee, so a closed select cuts the payee, not the amount", () => {
     const [named, unnamed] = inbox.vaults[0]?.mandates ?? [];
     expect(named && mandateLabel(named)).toBe(
-      "Northwind hosting · near:northwind.testnet · 2000 USDC per payment",
+      "Northwind hosting · 2000 USDC per payment · near:northwind.testnet",
     );
     expect(unnamed && mandateLabel(unnamed)).toBe(
-      "Mandate #5 · near:contractor.testnet · 5000 USDC per payment",
+      "Mandate #5 · 5000 USDC per payment · near:contractor.testnet",
     );
+  });
+
+  it("labels a vault by its name and its id, or by its id alone when that is its name", () => {
+    const vault = inbox.vaults[0];
+    if (vault === undefined) throw new Error("fixture");
+    expect(vaultLabel(vault)).toBe("Acme operations (acme.vault.testnet)");
+    expect(vaultLabel({ ...vault, name: vault.vault })).toBe("acme.vault.testnet");
   });
 
   it("lists the invoices first, then the held payments", () => {
@@ -236,6 +244,23 @@ describe("where focus goes after an action", () => {
     // The landing control is off or missing: the first enabled one.
     expect(focusTarget("file", [control("switch"), control("send", false)], "send")).toBe(0);
     expect(focusTarget("file", screen, "elsewhere")).toBe(0);
+  });
+
+  it("lands on the result's Open after a send, since Send is off once the invoice is gone", () => {
+    // The screen after a send: the waiting rows, Choose file, Send (off), the result line's Open, the footer.
+    const screen = [
+      control("row-0"),
+      control("row-1"),
+      control("file"),
+      control("send", false),
+      control("Open"),
+      control("Open the console"),
+      control("Disconnect"),
+    ];
+    expect(focusTarget("send", screen, "Open")).toBe(4);
+    // A send that failed keeps the invoice, so Send is on again and keeps focus.
+    const failed = [control("row-0"), control("send"), control("Open the console")];
+    expect(focusTarget("send", failed, "Open")).toBe(1);
   });
 
   it("answers null when the screen has no enabled control, so its heading gets focus", () => {

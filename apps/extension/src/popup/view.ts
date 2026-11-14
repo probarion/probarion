@@ -21,9 +21,17 @@ export const usdc = (amount: string): string =>
 
 export const networkText = (n: Network): string => (n === "mainnet" ? "Mainnet" : "Testnet");
 
+/**
+ * A mandate as the Mandate select names it. The per-payment amount comes before the payee: a closed select in the 360 px
+ * popup cuts its text at the end, and the amount is what the person checks before Send. The select's title holds it all.
+ */
 export function mandateLabel(m: InboxMandate): string {
-  return `${m.label || `Mandate #${m.id}`} · ${m.payee} · ${usdc(m.per_payment)} per payment`;
+  return `${m.label || `Mandate #${m.id}`} · ${usdc(m.per_payment)} per payment · ${m.payee}`;
 }
+
+/** A vault as the Vault select names it: its name, then its id when the name differs. */
+export const vaultLabel = (v: InboxVault): string =>
+  v.name === v.vault ? v.vault : `${v.name} (${v.vault})`;
 
 export function utc(iso: string): string {
   const t = Date.parse(iso);

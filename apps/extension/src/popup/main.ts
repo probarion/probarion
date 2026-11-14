@@ -1,5 +1,6 @@
 import { ApiError, api, type InboxVault } from "../api";
 import {
+  badgeShown,
   connectWithCode,
   type Deps,
   disconnect,
@@ -31,6 +32,7 @@ import {
   noteFor,
   roleFor,
   sentText,
+  vaultLabel,
   vaultsWithMandates,
   waitingCount,
   waitingRows,
@@ -73,6 +75,7 @@ function render(): void {
   const key = focusedKey();
   app.replaceChildren(header(), ...body());
   if (key !== undefined) app.querySelector<HTMLElement>(`[data-focus="${key}"]`)?.focus();
+  void markSeen();
 }
 
 type Focusable = HTMLButtonElement | HTMLSelectElement | HTMLInputElement;
@@ -123,27 +126,41 @@ function button(
   return b;
 }
 
+/**
+ * A select that is off while an action runs, like the buttons. A closed select in the 360 px popup cuts its text at the
+ * end, so its title holds the chosen option's whole text.
+ */
 function select(
   options: Array<[string, string]>,
   value: string,
   onChange: (v: string) => void,
   focus: string,
 ): HTMLSelectElement {
+  const labelOf = (v: string) => options.find(([o]) => o === v)?.[1] ?? "";
   const el = h(
     "select",
     {
       attrs: { "data-focus": focus },
-      on: { change: (e) => onChange((e.target as HTMLSelectElement).value) },
+      on: {
+        change: (e) => {
+          const target = e.target as HTMLSelectElement;
+          target.title = labelOf(target.value);
+          onChange(target.value);
+        },
+      },
     },
     ...options.map(([v, label]) => h("option", { attrs: { value: v } }, label)),
   );
   el.value = value;
+  el.title = labelOf(el.value);
+  el.disabled = ui.busy;
   return el;
 }
 
 /**
- * Runs one action at a time: the buttons are off meanwhile, and a failure shows its sentence. `landing` is the control
- * focus goes to when the one that started the action is not on the new screen.
+ * Runs one action at a time: the buttons and selects are off meanwhile, and a failure shows its sentence. `landing` is
+ * the control focus goes to when the one that started the action is not on the new screen. The line that says how the
+ * action ended can sit below the fold of a tall popup, so it is scrolled into view.
  */
 async function act(work: () => Promise<void>, landing?: string): Promise<void> {
   if (ui.busy) return;
@@ -162,6 +179,9 @@ async function act(work: () => Promise<void>, landing?: string): Promise<void> {
     ui.busy = false;
     render();
     settleFocus(started, landing);
+    if (ui.message !== null) {
+      app.querySelector<HTMLElement>("[data-message]")?.scrollIntoView({ block: "nearest" });
+    }
   }
 }
 
@@ -172,7 +192,7 @@ function header(): HTMLElement {
     "header",
     { class: "top" },
     h("img", { attrs: { src: "icons/32.png", alt: "", width: "20", height: "20" } }),
-    h("span", { class: "brand" }, "Probarion"),
+    h("h1", { class: "brand" }, "Probarion"),
     conn ? h("span", { class: `pill ${conn.network}` }, networkText(conn.network)) : null,
     conn
       ? h("span", { class: "account mono", attrs: { title: conn.account } }, conn.account)
@@ -405,7 +425,7 @@ function captured(): HTMLElement {
     tabPdf
       ? button(
           "Use the PDF in this tab",
-          () => void act(async () => hold(await captureUrl(tabPdf, d.fetch)), "send"),
+          () => void act(async () => hold(await captureUrl(tabPdf, d.fetch, "tab")), "send"),
         )
       : null,
     h("label", { class: "secondary file" }, "Choose file", file),
@@ -470,7 +490,7 @@ function chooser(vaults: InboxVault[]): HTMLElement {
       {},
       "Vault",
       select(
-        vaults.map((v) => [v.vault, v.name === v.vault ? v.vault : `${v.name} (${v.vault})`]),
+        vaults.map((v) => [v.vault, vaultLabel(v)]),
         vault.vault,
         (v) => {
           ui.vault = v;
@@ -520,10 +540,13 @@ async function sendInvoice(s: Ok): Promise<void> {
         await markExpired(c, s.origin, s.connection.token);
         ui.state = await refresh(d);
         ui.connectOrigin = s.origin;
+        // The expired screen says it in its heading and offers one Reconnect: no second sentence under it.
+        if (ui.state.kind === "expired") return;
       }
       throw error;
     }
-  });
+    // Send is off once the invoice is gone: focus goes to the result's Open, which brings the result into view.
+  }, "Open");
 }
 
 function messageLine(): HTMLElement | null {
@@ -532,7 +555,7 @@ function messageLine(): HTMLElement | null {
   const url = m.url;
   return h(
     "p",
-    { class: m.tone, attrs: { role: m.tone === "bad" ? "alert" : "status" } },
+    { class: m.tone, attrs: { role: m.tone === "bad" ? "alert" : "status", "data-message": "" } },
     m.text,
     url ? " " : null,
     url ? button("Open", () => open(url), "link") : null,
@@ -566,19 +589,31 @@ async function reload(): Promise<void> {
   render();
 }
 
-/** The captured invoice as the popup now shows it: seen, and a read that never finished counted as failed. */
-async function show(p: Pending | null): Promise<Pending | null> {
-  if (p === null) return null;
-  const shown: Pending =
-    p.state === "reading" && d.now() - p.started_at > READING_LIMIT_MS
-      ? {
-          state: "error",
-          text: "Reading the invoice took too long. Download it and drag the file here.",
-          seen: true,
-        }
-      : { ...p, seen: true };
-  if (shown.state !== p.state || (!p.seen && p.state !== "reading")) await setPending(c, shown);
-  return shown;
+/** The captured invoice as the popup holds it: a read that never finished counts as failed. */
+async function current(p: Pending | null): Promise<Pending | null> {
+  if (p === null || p.state !== "reading" || d.now() - p.started_at <= READING_LIMIT_MS) return p;
+  const failed: Pending = {
+    state: "error",
+    text: "Reading the invoice took too long. Download it and drag the file here.",
+    seen: p.seen,
+  };
+  await setPending(c, failed);
+  return failed;
+}
+
+/**
+ * Marks the captured invoice seen once a screen that shows it is on, and sets the badge to match. Only the Send
+ * section shows it: behind Connect, an expired connection or an error it stays unseen, and the badge keeps its "+".
+ */
+async function markSeen(): Promise<void> {
+  const p = ui.pending;
+  const s = ui.state;
+  if (s?.kind !== "ok" || p === null || p.seen) return;
+  ui.pending = { ...p, seen: true };
+  // A read still running is stored again by the worker when it ends (handleMenu), and this marks that one.
+  if (p.state === "reading") return;
+  await setPending(c, ui.pending).catch(() => {});
+  await badgeShown(d, s).catch(() => {});
 }
 
 async function start(): Promise<void> {
@@ -587,21 +622,32 @@ async function start(): Promise<void> {
     getPending(c),
     c.tabs.query({ active: true, currentWindow: true }).catch(() => []),
   ]);
-  ui.pending = await show(pending);
+  ui.pending = await current(pending);
   const url = tabs[0]?.url;
   ui.tabPdf = isPdfUrl(url) ? url : null;
   await reload();
 }
 
-// A menu click hands its invoice over through session storage, sometimes after the popup has opened.
 c.storage.onChanged.addListener((changes, area) => {
-  if (area !== "session" || !Object.hasOwn(changes, "pending")) return;
-  void getPending(c)
-    .then(show)
-    .then((p) => {
-      ui.pending = p;
-      render();
-    });
+  // A menu click hands its invoice over through session storage, sometimes after the popup has opened.
+  if (area === "session" && Object.hasOwn(changes, "pending")) {
+    void getPending(c)
+      .then(current)
+      .then((p) => {
+        ui.pending = p;
+        render();
+      });
+    return;
+  }
+  // The worker stored a connection (the connect page, while the tab view stays open), or another popup switched or
+  // ended one: the screen follows. While an action runs, that action reads the state again itself.
+  if (
+    area === "local" &&
+    !ui.busy &&
+    (Object.hasOwn(changes, "connections") || Object.hasOwn(changes, "selectedOrigin"))
+  ) {
+    void reload();
+  }
 });
 
 // A file dropped outside the drop area must not navigate the popup away.

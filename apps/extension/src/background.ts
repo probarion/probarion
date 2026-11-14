@@ -48,6 +48,17 @@ async function setBadge(d: Deps, text: string): Promise<void> {
   await d.chrome.action.setBadgeText({ text });
 }
 
+const countOf = (inbox: Inbox): number => inbox.counts.awaiting + inbox.counts.held;
+
+/**
+ * Whether a captured invoice waits that the popup hasn't shown. It is read just before the badge is set, after the inbox
+ * read: an open popup page may have shown the invoice meanwhile.
+ */
+async function unseen(d: Deps): Promise<boolean> {
+  const p = await getPending(d.chrome);
+  return p !== null && !p.seen;
+}
+
 /**
  * Reads the chosen connection's inbox and sets the badge. A 401, or a token past its end, marks the connection
  * expired and stops the alarm: nothing is asked for it again until the person reconnects. When Probarion can't be
@@ -57,10 +68,8 @@ export async function refresh(d: Deps): Promise<InboxState> {
   const s = await loadLocal(d.chrome);
   const origin = s.selectedOrigin;
   const connection = origin === null ? undefined : s.connections[origin];
-  const p = await getPending(d.chrome);
-  const pending = p !== null && !p.seen;
   if (origin === null || connection === undefined) {
-    await setBadge(d, badgeText({ expired: false, pending, count: 0 }));
+    await setBadge(d, badgeText({ expired: false, pending: await unseen(d), count: 0 }));
     return { kind: "none" };
   }
   const expire = async (): Promise<InboxState> => {
@@ -74,17 +83,32 @@ export async function refresh(d: Deps): Promise<InboxState> {
   if (connection.expired || Date.parse(connection.expires_at) <= d.now()) return expire();
   try {
     const inbox = await api(origin, d.fetch).inbox(connection.token);
-    const count = inbox.counts.awaiting + inbox.counts.held;
-    await setBadge(d, badgeText({ expired: false, pending, count }));
+    await setBadge(
+      d,
+      badgeText({ expired: false, pending: await unseen(d), count: countOf(inbox) }),
+    );
     await ensureAlarm(d);
     return { kind: "ok", origin, connection, inbox };
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return expire();
     await ensureAlarm(d); // the connection is live: a person who chose it while Probarion was down gets the alarm back
-    if (pending) await setBadge(d, "+"); // a capture waits, whatever Probarion answers
+    if (await unseen(d)) await setBadge(d, "+"); // a capture waits, whatever Probarion answers
     const text = error instanceof ApiError ? error.message : "Something went wrong. Try again.";
     return { kind: "error", origin, connection, text };
   }
+}
+
+/**
+ * The badge once the popup has shown the captured invoice on `state`'s screen: the count of that inbox, so a "+" set
+ * while the invoice waited unseen goes. Nothing changes while another capture waits unseen, or when the chosen
+ * connection is no longer the one on the screen (refresh sets the badge for that one).
+ */
+export async function badgeShown(d: Deps, state: InboxState): Promise<void> {
+  if (state.kind !== "ok" || (await unseen(d))) return;
+  const s = await loadLocal(d.chrome);
+  const chosen = s.selectedOrigin === state.origin ? s.connections[state.origin] : undefined;
+  if (chosen === undefined || chosen.expired || chosen.token !== state.connection.token) return;
+  await setBadge(d, badgeText({ expired: false, pending: false, count: countOf(state.inbox) }));
 }
 
 /** Keeps the 5-minute alarm while the chosen connection is live: the badge follows only that one. */
@@ -228,7 +252,7 @@ export async function installMenus(d: Deps): Promise<void> {
  * A right-click on a link or a selection. Chrome lets the popup open only during the click, so it is asked first;
  * the invoice is read meanwhile and handed over through chrome.storage.session, which the popup watches. A link is
  * fetched only on the page's own site, where the click's activeTab grant reaches. When the popup can't open, the
- * badge shows "+" until the popup is opened.
+ * badge shows "+" until the popup shows the invoice.
  */
 export async function handleMenu(d: Deps, info: MenuClick): Promise<void> {
   if (info.menuItemId !== MENU_LINK && info.menuItemId !== MENU_SELECTION) return;
