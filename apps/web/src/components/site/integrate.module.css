@@ -108,7 +108,9 @@
   background: var(--color-bad-bg);
   color: var(--color-bad);
 }
+/* 7px more than the grid's gap: the stamps' line and the sentence's first line are 2.5em apart (1.4.8). */
 .outcomeText {
+  margin-top: 7px;
   font-size: 15px;
   line-height: 1.5;
 }

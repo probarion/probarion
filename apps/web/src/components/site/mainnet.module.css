@@ -999,11 +999,11 @@
 }
 /*
  * After the payouts: the vault's transactions of 2026-11-11 in one line, then the docs page that gives every value, a
- * link with a 44px target of its own.
+ * link with a 44px target of its own. The gap and the 1.5 line height put them 2.5em apart, line to line (1.4.8).
  */
 .after {
   display: grid;
-  gap: 4px;
+  gap: 15px;
   margin-top: 8px;
 }
 .earlierLine {

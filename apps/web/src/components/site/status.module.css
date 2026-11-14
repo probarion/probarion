@@ -294,7 +294,8 @@
   overflow-wrap: anywhere;
 }
 /* The detail is already mono: code inside it keeps the detail's size, not .site code's smaller one. */
-.where .whereDetail code {
+.where .whereDetail code,
+.cWhere .whereDetail code {
   font-size: 1em;
 }
 
@@ -833,6 +834,10 @@
   font-size: 14px;
   line-height: 1.5;
   color: var(--color-mute);
+}
+/* What the part is, under what was tried: its first line 2.5em below the tried line's (1.4.8). */
+.cText > .cTried + .what {
+  margin-top: 18px;
 }
 /* Each paragraph that follows another starts 1em down: with the 1.55 line height, 2.5em from line to line (1.4.8). */
 .cWhere {

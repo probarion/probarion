@@ -101,8 +101,9 @@
 .readout {
   margin-top: clamp(32px, 4vw, 48px);
 }
+/* 24px between the rows: the sentence's last line and the counts' line under the verdict are 2.5em apart (1.4.8). */
 .verdict {
-  row-gap: 6px;
+  row-gap: 24px;
   align-items: baseline;
   margin-top: 10px;
 }

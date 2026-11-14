@@ -371,7 +371,7 @@ export const START: readonly DocPage[] = [
       "docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt",
       "apps/web/src/lib/site/mainnet-payout.ts",
     ],
-    reviewed: "2026-11-13",
+    reviewed: "2026-11-14",
     phase: 1,
     locale: "en",
   },

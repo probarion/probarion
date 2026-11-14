@@ -31,7 +31,8 @@ export function ConsoleShot() {
       </div>
       <figcaption className={c.cap}>
         <p className={s.eyebrow}>{L.eyebrow}</p>
-        <p className={c.title}>{shot.title}</p>
+        {/* A heading of the use cases, between the uses' h3s and the ways' h3: what the shot shows. */}
+        <h3 className={c.title}>{shot.title}</h3>
         <p className={c.body}>
           <KeepRich text={shot.body} />
         </p>

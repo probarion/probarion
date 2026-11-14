@@ -1085,7 +1085,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
 
   it("what the smoke run was, and that mainnet has only one small vault", () => {
     // Its missing ledger is told once, in the known gaps (audit P1-10): the README's "without the SDK, a model or a
-    // ledger" loses its ledger here, and the foot only points to the gap.
+    // ledger" loses its ledger here.
     expect(CHAIN.intro).toBe(
       "The contract alone, with test tokens: the agent key called `spend` directly, with no SDK or model in between. Each hash opens its transaction on testnet.nearblocks.io.",
     );
@@ -1093,7 +1093,6 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       "The smoke run exercised the contract alone: its spends were sent with the agent key directly, without the SDK, a model or a ledger",
     );
     expect(CHAIN.intro).not.toMatch(/ledger/i);
-    expect(JSON.stringify(CHAIN.foot)).not.toMatch(/ledger|check d|check h|FAIL/i);
     // Every hash in the section opens on the explorer the lede names.
     for (const row of CHAIN.rows)
       expect(row.tx.url).toMatch(/^https:\/\/testnet\.nearblocks\.io\/txns\//);
@@ -2238,14 +2237,16 @@ describe("the problem, the comparison and the integrate section", () => {
       .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<");
 
-  it("keeps its headings in order: an h3 per use, the ways' h3, an h4 per way", () => {
+  it("keeps its headings in order: an h3 per use, the shot's h3, the ways' h3, an h4 per way", () => {
     const html = integrateHtml();
     const heads = [...html.matchAll(/<h([2-6])[^>]*>([\s\S]*?)<\/h\1>/g)].map(
       (x) => `${x[1]} ${decoded(x[2] ?? "")}`,
     );
+    const shot = CONSOLE_SHOTS.shots.find((x) => x.id === CONSOLE_SHOTS.landing.shot);
     expect(heads).toEqual([
       `2 ${INTEGRATE.title}`,
       ...INTEGRATE.who.map((w) => `3 ${w.title}`),
+      `3 ${shot?.title}`,
       `3 ${INTEGRATE.waysTitle}`,
       ...INTEGRATE.cards.map((c) => `4 ${c.title}`),
     ]);
@@ -2834,7 +2835,9 @@ describe("the footer columns", () => {
     expect(footerText(html)).toContain(FOOTER.note);
     // Both periods stay, with a real space between the two lines, so that a copy reads "money. The ledger". No TEE
     // line: the model is attested, and Known gaps says there is no end-to-end encryption.
-    expect(FOOTER.motto).toBe("The contract protects the money. The ledger records every decision.");
+    expect(FOOTER.motto).toBe(
+      "The contract protects the money. The ledger records every decision.",
+    );
     expect(html).toContain(
       "<span>The contract protects the money.</span> <span>The ledger records every decision.</span>",
     );
@@ -3322,7 +3325,12 @@ describe("the stylesheet", () => {
       "Mainnet",
       "Verify",
     ]);
-    expect(HEADER_ANCHORS.map((a) => a.href)).toEqual(["/#payment", "/#try", "/#mainnet", "/#verify"]);
+    expect(HEADER_ANCHORS.map((a) => a.href)).toEqual([
+      "/#payment",
+      "/#try",
+      "/#mainnet",
+      "/#verify",
+    ]);
   });
 });
 

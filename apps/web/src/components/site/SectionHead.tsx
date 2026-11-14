@@ -73,6 +73,7 @@ export function SubHead({
     </h3>
   );
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a named block of a section, not a form, so no fieldset.
     <div
       className={className === undefined ? h.block : `${h.block} ${className}`}
       id={id}

@@ -28,9 +28,7 @@ const MODULES: Readonly<Record<string, string>> = {
   integrate: "src/components/site/integrate.module.css",
   console: "src/components/site/console.module.css",
   hero: "src/components/site/hero.module.css",
-  compare: "src/components/site/compare.module.css",
   tamper: "src/components/site/tamper.module.css",
-  chain: "src/components/site/chain.module.css",
   live: "src/components/site/live.module.css",
   footer: "src/components/site/footer.module.css",
   parts: "src/components/site/parts.module.css",
@@ -538,9 +536,6 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["integrate", ".use", "gap", 15, "site", ".site"],
       // The console's shot: its record under the caption's sentence.
       ["console", ".record", "margin-top", 15, "site", ".site"],
-      // The chain: a row's call, what the chain shows and its transaction stacked, and the foot's two lines.
-      ["chain", ".row", "row-gap", 15, "site", ".site"],
-      ["chain", ".foot", "gap", 15, "site", ".site"],
       // The live check: the lines of a hijack's invoice text under its quote.
       ["live", ".injLine", "margin-top", 15, "live", ".inj"],
       // The site footer, outside .site: its base row's note over the legal links, once the row stacks at 960px and below.
@@ -596,10 +591,6 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["tamper", ".note"],
       ["tamper", ".runError"],
       ["site", ".proofIntro"],
-      ["compare", ".moreLink"],
-      ["compare", ".moreNote"],
-      ["chain", ".body"],
-      ["chain", ".foot"],
       ["live", ".hint"],
       ["live", ".inj"],
       ["live", ".why"],
@@ -819,9 +810,6 @@ describe("one small label (parts.module.css .label)", () => {
       color: "var(--color-mute)",
     });
     for (const [file, selector] of [
-      ["compare", ".table .head th"],
-      ["compare", ".table .group th"],
-      ["compare", ".runIn"],
       ["site", ".table th"],
       ["parts", ".partLabel"],
     ] as const) {
@@ -832,16 +820,7 @@ describe("one small label (parts.module.css .label)", () => {
       }
     }
     // No uppercase label is left in the sections that use it.
-    for (const file of [
-      "compare",
-      "integrate",
-      "journey",
-      "console",
-      "chain",
-      "hero",
-      "tamper",
-      "parts",
-    ])
+    for (const file of ["integrate", "journey", "console", "hero", "tamper", "parts"])
       expect(
         MODULE_RULES.filter(
           (r) => r.file === file && r.decls["text-transform"] === "uppercase",

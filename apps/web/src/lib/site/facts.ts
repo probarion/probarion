@@ -623,7 +623,10 @@ export const JOURNEY = {
     "the vault contract on NEAR",
   ],
   /** Under the steps: the docs page that walks each step with its fields and code. */
-  more: { label: "Every step, with its fields and code", href: "/docs/start/how-one-payment-works" },
+  more: {
+    label: "Every step, with its fields and code",
+    href: "/docs/start/how-one-payment-works",
+  },
   steps: [
     {
       n: 1,
@@ -1452,8 +1455,9 @@ export const MAINNET_ASK = {
 export const SAMPLES_MAINNET = "https://probarion.xyz/samples/mainnet";
 
 /**
- * The no-clone verify of the mainnet vault, under the question above: the same commands for Bash and for Windows
- * PowerShell 5.1, each block with its copy button. They download the vault's ledger and the two files verify reads beside
+ * The no-clone verify of the mainnet vault, beside the question (under it on a narrow screen): the same commands for
+ * Bash and for Windows PowerShell 5.1, each block with its copy button, folded under the visible title and intro
+ * (MainnetAsk.tsx MainnetVerify). They download the vault's ledger and the two files verify reads beside
  * it from this site, then check them against NEAR mainnet with `npx probarion@0.1.1`. The blocks are the README's, as
  * recorded in docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt (there against a local copy of the same files).
  * PowerShell calls curl.exe and npx.cmd: in 5.1, curl is another command, and a Restricted policy blocks npx.ps1.
@@ -1692,7 +1696,7 @@ export const CHAIN = {
   eyebrow: "Read it on chain",
   /**
    * Its count is the number of rows (test/section-heads.test.ts). "The smoke run" is the name Known gaps gives v0's run
-   * (STATUS.gaps.v0), so the heading, the record's "Run" and the foot's pointer all name one run.
+   * (STATUS.gaps.v0), so the heading and the record's "Run" name one run.
    */
   title: "Three testnet transactions from the smoke run.",
   /** What the run exercised (README, "NEAR testnet, 2026-11-01"). Its missing ledger is told once, in Known gaps (P1-10). */
@@ -1745,26 +1749,6 @@ export const CHAIN = {
       tx: TX.noMandate,
     },
   ],
-  /**
-   * Where to read on, under the rows. A link to this page (#) stays in the tab, and the proof page is a page of the
-   * site; each # is held to an id on the landing (test/site-facts.test.ts). The second line only points to the gap.
-   */
-  foot: [
-    [
-      "The demo vault's newer testnet transactions are linked from ",
-      { label: "its four invoices", href: `#${JOURNEY_IDS.invoices}` },
-      " and ",
-      { label: "the console screenshots", href: "#console" },
-      ", and ",
-      { label: "its proof page", href: CONSOLE_SHOTS.proof.href },
-      " lists the vault's spends.",
-    ],
-    [
-      "For what a live `verify` of `v0.probarion.testnet` shows, see ",
-      { label: "Known gaps", href: "#known-gaps" },
-      ".",
-    ],
-  ] satisfies readonly (readonly CopyPart[])[],
 } as const;
 
 // --- status ---------------------------------------------------------------------------------------
@@ -3060,8 +3044,9 @@ export const COMPARE = {
     href: blob("docs/comparison-2026-11.md"),
   },
 } as const;
-// A wrong `status` name fails the typecheck where Compare.tsx calls statusOf(r.status); a wrong `group` fails
-// site-facts.test.ts.
+// The table lives in the docs now (start/what-is-probarion, "Why not a spending-limit contract"): a wrong `status`
+// name fails site-facts.test.ts and test/docs-pages.test.ts, which reads each row's pill through statusOf(r.status),
+// and a wrong `group` fails site-facts.test.ts.
 
 // --- use cases ------------------------------------------------------------------------------------
 

@@ -20,6 +20,9 @@ import {
   JOURNEY,
   LIVE_CHECK,
   PROBLEM,
+  STACK,
+  STATUS,
+  STATUS_BOARD,
   TAMPER_COPY,
 } from "@/lib/site/facts";
 import { PAYOUTS } from "@/lib/site/mainnet-payout-data";
@@ -66,11 +69,21 @@ const BLOCKS = [
     title: LIVE_CHECK.title,
     lede: LIVE_CHECK.intro,
   },
+  { id: STACK.id, in: "verify", eyebrow: STACK.eyebrow, title: STACK.title, lede: STACK.lede },
+  {
+    id: "status",
+    in: "verify",
+    eyebrow: STATUS_BOARD.eyebrow,
+    title: STATUS.title,
+    lede: STATUS_BOARD.lede,
+  },
 ] as const;
 
 const html = renderToStaticMarkup(createElement(Home));
 const start = (id: string) => html.indexOf(`<section class="${h.section}" id="${id}"`);
-const block = (id: string) => html.indexOf(`<div class="${h.block}" id="${id}"`);
+/** A block's <div>: its class is h.block, and the board adds its own after it. */
+const block = (id: string) =>
+  html.search(new RegExp(`<div class="${h.block}(?: [^"]+)?" id="${id}"`));
 /** The closing's <section>, where the last section's part ends. */
 const closing = html.lastIndexOf("<section", html.indexOf(`class="${s.close}"`));
 
@@ -94,7 +107,7 @@ describe("the landing's section heads", () => {
   it("open every block inside a section with a hairline, its eyebrow, an h3 and its lede, named by the h3", () => {
     for (const x of BLOCKS) {
       const head = new RegExp(
-        `<div class="${h.block}" id="${x.id}" role="group" aria-labelledby="${x.id}-title">` +
+        `<div class="${h.block}(?: [^"]+)?" id="${x.id}" role="group" aria-labelledby="${x.id}-title">` +
           `<header class="${h.subHead}"><hgroup><p class="${s.eyebrow}">([^<]+)</p>` +
           `<h3 class="${h.subTitle}" id="${x.id}-title">([\\s\\S]*?)</h3></hgroup>` +
           `<p class="${h.lede} ${h.subLede}">([\\s\\S]*?)</p></header>`,

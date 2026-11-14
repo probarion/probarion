@@ -4,7 +4,8 @@
  * clamps scale. Every colour is a token from app/globals.css.
  *
  * The rhythm: a section owns G (--space-section) of paper below itself and none above, so that the gap between any
- * two sections is G whichever sections they are. The hero and the ink band own G below themselves too (site.module.css).
+ * two sections is G whichever sections they are. The hero owns G below itself too (hero.module.css); the payee panel
+ * is inset at the end of the problem, which owns the G below it.
  */
 
 .section {
