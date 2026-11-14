@@ -1,6 +1,6 @@
 // N4, Experimental: reads the POA bridge's record of a withdrawal. The bridge speaks JSON-RPC 2.0, so any NearRpc
 // pointed at it works (httpJsonRpc(POA_BRIDGE_RPC_URL) included). The method and its params were confirmed by a
-// read-only call on 2026-11-14; status values other than COMPLETED are not documented in what we read.
+// call that read public data on 2026-11-14; status values other than COMPLETED are not documented in what we read.
 import { isBase58Hash } from "./encoding.js";
 import { NearFormatError } from "./errors.js";
 import { type PoaBridgeWithdrawal, parsePoaWithdrawalStatus } from "./poa.js";

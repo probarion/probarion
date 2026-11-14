@@ -54,7 +54,7 @@ const statusAnswer = (file: "poa-status-s1.json" | "poa-status-s2.json") =>
 const repoJson = (path: string): unknown =>
   JSON.parse(readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8"));
 
-/** The first log of a receipt, for tampering. */
+/** Log 0 of a receipt, for tampering. */
 function firstLog(receipt: Record<string, unknown>): Record<string, unknown> {
   return (receipt.logs as Record<string, unknown>[])[0] as Record<string, unknown>;
 }

@@ -87,7 +87,7 @@ export interface PoaWithdrawCall {
  * Throws TypeError for a chain other than base or solana; an asset that is not a NEAR account id with the chain's
  * prefix; a Base address that is not `0x` and 40 hex digits (the case is kept, so an EIP-55 checksummed address
  * reaches the memo byte for byte, as in the vault); a Solana address that is not base58 of exactly 32 bytes (the
- * vault checks 32 to 44 base58 characters only, so this is stricter); an amount that is not a bigint above zero and
+ * vault checks for 32 to 44 base58 characters, so this is stricter); an amount that is not a bigint above zero and
  * at most 2^128 - 1; an intents contract that is not an account id.
  */
 export function poaWithdrawCall(req: PoaWithdrawRequest): PoaWithdrawCall {
@@ -153,7 +153,7 @@ export interface FindPoaBurnOptions {
   asset: string;
   /** The NEAR Intents contract that logs `mt_burn`. Default `intents.near`. */
   intents?: string;
-  /** Keep only the burns of this NEAR Intents account. The pairing still reads every burn of the asset. */
+  /** Keep the burns of this NEAR Intents account and drop the rest. The pairing still reads every burn of the asset. */
   owner?: string;
   /** Who may log the POA ft_burn. Default [asset] (mainnet). The testnet intents-stub logs it itself: [asset, stub]. */
   ftBurnEmitters?: readonly string[];
@@ -174,13 +174,13 @@ interface FtBurnEntry {
 /**
  * Pairs, in source order, the intents contract's NEP-245 `mt_burn` entries of `nep141:<asset>` with the POA token's
  * NEP-141 `ft_burn` items whose `owner_id` is the intents contract and whose memo starts `WITHDRAW_TO:`, from
- * successful receipts only, each event bound to the contract that logged it (the receipt-bound reader of
+ * receipts that succeeded, each event bound to the contract that logged it (the receipt-bound reader of
  * events.ts: an `ft_burn` logged by the vault or any other account is not read). Both counts and each pair's two
  * amounts must be equal, which the SDK's `findBurnPair` does not ask. Anything that stands in the way of a clean
  * pairing is a problem: unequal counts or amounts, an event of either contract that breaks its standard's schema,
  * a matching event whose receipt status is missing (a trimmed record), a malformed source. `burns` is empty
- * whenever `problems` is not, so a caller reading only `burns` never gets a pair out of a doubtful record.
- * Never throws: invalid options are a problem too.
+ * whenever `problems` is not, so a caller who reads `burns` alone gets no pair out of a doubtful record. It
+ * does not throw: invalid options are a problem too.
  */
 export function findPoaBurns(
   source: OutcomeSource,
@@ -248,7 +248,7 @@ export function findPoaBurns(
         a.source.itemIndex - b.source.itemIndex,
     );
   } catch (error) {
-    // The readers throw only for invalid arguments, checked above; this keeps the never-throws promise anyway.
+    // The readers throw for invalid arguments alone, checked above; this keeps the no-throw promise anyway.
     problems.add(`reader: ${error instanceof Error ? error.message : String(error)}`);
   }
 
@@ -287,7 +287,7 @@ export function findPoaBurns(
   };
 }
 
-/** Each outcome id's position in the source (transaction_outcome first), for sorting events read per emitter. */
+/** Each outcome id's position in the source (transaction_outcome at 0), for sorting events read per emitter. */
 function outcomeOrder(outcomes: OutcomeSource): Map<string, number> {
   const order = new Map<string, number>();
   const source: unknown = outcomes;
@@ -433,10 +433,10 @@ type Erc20Failure = Extract<Erc20Match, { ok: false }>;
  * Finds the one ERC-20 `Transfer` of `contract` to `to` in an `eth_getTransactionReceipt` result. The receipt must be
  * for `txHash` (else `wrong_tx`) and have status `0x1` (`0x0` is `reverted`). A log counts when its address is
  * `contract` and its topic0 is the Transfer topic, and such a log must be ERC-20 shaped: exactly 3 topics, `from` and
- * `to` topics of 12 zero bytes and an address (dirty high bytes never pass for an address), 32 bytes of data; else
+ * `to` topics of 12 zero bytes and an address (dirty high bytes do not pass for an address), 32 bytes of data; else
  * the receipt is `malformed`. Logs marked `removed: true` do not count. Exactly one counted log may go to `to` (two
  * are `ambiguous`), and its value must equal `want.value` when given. Hex is compared lowercase. A malformed `want`
- * is reported as `malformed`. Never throws.
+ * is reported as `malformed`. It does not throw.
  *
  * The receipt comes from a Base RPC and is not proven here. One Base transaction could be offered for two burns: a
  * caller that settles many payouts keeps the destination transaction hashes it has already counted.
@@ -618,10 +618,10 @@ interface CheckResult {
  *   `expect.erc20` to `expect.address` of exactly the received amount.
  * - `amounts`: something was released, and the fee is at most `expect.maxFee` when given.
  *
- * The destination address is taken from the burn, never from the bridge answer (its `address` is the token
- * contract), and the amount from the burn; the bridge's figures are only compared with it. A later check that
+ * The destination address is taken from the burn, not from the bridge answer (its `address` is the token
+ * contract), and the amount from the burn; the bridge's figures are compared with it. A later check that
  * needs an earlier one that failed says "skipped". The Base receipt is not proven here: it is what the Base RPC
- * answered, bound by hash to the bridge's record. Never throws.
+ * answered, bound by hash to the bridge's record. It does not throw.
  */
 export function verifyPoaSettlement(input: {
   near: OutcomeSource;
@@ -667,8 +667,8 @@ export function verifyPoaSettlement(input: {
 
   if (!isRecord(input) || !isRecord(input.expect)) {
     run("near_burn", () => no("the input or its expect is not an object"));
-    for (const id of Object.keys(NEEDS) as PoaCheckId[])
-      if (id !== "near_burn") run(id, () => no(""));
+    // The later checks need near_burn, so each says "skipped".
+    for (const id of (Object.keys(NEEDS) as PoaCheckId[]).slice(1)) run(id, () => no(""));
     return settlement();
   }
   const { near, nearTxHash, bridgeAnswer, destinationReceipt, expect } = input;
@@ -683,8 +683,11 @@ export function verifyPoaSettlement(input: {
       ...(expect.ftBurnEmitters === undefined ? {} : { ftBurnEmitters: expect.ftBurnEmitters }),
     });
     if (found.problems.length > 0) return no(found.problems.join("; "));
-    const [only, ...more] = found.burns;
-    if (only === undefined) {
+    if (expect.amount !== undefined && typeof expect.amount !== "bigint") {
+      return no("expect.amount is not a bigint");
+    }
+    const [single, ...more] = found.burns;
+    if (single === undefined) {
       return no(
         `no POA withdrawal burn of ${expect.asset} in the successful receipts of ${nearTxHash}`,
       );
@@ -694,17 +697,17 @@ export function verifyPoaSettlement(input: {
         `${found.burns.length} POA withdrawal burns of ${expect.asset} in ${nearTxHash}; this reads one`,
       );
     }
-    if (expect.owner !== undefined && only.owner !== expect.owner) {
-      return no(`the burn is from ${only.owner}, not ${String(expect.owner)}`);
+    if (expect.owner !== undefined && single.owner !== expect.owner) {
+      return no(`the burn is from ${single.owner}, not ${String(expect.owner)}`);
     }
-    if (expect.amount !== undefined && only.amount !== expect.amount) {
-      return no(`the burn is of ${only.amount}, not ${String(expect.amount)}`);
+    if (expect.amount !== undefined && single.amount !== expect.amount) {
+      return no(`the burn is of ${single.amount}, not ${String(expect.amount)}`);
     }
-    burn = only;
+    burn = single;
     return yes(
-      `${only.owner} burned ${only.amount} of nep141:${only.asset} (receipt ${only.mtBurnReceiptId}) and ` +
-        `${only.asset} logged ft_burn with memo ${only.memo} (receipt ${only.ftBurnReceiptId})` +
-        (only.proven ? ", both proven" : ", as the RPC answered"),
+      `${single.owner} burned ${single.amount} of nep141:${single.asset} (receipt ${single.mtBurnReceiptId}) and ` +
+        `${single.asset} logged ft_burn with memo ${single.memo} (receipt ${single.ftBurnReceiptId})` +
+        (single.proven ? ", both proven" : ", as the RPC answered"),
     );
   });
 

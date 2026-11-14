@@ -1,5 +1,5 @@
 {
-  "_source": "Base mainnet eth_getTransactionReceipt results of the two POA releases (spend 2: 0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71, spend 3: 0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7), copied from payouts[i].reads.base of apps/web/src/lib/site/mainnet-payout-recorded.json, which apps/web/scripts/record-mainnet-payout.ts read from mainnet.base.org on 2026-11-13T14:09:12.787Z. Read-only, nothing signed. Trimmed when recorded there: each log keeps address, topics, data and blockTimestamp only (no logIndex, no removed).",
+  "_source": "Base mainnet eth_getTransactionReceipt results of the two POA releases (spend 2: 0xc2df8f8799467834cdaed0e8f23638af49334483387560fd34ef360939e1ea71, spend 3: 0xc6c4507e098b558bdff1b5836600f5e3365fee5a63037d399db58e1db4547ab7), copied from payouts[i].reads.base of apps/web/src/lib/site/mainnet-payout-recorded.json, which apps/web/scripts/record-mainnet-payout.ts read from mainnet.base.org on 2026-11-13T14:09:12.787Z. Reads of public data, nothing signed. Trimmed when recorded there: each log keeps address, topics, data and blockTimestamp (no logIndex, no removed).",
   "receipts": {
     "spend-2": {
       "status": "0x1",

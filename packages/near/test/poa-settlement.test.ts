@@ -66,7 +66,7 @@ const outcome = (tx: MutableTx, id: string): MutableOutcome => {
   if (found === undefined) throw new Error(`no outcome ${id}`);
   return found;
 };
-/** The first bridge record's data, for tampering. */
+/** Bridge record 0's data, for tampering. */
 const bridgeData = (answer: Record<string, unknown>) =>
   (answer.withdrawals as { status: string; data: Record<string, unknown> }[])[0] as {
     status: string;
@@ -100,10 +100,10 @@ function verify(
   });
 }
 
-/** The ids of the failed checks, and the first failure's detail. */
-function failed(s: PoaSettlement): { ids: PoaCheckId[]; first: string } {
+/** The ids of the failed checks, and the earliest failure's detail. */
+function failed(s: PoaSettlement): { ids: PoaCheckId[]; reason: string } {
   const bad = s.checks.filter((c) => !c.ok);
-  return { ids: bad.map((c) => c.id), first: bad[0]?.detail ?? "" };
+  return { ids: bad.map((c) => c.id), reason: bad[0]?.detail ?? "" };
 }
 
 const ALL: PoaCheckId[] = [
@@ -167,7 +167,7 @@ describe("findPoaBurns", () => {
     }
   });
 
-  it("reads the testnet intents-stub, which logs both events itself, only when it is a named ft_burn emitter", () => {
+  it("reads the testnet intents-stub, which logs both events itself, when it is named as an ft_burn emitter", () => {
     const trees = readFixture<Record<string, TxTreeLike>>("events/testnet-spend-trees.json");
     const burned = trees.burned as TxTreeLike;
     const stub = "intents-stub.probarion.testnet";
@@ -183,7 +183,7 @@ describe("findPoaBurns", () => {
         ftBurnReceiptId: "Fvs9ZsdrJuSZ9TFJVMN5pqAC9BUVxq42v9jUuhjdPhhA",
       },
     ]);
-    // By default only the asset may log the ft_burn: the stub's own ft_burn does not count, so nothing pairs.
+    // By default the asset alone may log the ft_burn: the stub's own ft_burn does not count, so nothing pairs.
     const strict = findPoaBurns(burned, { asset, intents: stub });
     expect(strict.burns).toEqual([]);
     expect(strict.problems).toEqual([
@@ -264,7 +264,7 @@ describe("findPoaBurns", () => {
     expect(found.burns.map((b) => [b.amount, b.proven])).toEqual([[1_000_000n, true]]);
   });
 
-  it("never throws: invalid options and sources are problems", () => {
+  it("does not throw: invalid options and sources are problems", () => {
     expect(findPoaBurns(nearTx(2), { asset: "Base" }).problems).toEqual([
       "options: asset is not a NEAR account id",
     ]);
@@ -305,7 +305,7 @@ function provenFrom(o: OutcomeLike): ProvenOutcome {
 describe("verifyPoaSettlement", () => {
   it("settles spend 2: 1000000 burned, 997600 received on Base, fee 2400", () => {
     const s = verify(records(2), { amount: 1_000_000n, owner: VAULT, maxFee: 2_400n });
-    expect(failed(s)).toEqual({ ids: [], first: "" });
+    expect(failed(s)).toEqual({ ids: [], reason: "" });
     expect(s.ok).toBe(true);
     expect(s.checks.map((c) => c.id)).toEqual(ALL);
     expect(s.burn).toMatchObject({ owner: VAULT, amount: 1_000_000n, address: PAYEE });
@@ -361,7 +361,7 @@ describe("verifyPoaSettlement", () => {
       }),
     ).toMatchObject({
       ids: ["destination_transfer"],
-      first: expect.stringMatching(/^no_matching_transfer/),
+      reason: expect.stringMatching(/^no_matching_transfer/),
     });
     expect(
       tamper((r) => {
@@ -376,7 +376,7 @@ describe("verifyPoaSettlement", () => {
     expect(
       tamper((r) => {
         receipt(r).status = "0x0";
-      }).first,
+      }).reason,
     ).toMatch(/^reverted/);
     expect(
       tamper((r) => {
@@ -386,17 +386,17 @@ describe("verifyPoaSettlement", () => {
     expect(
       tamper((r) => {
         (receipt(r).logs as unknown[]).push(structuredClone(log(r)));
-      }).first,
+      }).reason,
     ).toMatch(/^ambiguous/);
     expect(
       tamper((r) => {
         r.destinationReceipt = baseReceipt(3);
-      }).first,
+      }).reason,
     ).toMatch(/^wrong_tx/);
     expect(
       tamper((r) => {
         r.destinationReceipt = null;
-      }).first,
+      }).reason,
     ).toMatch(/^malformed/);
 
     // The bridge record.
@@ -406,53 +406,53 @@ describe("verifyPoaSettlement", () => {
       }),
     ).toEqual({
       ids: ["bridge_record", "destination_transfer", "amounts"],
-      first: "the bridge's status is PENDING, not COMPLETED",
+      reason: "the bridge's status is PENDING, not COMPLETED",
     });
     // Spend 3's bridge record offered for spend 2's transaction.
     expect(
       tamper((r) => {
         r.bridgeAnswer = bridgeAnswer(3);
-      }).first,
+      }).reason,
     ).toMatch(/the bridge has no record of BdN7oB76.*its records are of 5amtgb8M/);
     expect(
       tamper((r) => {
         bridgeData(r.bridgeAnswer as Record<string, unknown>).data.withdraw_amount = "997000";
-      }).first,
+      }).reason,
     ).toMatch(/do not add up to the burned 1000000/);
     expect(
       tamper((r) => {
         bridgeData(r.bridgeAnswer as Record<string, unknown>).data.amount = 2 ** 53 + 2;
-      }).first,
+      }).reason,
     ).toMatch(/not readable: .*withdrawals\[0\]\.data\.amount/);
     expect(
       tamper((r) => {
         bridgeData(r.bridgeAnswer as Record<string, unknown>).data.account_id = "probarion.near";
-      }).first,
+      }).reason,
     ).toMatch(/is for probarion.near, but v0.probarion.near burned/);
     expect(
       tamper((r) => {
         bridgeData(r.bridgeAnswer as Record<string, unknown>).data.transfer_tx_hash = null;
-      }).first,
+      }).reason,
     ).toBe("the bridge's record names no release transaction");
     // A release that is not a Base transaction hash (a Solana signature, say) is refused before Base is read.
     expect(
       tamper((r) => {
         bridgeData(r.bridgeAnswer as Record<string, unknown>).data.transfer_tx_hash =
           SPENDS[2].near;
-      }).first,
+      }).reason,
     ).toMatch(/is not a Base transaction hash/);
     expect(
       tamper((r) => {
         const answer = r.bridgeAnswer as { withdrawals: unknown[] };
         answer.withdrawals.push(structuredClone(answer.withdrawals[0]));
-      }).first,
+      }).reason,
     ).toMatch(/2 records of/);
     // A release transaction the bridge names that is not the receipt given.
     expect(
       tamper((r) => {
         bridgeData(r.bridgeAnswer as Record<string, unknown>).data.transfer_tx_hash =
           SPENDS[3].base;
-      }).first,
+      }).reason,
     ).toMatch(/^wrong_tx/);
 
     // The NEAR side.
@@ -464,7 +464,7 @@ describe("verifyPoaSettlement", () => {
         );
         token.outcome.logs = [];
       }),
-    ).toMatchObject({ ids: ALL, first: expect.stringMatching(/0 WITHDRAW_TO ft_burn/) });
+    ).toMatchObject({ ids: ALL, reason: expect.stringMatching(/0 WITHDRAW_TO ft_burn/) });
     expect(
       tamper((r) => {
         outcome(r.near, SPENDS[2].mtBurn).outcome.status = { Failure: {} };
@@ -474,7 +474,7 @@ describe("verifyPoaSettlement", () => {
       tamper((r) => {
         const logs = outcome(r.near, SPENDS[2].mtBurn).outcome.logs;
         logs[0] = (logs[0] as string).replace('"amounts":["1000000"]', '"amounts":["1000001"]');
-      }).first,
+      }).reason,
     ).toMatch(/differ/);
     expect(
       tamper((r) => {
@@ -482,33 +482,35 @@ describe("verifyPoaSettlement", () => {
         const ft = outcome(r.near, SPENDS[2].ftBurn).outcome.logs;
         mt.push(mt[0] as string);
         ft.push(ft[0] as string);
-      }).first,
+      }).reason,
     ).toMatch(/2 POA withdrawal burns/);
     expect(
       tamper((r) => {
         r.nearTxHash = SPENDS[3].near;
-      }).first,
+      }).reason,
     ).toMatch(/is transaction BdN7oB76.*not 5amtgb8M/);
-    expect(tamper(() => {}, { amount: 999_999n }).first).toBe("the burn is of 1000000, not 999999");
-    expect(tamper(() => {}, { owner: "probarion.near" }).first).toMatch(/from v0.probarion.near/);
+    expect(tamper(() => {}, { amount: 999_999n }).reason).toBe(
+      "the burn is of 1000000, not 999999",
+    );
+    expect(tamper(() => {}, { owner: "probarion.near" }).reason).toMatch(/from v0.probarion.near/);
 
     // The memo address comes from the burn: a different payee fails even though the bridge record is unchanged.
     expect(tamper(() => {}, { address: `0x${"1".repeat(40)}` }).ids).toEqual([
       "memo_address",
       "destination_transfer",
     ]);
-    expect(tamper(() => {}, { address: PAYEE.toLowerCase() }).first).toMatch(
+    expect(tamper(() => {}, { address: PAYEE.toLowerCase() }).reason).toMatch(
       /by letter case alone/,
     );
 
     // The amounts.
     expect(tamper(() => {}, { maxFee: 2_399n })).toEqual({
       ids: ["amounts"],
-      first: "the fee 2400 is above 2399",
+      reason: "the fee 2400 is above 2399",
     });
   });
 
-  it("says skipped for a check whose input check failed, and never throws", () => {
+  it("says skipped for a check whose input check failed, and does not throw", () => {
     const s = verify(records(2), { asset: "base-other.omft.near" });
     expect(s.ok).toBe(false);
     expect(s.checks.map((c) => [c.id, c.ok, c.detail.startsWith("skipped: needs")])).toEqual([
@@ -525,5 +527,9 @@ describe("verifyPoaSettlement", () => {
       "nearTxHash is not a NEAR transaction hash",
     );
     expect(verify({ ...records(2), near: "x" as never }).ok).toBe(false);
+    // A JSON number amount is a caller mistake, not a mismatch.
+    expect(verify(records(2), { amount: 1_000_000 as never }).checks[0]?.detail).toBe(
+      "expect.amount is not a bigint",
+    );
   });
 });

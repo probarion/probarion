@@ -1,11 +1,11 @@
 /**
- * By hand, never in CI or a unit test: records the NEAR transactions of Probarion's two mainnet payouts to Base
+ * By hand, not in CI or a unit test: records the NEAR transactions of Probarion's two mainnet payouts to Base
  * (spends 2 and 3 of `v0.probarion.near`, 2026-11-13) into test/fixtures/poa/, with their receipt statuses, so the
  * POA withdrawal check runs on what the chain answered.
  *
  *   pnpm --filter @probarion/near record:poa
  *
- * Read-only, signs nothing, and calls two methods on two public endpoints: NEAR `tx` (wait_until FINAL) on
+ * Reads public data, signs nothing, and calls two methods on two public endpoints: NEAR `tx` (wait_until FINAL) on
  * archival-rpc.mainnet.fastnear.com, and the POA bridge's `withdrawal_status` on bridge.chaindefuser.com/rpc. The
  * bridge read is a cross-check: its records must equal the copies of the evidence answers already in
  * test/fixtures/poa (poa-status-s1.json, poa-status-s2.json), else nothing is written. `transaction.signature` is
@@ -88,7 +88,7 @@ export async function recordSpend(
     _source:
       `NEAR mainnet tx ${spend.txHash} (spend ${spend.spendId} of ${spend.sender}, a payout to Base through the POA ` +
       `bridge), read with JSON-RPC tx wait_until FINAL from ${new URL(NEAR_ARCHIVAL_RPC_URL).host} on ` +
-      `${now.toISOString()} by packages/near/scripts/record-poa.ts. Read-only, nothing signed. transaction.signature ` +
+      `${now.toISOString()} by packages/near/scripts/record-poa.ts. Reads of public data, nothing signed. transaction.signature ` +
       `dropped; everything else as answered, receipt statuses included. The POA bridge's withdrawal_status answer, ` +
       `read in the same run, equalled ${spend.evidence}.`,
     request: { url: NEAR_ARCHIVAL_RPC_URL, method: "tx", params },
@@ -121,5 +121,5 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({ wrote: files.map((f) => f.path) }));
 }
 
-// Runs only when tsx starts this file (the script test imports it without reading anything).
+// Runs when tsx starts this file, not when the script test imports it (then nothing is read).
 if (/record-poa\.ts$/.test(process.argv[1] ?? "")) await main();

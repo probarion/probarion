@@ -1,5 +1,5 @@
 {
-  "_source": "NEAR mainnet tx BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9 (spend 2 of v0.probarion.near, a payout to Base through the POA bridge), read with JSON-RPC tx wait_until FINAL from archival-rpc.mainnet.fastnear.com on 2026-11-14T05:08:08.660Z by packages/near/scripts/record-poa.ts. Read-only, nothing signed. transaction.signature dropped; everything else as answered, receipt statuses included. The POA bridge's withdrawal_status answer, read in the same run, equalled poa-status-s1.json.",
+  "_source": "NEAR mainnet tx BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9 (spend 2 of v0.probarion.near, a payout to Base through the POA bridge), read with JSON-RPC tx wait_until FINAL from archival-rpc.mainnet.fastnear.com on 2026-11-14T05:08:08.660Z by packages/near/scripts/record-poa.ts. Reads of public data, nothing signed. transaction.signature dropped; everything else as answered, receipt statuses included. The POA bridge's withdrawal_status answer, read in the same run, equalled poa-status-s1.json.",
   "request": {
     "url": "https://archival-rpc.mainnet.fastnear.com",
     "method": "tx",

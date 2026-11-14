@@ -1,6 +1,6 @@
 // Example: did a payout from NEAR Intents to a Base address settle? Reads the three public records (the NEAR
-// transaction, the POA bridge's record of it, the Base release it names) and returns one verdict. Read-only: it
-// signs nothing. In an app, import from "@probarion/near"; here the source files are imported directly.
+// transaction, the POA bridge's record of it, the Base release it names) and returns one verdict. It reads
+// public data and signs nothing. In an app, import from "@probarion/near"; here the source files are imported directly.
 //
 //   const near = httpJsonRpc("https://archival-rpc.mainnet.fastnear.com");
 //   const base = httpJsonRpc("https://mainnet.base.org");

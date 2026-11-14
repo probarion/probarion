@@ -15,7 +15,7 @@ const SOURCE = readFileSync(new URL("../scripts/record-poa.ts", import.meta.url)
 const evidence = (file: string) => readFixture<{ answer: unknown }>(`poa/${file}`).answer;
 
 describe("scripts/record-poa.ts", () => {
-  it("sends tx and withdrawal_status only, to the two public endpoints, and nothing that signs", () => {
+  it("sends tx and withdrawal_status to the two public endpoints, and nothing that signs", () => {
     expect(RECORDER_METHODS).toEqual(["tx", "withdrawal_status"]);
     // Every direct call in the script is `tx`; the bridge is read through readPoaWithdrawalStatus.
     const direct = [...SOURCE.matchAll(/\.call(?:<[^>]*>)?\(\s*"([^"]+)"/g)].map((m) => m[1]);
@@ -54,7 +54,7 @@ describe("scripts/record-poa.ts", () => {
   it("wrote the committed fixtures: the request it sent, and the answer without its signature", () => {
     for (const spend of POA_SPENDS) {
       const recorded = readFixture<RecordedTx>(`poa/${spend.file}`);
-      expect(recorded._source).toContain("Read-only, nothing signed");
+      expect(recorded._source).toContain("nothing signed");
       expect(recorded.request).toEqual({
         url: NEAR_ARCHIVAL_RPC_URL,
         method: "tx",
