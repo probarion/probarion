@@ -15,6 +15,29 @@ The software is an unaudited beta.
 
 ### Added
 
+- How far it is tested, in numbers. The README has a dated table near its top, "Tested, in numbers": as of
+  2026-11-14, the tests of every CI suite in the CI run of `ed41104` (13,450 passed, 0 failed: 13,131 in the
+  TypeScript job, 12,655 of them TypeScript and 476 JavaScript Node script tests, then 301 Rust and 18 sandbox; the
+  Playwright end-to-end tests run locally and are not counted), the vault's property tests and error-code coverage,
+  the CI checks (the reproducible code hashes, the secret scan, and the no-clone verify of the mainnet vault on
+  Node v22.23.4 and on Node v24.22.2), the eval with the model fooled in an offline run and its replay of the answers `Qwen/Qwen3.8-27B` gave on NEAR AI Cloud, the mainnet and testnet
+  records from the committed evidence and read-only view calls, the Canary rehearsals, what the claim checker covers
+  and the live checks, each row with the run, the file or the chain read it was counted at, and a link to check it.
+  The testnet chain read is committed as `docs/evidence/testnet-reads/2026-11-14.txt`: the 10 team vaults' mandates,
+  spends and anchors from view calls, and the 4 spends the contract refused on chain (2026-11-01, 2026-11-09,
+  2026-11-10 and 2026-11-12), from FastNEAR's transaction index, each read back with `tx` from archival RPC. Its rows
+  live in `apps/web/src/lib/site/tested.ts`, which also gives JUDGES.md its short block and `/usage` a card near the
+  top, "How far it is tested"; `apps/web/src/lib/site/tested.test.ts` holds the README's table to it cell by cell,
+  and the figures the repository can derive (the eval, the code hashes, the error codes, the property tests, the
+  threat model, the chain read) to their files. docs/TRACKS.md points to the table. On `/usage`, external owners,
+  Canary participants and pilots, with their columns in the tables, appear as soon as they are counted
+  (`shownSegments` in `apps/web/src/lib/usage/view.ts`); the team's counts and the mainnet record stay, and "How each
+  number is counted" says so, and that the live vault counts cover the vaults registered in the console. On
+  `/canary`, the line over the form and the scoreboard name the team's attempts as rehearsals and invite a try ("The
+  team has run 6 rehearsal attempts. Your turn: try to get paid."), an empty feed reads "Attempts appear here as they
+  come in.", and visitors' attempts get their own tiles and line as soon as one comes in. The Known gaps item on
+  outside users is removed, since `/usage` shows those counts as soon as there are any; the Canary's status row
+  states its limit as the testnet and its private ledger. The audit gap stays.
 - The record of a drill on the mainnet vault, run on 2026-11-14 between 01:06 and 01:13 UTC. Rehearsed by the team;
   a hijacked agent key could send exactly this. No USDC moved. The agent key sent a spend of 50 USDC on mandate 1,
   whose cap is 1 USDC a payment, and `v0.probarion.near` refused it on chain with `PROBARION:OverPerPayment`; the

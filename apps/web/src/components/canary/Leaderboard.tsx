@@ -38,7 +38,8 @@ function Tile({
  * The challenge's numbers: what the page can stand behind and nothing else. There is no "paid to an attacker" figure,
  * because nothing measures one; the page says what is true by construction instead (StaticCards). A scoreboard that could
  * not be read says so and shows no figure. Until an outside visitor has tried, every outside figure is a zero (the
- * techniques and the codes count outside attempts only), so the board is then the one line over the form instead.
+ * techniques and the codes count outside attempts only), so the board then shows no tile and no zero: only the one line
+ * over the form, which names the team's rehearsals and invites a try. The tiles come with the first outside attempt.
  */
 export function Scoreboard({ board }: { board: Board | null }) {
   return (
