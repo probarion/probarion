@@ -8,6 +8,7 @@ import { ArrowLabel } from "./bits";
 import { LiveCheckClient } from "./LiveCheckClient";
 import lc from "./live.module.css";
 import { LandingSection, SubHead } from "./SectionHead";
+import s from "./site.module.css";
 
 const recorded = recordedJson as unknown as RecordedFile;
 
@@ -37,7 +38,8 @@ function NoScriptAnswers() {
 
 /**
  * The live check. On its own, a landing section. `embedded`, a block of the payment section under its steps
- * (SubHead, h3), with the same anchor #try, and its panels' headings one level down.
+ * (SubHead, h3), with the same anchor #try, and its panels' headings one level down. Two columns either way: what the
+ * agent tries and the contract's answer, then the fields and the mandate as the chain has it, with the explorer link.
  */
 export function LiveCheck({ embedded = false }: { embedded?: boolean } = {}) {
   const body = (
@@ -51,7 +53,10 @@ export function LiveCheck({ embedded = false }: { embedded?: boolean } = {}) {
         codes={LIVE_CHECK.codes}
         level={embedded ? 4 : 3}
         explorer={
-          <ExternalLink className={lc.explorer} href={explorerAccountUrl("testnet", LIVE_VAULT)}>
+          <ExternalLink
+            className={`${s.link} ${lc.liveLink}`}
+            href={explorerAccountUrl("testnet", LIVE_VAULT)}
+          >
             <ArrowLabel text={LIVE_CHECK.copy.explorer} />
           </ExternalLink>
         }
