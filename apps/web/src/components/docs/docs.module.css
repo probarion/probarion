@@ -851,7 +851,7 @@ section.source code {
 .home {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 36px max(24px, env(safe-area-inset-right)) 96px max(24px, env(safe-area-inset-left));
+  padding: 24px max(24px, env(safe-area-inset-right)) 96px max(24px, env(safe-area-inset-left));
 }
 .hero {
   max-width: 820px;
@@ -928,7 +928,7 @@ section.source code {
   display: block;
 }
 .hubSearch {
-  margin-top: 26px;
+  margin-top: 20px;
 }
 .bigSearch {
   display: flex;
@@ -993,7 +993,7 @@ section.source code {
   border-color: var(--color-ink);
 }
 .doorsWrap {
-  margin-top: 40px;
+  margin-top: 28px;
 }
 .doors {
   display: grid;
