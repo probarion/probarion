@@ -11,10 +11,12 @@ import Home from "@/app/page";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { BetaStrip, BetaStripView } from "@/components/site/BetaStrip";
-import ch from "@/components/site/chain.module.css";
 import { InkBand } from "@/components/site/InkBand";
 import ig from "@/components/site/integrate.module.css";
+import { Journey } from "@/components/site/Journey";
+import { JourneyRecord } from "@/components/site/JourneyRecord";
 import j from "@/components/site/journey.module.css";
+import lc from "@/components/site/live.module.css";
 import mn from "@/components/site/mainnet.module.css";
 import pm from "@/components/site/parts.module.css";
 import { SiteFooter } from "@/components/site/SiteFooter";
@@ -26,6 +28,7 @@ import { parseVia, withVia } from "@/lib/canary/via";
 import { explorerAccountUrl, explorerTxUrl } from "@/lib/config";
 import { docsHref, findPage, PAGES } from "@/lib/docs/registry";
 import { CLI_ON_NPM, cli } from "@/lib/proof/cli";
+import { seqAnchorId } from "@/lib/proof/decisions";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import {
   ATTESTED,
@@ -33,6 +36,7 @@ import {
   BAND,
   BASE_TX,
   BOARD_LINKS,
+  BUILT_ON,
   betaStrip,
   CHAIN,
   CHECK_HINTS,
@@ -65,13 +69,12 @@ import {
   RECORDED_RESULT,
   RULES_SHOWN,
   SAMPLE_SNAPSHOT,
-  SDK_SNIPPET,
   SITE_DESCRIPTION,
   SPEND_REQUEST_FIELDS,
   STACK,
   STATUS,
-  STATUS_BOARD,
   STORY,
+  type StackRow,
   statusOf,
   TAMPER_COPY,
   TX,
@@ -218,7 +221,7 @@ describe("the ledger test", () => {
       "Model advice, when used, is signed and tied to this exact place in the ledger.",
     );
     expect(CHECK_HINTS.g).toBe(
-      "No key is registered for the vault in NEAR Intents, so only the vault contract can move its balance there.",
+      "No key is registered for the vault in NEAR Intents, so the vault contract alone can move its balance there.",
     );
     // A withdrawal names the address; it does not prove the money arrived.
     expect(CHECK_HINTS.h).not.toMatch(/\b(arriv|reach|paid out|went to)/i);
@@ -285,7 +288,7 @@ describe("what an offline run shows", () => {
     ]);
   });
 
-  it("says offline in the lede and the numbers band only beside the word snapshot", () => {
+  it("says offline in the lede and the numbers only beside the word snapshot", () => {
     const claims = [
       HERO.lede,
       SITE_DESCRIPTION,
@@ -299,7 +302,7 @@ describe("what an offline run shows", () => {
     expect(visibleText(landing())).not.toContain("without trusting us");
   });
 
-  it("says in the numbers band what a live run and an offline run each do", () => {
+  it("says in the checks' number what a live run and an offline run each do", () => {
     const checks = NUMBERS.find(({ name }) => name === "checks");
     expect(checks?.rest).toBe(
       " anyone can run. Live, they read the chain. Offline, they check a snapshot against itself, so take the snapshot yourself.",
@@ -416,22 +419,55 @@ describe("the claims about the code", () => {
     }
   });
 
-  it("makes the ink band the target of /#payee, which the Canary page links to", () => {
-    const band = renderToStaticMarkup(createElement(InkBand));
-    expect(band).toMatch(/^<section[^>]*\sid="payee"/);
-    expect([...band.matchAll(/\sid="payee"/g)]).toHaveLength(1);
-    expect(band).toContain(BAND.gone);
-    // The landing page has no other element with that id.
-    expect([...landing().matchAll(/\sid="payee"/g)]).toHaveLength(1);
+  it("makes the payee panel the target of /#payee, which the Canary page links to, at the end of the problem", () => {
+    const panel = renderToStaticMarkup(createElement(InkBand));
+    // A visible block under the problem's h2, opened by its own h3: not a section of its own, and not inside a fold.
+    expect(panel).toMatch(new RegExp(`^<div class="${site.payeePanel}" id="payee"><div[^>]*><h3`));
+    expect([...panel.matchAll(/\sid="payee"/g)]).toHaveLength(1);
+    expect(panel).toMatch(new RegExp(`<h3 class="${site.payeeTitle}">${BAND.title}</h3>`));
+    expect(panel).toContain(BAND.gone);
+    expect(panel).not.toContain("<details");
+    // The landing page has no other element with that id. It sits in the problem, after the pull line and its link,
+    // before the next section opens.
+    const html = landing();
+    expect([...html.matchAll(/\sid="payee"/g)]).toHaveLength(1);
+    const problem = html.indexOf('id="problem"');
+    const at = html.indexOf('id="payee"');
+    expect(at).toBeGreaterThan(html.indexOf(`>${PROBLEM.pull.link.label} `, problem));
+    expect(html.indexOf(`>${PROBLEM.pull.link.label} `, problem)).toBeGreaterThan(problem);
+    expect(at).toBeLessThan(html.indexOf('id="payment"'));
+    expect(text(SRC, "lib", "canary", "copy.ts")).toContain('href: "/#payee"');
   });
 
-  it("says in the ink band that a forged invoice cannot add a payee either (audit P1-5)", () => {
+  it("says in the payee panel that a forged invoice cannot add a payee either (audit P1-5)", () => {
     expect(BAND.body).toBe(
       "A forged invoice or a hijacked prompt can ask to pay anyone. `spend` has no field to put an address in, so the money goes to a payee you signed. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate.",
     );
-    expect(visibleText(renderToStaticMarkup(createElement(InkBand)))).toContain(
-      "so the money goes to a payee you signed.",
+    const panel = renderToStaticMarkup(createElement(InkBand));
+    expect(visibleText(panel)).toContain("so the money goes to a payee you signed.");
+    // The struct: SpendRequest's fields, then recipient struck out and marked as not there.
+    const struct =
+      /<section[^>]*aria-label="The SpendRequest fields"[^>]*>([\s\S]*?)<\/section>/.exec(
+        panel,
+      )?.[1] ?? "";
+    expect(visibleText(struct).trim()).toBe(
+      `${BAND.structName} { ${SPEND_REQUEST_FIELDS.join(" ")} ${BAND.gone} ${BAND.goneNote} }`,
     );
+    expect(struct).toContain(`<span class="${site.structGone}">${BAND.gone}</span>`);
+  });
+
+  it("counts in the payee panel what the problem says, three numerals, and leaves the checks to the ledger test", () => {
+    const panel = renderToStaticMarkup(createElement(InkBand));
+    const list = /<ul class="[^"]*"[^>]*>([\s\S]*?)<\/ul>/.exec(panel)?.[1] ?? "";
+    const items = [...list.matchAll(/<li><b>([^<]*)<\/b><span[^>]*>([\s\S]*?)<\/span><\/li>/g)].map(
+      (m) => `${m[1]} ${textContent(m[2] ?? "")}`,
+    );
+    expect(items).toHaveLength(3);
+    const shown = NUMBERS.slice(0, 3);
+    expect(shown.map((n) => n.name)).toEqual(["full-access keys", "method", "recipient arguments"]);
+    expect(items).toEqual(shown.map((n) => `${n.value} ${n.name}${n.rest.replace(/`/g, "")}`));
+    // The verifier's checks are no numeral here: the ledger test (#verify) runs and counts them.
+    expect(visibleText(landing())).not.toContain("checks anyone can run");
   });
 
   it("shows mandate fields that exist on a mandate", () => {
@@ -558,7 +594,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     );
   });
 
-  it("the numbers band", () => {
+  it("the payee panel's numerals, and the count of checks", () => {
     expect(number("checks")).toBe(String(Object.keys(CHECK_LABELS).length));
     expect(number("full-access keys")).toBe("0");
     expect(deployment.vault_v0.locked).toBe(true);
@@ -746,7 +782,8 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
   });
 
   it("styles a check that was not run or not shown exactly as one that passed", () => {
-    const html = renderToStaticMarkup(createElement(Home));
+    // The journey's record, which the landing no longer shows (the docs carry the table): its own render.
+    const html = renderToStaticMarkup(createElement(JourneyRecord));
     // One Outcome each (bits.tsx), its mark and word in the same classes: only the mark's tone differs.
     const tone = { Pass: pm.outPaid, "Not run": pm.outNone, "Not shown": pm.outNone } as const;
     for (const word of ["Pass", "Not run", "Not shown"] as const) {
@@ -966,34 +1003,60 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       `${p?.label} ${p?.state} ${p?.big} Vault ${p?.vault} Payee ${p?.payee} Arrived ${p?.arrived} Model ${p?.model} Mainnet transaction ${p?.tx.label} ↗ (opens in a new tab) ${p?.read.label} →`,
     );
     expect(HERO.txLabel).toBe("Testnet transaction");
-    // Under the mainnet card: its three steps, then the TEE line.
-    const s2 =
-      /<ol[^>]*aria-label="What happened on mainnet"[^>]*>([\s\S]*?)<\/ol>/.exec(landing())?.[1] ??
-      "";
-    expect([...s2.matchAll(/<li>([^<]*)<\/li>/g)].map((m) => textContent(m[1] ?? ""))).toEqual(
-      p?.steps,
-    );
+    // The mainnet card's foot, inside the card, after its link: the online check of the TEE evidence, and its limit.
     expect(out).toContain(
-      `${p?.steps[2]} Its TEE evidence was checked against Intel and NVIDIA ↗ (opens in a new tab) on 2026-11-13`,
+      `${p?.read.label} → Its TEE evidence was checked against Intel and NVIDIA ↗ (opens in a new tab) on 2026-11-13`,
     );
     expect(out).toContain(
       "2026-11-13 . The TEE image is not pinned, so this does not show which model image ran.",
     );
+    const html = landing();
+    const card =
+      new RegExp(`<article[^>]*aria-label="${HERO.s2.aria}"[^>]*>([\\s\\S]*?)</article>`).exec(
+        html,
+      )?.[1] ?? "";
+    expect(visibleText(card)).toContain("The TEE image is not pinned");
     const r = HERO.refused;
     expect(out).toContain(
       `${r.label} ${r.state} ${r.big} Vault ${r.vault} Limit ${r.limit} Contract ${r.code} Paid ${r.paid} ${HERO.txLabel} ${r.tx.label} ↗ (opens in a new tab) ${r.tryIt.label}`,
     );
-    // The two captions: what both cards are, then the Canary's three steps, numbered by the list.
-    expect(out).toContain(`${HERO.both.lead}${HERO.both.rest}`);
-    const list = new RegExp(
-      `<ol[^>]*aria-label="${HERO.canarySteps.label}"[^>]*>([\\s\\S]*?)</ol>`,
-    );
-    const steps = list.exec(landing())?.[1] ?? "";
-    expect([...steps.matchAll(/<li>([^<]*)<\/li>/g)].map((m) => textContent(m[1] ?? ""))).toEqual(
-      HERO.canarySteps.items,
-    );
+    // One short caption over both cards. The step lists under them are left to the mainnet section, the docs and the
+    // Canary page.
+    expect(out).toContain(`${HERO.both.lead} ${p?.label}`);
+    expect(out).not.toContain(HERO.both.rest.trim());
+    expect(html).not.toContain(`aria-label="${p?.stepsLabel}"`);
+    expect(html).not.toContain(`aria-label="${HERO.canarySteps.label}"`);
+    for (const step of [...(p?.steps ?? []), ...HERO.canarySteps.items])
+      expect(out).not.toContain(step);
     expect(HERO.refused.state).toBe("Blocked");
     expect(out).not.toContain("Mandate 999 Refused");
+  });
+
+  it("the hero's links as touch targets: 44px for the transactions, the cards' links and the quiet line", () => {
+    const site = text(SRC, "components", "site", "site.module.css");
+    const hero = text(SRC, "components", "site", "hero.module.css");
+    const rule = (css: string, selector: string) => {
+      const at = css.indexOf(`\n${selector} {`);
+      expect(at, selector).toBeGreaterThan(-1);
+      return css.slice(at, css.indexOf("}", at));
+    };
+    for (const selector of [".cardHash", ".cardLink"]) {
+      expect(rule(site, selector), selector).toContain("min-height: 44px;");
+      expect(rule(site, selector), selector).toContain("display: inline-flex;");
+    }
+    // The transaction's target takes one line of its row: what it adds above and below, its margin takes back.
+    expect(rule(site, ".cardHash")).toContain("margin-block: -11px;");
+    // The quiet line's links: 15px at 1.5, and 11px above and below, is 44.5px.
+    const quiet = rule(hero, ".quietLink");
+    expect(quiet).toContain("padding-block: 11px;");
+    expect(quiet).toContain("font-size: 15px;");
+    expect(quiet).toContain("line-height: 1.5;");
+    expect(15 * 1.5 + 2 * 11).toBeGreaterThanOrEqual(44);
+    // The mainnet card takes about 7/12 of the pair, the Canary card the rest.
+    const pair = hero.slice(hero.indexOf("@media (min-width: 621px)"));
+    expect(pair.slice(0, pair.indexOf("\n}"))).toContain(
+      "grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);",
+    );
   });
 
   it("the README banner shows the agent key's direct refusal of 2026-11-09", () => {
@@ -1039,7 +1102,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(HERO.mainnet.rows.map((r) => r.tx)).toEqual([MAINNET_TX.payment, MAINNET_TX.refusal]);
   });
 
-  it("the hero's two mainnet transactions are the mainnet vault's payment and refusal, on the mainnet explorer", () => {
+  it("the mainnet vault's payment and refusal of 2026-11-11 are on the mainnet explorer, in #mainnet and not the hero", () => {
     const mainnet = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json"));
     const record = JSON.stringify(mainnet);
     for (const t of [MAINNET_TX.payment, MAINNET_TX.refusal]) {
@@ -1052,16 +1115,14 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       expect(t.hash.endsWith(tail ?? "?")).toBe(true);
     }
     expect(record).toContain("v0.probarion.near");
-    // One row each in the hero's mainnet record; the audience line under it links the developers' section only.
-    expect(HERO.mainnet.rows.map((r) => r.tx.url)).toEqual([
-      MAINNET_TX.payment.url,
-      MAINNET_TX.refusal.url,
-    ]);
-    const links = HERO.fineprint.filter((p) => typeof p !== "string");
-    expect(links.map((l) => l.href)).toEqual(["#integrate"]);
+    // The hero shows two cards and no record: the mainnet section tells these two transactions.
     const html = landing();
-    expect(html).toContain(`href="${MAINNET_TX.payment.url}"`);
-    expect(html).toContain(`href="${MAINNET_TX.refusal.url}"`);
+    const hero = html.slice(0, html.indexOf('id="problem"'));
+    const mainnetAt = html.indexOf('id="mainnet"');
+    for (const t of [MAINNET_TX.payment, MAINNET_TX.refusal]) {
+      expect(hero).not.toContain(`href="${t.url}"`);
+      expect(html.indexOf(`href="${t.url}"`, mainnetAt)).toBeGreaterThan(mainnetAt);
+    }
   });
 
   it("the license, in a footer note that does not ask for small amounts of test tokens (audit P1-10)", () => {
@@ -1273,8 +1334,9 @@ describe("the payment journey", () => {
 
   it("says a held spend waits for an approver's own wallet, which the agent's key can never be (audit P1-6)", () => {
     expect(step(4).body).toBe(
-      "Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. Above the approval limit, the spend waits for an approver's own wallet. The agent's key cannot approve anything, not even its own payment.",
+      "The agent's key calls `spend`. The vault refuses a payment outside its mandate. Above the approval limit the spend waits for an approver's own wallet, and the agent's key cannot approve anything.",
     );
+    expect(visibleText(landing())).toContain("the agent's key cannot approve anything.");
     // approve and reject take an approver's account and 1 yoctoNEAR, which a function-call key cannot attach.
     const held = text(ROOT, "contracts", "vault", "src", "held.rs");
     for (const method of ["approve", "reject"]) {
@@ -1315,10 +1377,10 @@ describe("the payment journey", () => {
 
   it("marks the ledger as what the SDK does, and says the demo vault's ledger holds a refusal too", () => {
     expect(prose).toContain("without the SDK, a model or a ledger");
-    expect(step(3).body).toContain("The SDK signs the decision into the ledger");
-    // The four invoices just below step 5 show it, so step 3 carries no note (audit P1-10).
+    expect(step(3).body).toContain("The SDK signs each decision into the ledger, refusals too.");
+    // The demo vault's invoices in the docs show it, so step 3 carries no note (audit P1-10).
     expect(step(3).note).toBeUndefined();
-    expect(visibleText(landing())).toContain("The SDK signs the decision into the ledger");
+    expect(visibleText(landing())).toContain("The SDK signs each decision into the ledger");
     // Check d ties each spend to its decision; the refusal is a decision with no spend (test/demo-vault.test.ts).
     const demo = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")).demo_vault;
     expect(demo.spends).toHaveLength(2);
@@ -1350,7 +1412,8 @@ describe("the payment journey", () => {
     // PowerShell 5.1 reads `curl` as Invoke-WebRequest, so the panel says to type curl.exe there.
     if (onNpm) expect(step(5).panel[0]).toEqual({ note: VERIFY_NOTE });
     expect(VERIFY_NOTE).toContain("type curl.exe for curl");
-    const html = renderToStaticMarkup(createElement(Home));
+    // Step 5's panel, in the full journey: the landing's compact one stops at step 4.
+    const html = renderToStaticMarkup(createElement(Journey));
     for (const command of commands) expect(html).toContain(`>$ </span>${command}`);
     const css = text(WEB, "src", "components", "site", "site.module.css");
     expect(css).toMatch(/\.prompt {[^}]*user-select: none/);
@@ -1358,7 +1421,9 @@ describe("the payment journey", () => {
 
   it("sets what is true on testnet apart as a labelled note, on steps 2 and 5 only, in short lines (audit P1-10)", () => {
     expect(JOURNEY.steps.filter((s) => s.note !== undefined).map((s) => s.n)).toEqual([2, 5]);
-    const html = renderToStaticMarkup(createElement(Home));
+    // The full journey draws the notes; the landing's compact one has none (the docs carry them).
+    const html = renderToStaticMarkup(createElement(Journey));
+    expect(renderToStaticMarkup(createElement(Home))).not.toContain(`class="${j.noteLabel}"`);
     // As a browser reads it: a link's new-tab arrow, and its words for a screen reader, left out.
     const out = textContent(html)
       .replace(/↗ \(opens in a new tab\)/g, "")
@@ -1745,7 +1810,7 @@ describe("the live check", () => {
     expect(client).toContain('className={shown.kind === "loading" ? lc.busy : undefined}');
     const css = text(SRC, "components", "site", "live.module.css");
     const busy = /\.busy \.verdict,\s*\.busy \.why \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(busy).toContain("color: var(--color-band-mute)");
+    expect(busy).toContain("color: var(--color-mute)");
     expect(busy).not.toContain("opacity");
     // The room is counted in lines of the site's line-height, which the source line keeps. At 961px to 1200px the
     // answer column is narrow and the line, with its raw answer in mono, takes three; at 360px to 620px, four; below 360px,
@@ -1769,7 +1834,7 @@ describe("the live check", () => {
     );
   });
 
-  it("reads the answer top down: its head with the explorer link, the verdict, the source, the request, the method", () => {
+  it("reads the answer top down: its title, the verdict, the source, the request and the method, then the fields, the mandate and the explorer link", () => {
     const html = renderToStaticMarkup(createElement(Home));
     const answer = html.slice(html.indexOf("The contract&#x27;s answer"));
     const at = (needle: string) => {
@@ -1778,33 +1843,114 @@ describe("the live check", () => {
       return i;
     };
     const order = [
-      at("https://testnet.nearblocks.io/address/v0.probarion.testnet"),
       at('aria-live="polite"'),
       at("Recorded answer from "),
       at('id="live-request-cap"'),
       at("check_spend({"),
       at("<dt>Method</dt>"),
+      at("<select"),
+      at("Mandate 1, as the chain has it"),
+      at("https://testnet.nearblocks.io/address/v0.probarion.testnet"),
     ];
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    // One explorer link in the panel, with its new-tab words for a screen reader.
-    const panel = answer.slice(0, at("<dt>Method</dt>"));
-    expect(panel.match(/nearblocks\.io/g)).toHaveLength(1);
-    expect(visibleText(panel)).toContain(`${LIVE_CHECK.copy.explorer}`);
-    expect(panel).toContain("(opens in a new tab)");
+    // One explorer link in the live check, with its new-tab words for a screen reader, beside the Canary's.
+    const live = answer.slice(0, at('id="integrate"'));
+    expect(live.match(/nearblocks\.io/g)).toHaveLength(1);
+    const links = live.slice(at("Mandate 1, as the chain has it"));
+    expect(visibleText(links)).toContain(LIVE_CHECK.copy.explorer);
+    expect(links).toContain("(opens in a new tab)");
+    expect(links).toContain(
+      `href="${LIVE_CHECK.copy.injectedCanaryLink.href.replace(/&/g, "&amp;")}"`,
+    );
     // The raw answer is code, with a break offered after its commas.
     const source = /Recorded answer from [^<]*<code>([\s\S]*?)<\/code>/.exec(answer)?.[1] ?? "";
     expect(source).toContain("<wbr/>");
     expect(source.replace(/<wbr\/>/g, "")).toContain("&quot;ok&quot;:true");
   });
 
-  it("names the request panel by its visible caption, once", () => {
+  it("names the request panel by its fold's visible summary, once", () => {
     const html = renderToStaticMarkup(createElement(Home));
-    const cap = /<p id="live-request-cap"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
-    expect(visibleText(cap).trim()).toBe(LIVE_CHECK.copy.requestLabel.replace(/`/g, ""));
-    expect(cap).toContain("<code>check_spend</code>");
+    const cap = /<summary id="live-request-cap"[^>]*>([\s\S]*?)<\/summary>/.exec(html)?.[1] ?? "";
+    expect(LIVE_CHECK.copy.requestLabel).toBe("The request it sent");
+    expect(visibleText(cap).trim()).toBe(LIVE_CHECK.copy.requestLabel);
     const scroller = /<section[^>]*aria-labelledby="live-request-cap"[^>]*>/.exec(html)?.[0] ?? "";
     expect(scroller).not.toBe("");
     expect(scroller).not.toContain("aria-label=");
+  });
+
+  it("folds the request it sent, and only that: the scenarios, the fields, the key toggle and the mandate stay open", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    const live = html.slice(html.indexOf('id="try"'), html.indexOf('id="integrate"'));
+    // One native details, closed, under a summary of 44px or more, so its text stays in the page with no JavaScript.
+    const folds = [...live.matchAll(/<details[^>]*>[\s\S]*?<\/details>/g)].map((m) => m[0]);
+    expect(folds).toHaveLength(1);
+    const fold = folds[0] ?? "";
+    expect(fold).not.toMatch(/^<details[^>]*\sopen/);
+    expect(fold).toContain(`<summary id="live-request-cap" class="${lc.foldSummary}">`);
+    expect(fold).toContain("check_spend({");
+    expect(fold).toContain("<dt>Method</dt>");
+    const css = text(SRC, "components", "site", "live.module.css");
+    const summary = /\n\.foldSummary \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(Number(/min-height: (\d+)px/.exec(summary)?.[1])).toBeGreaterThanOrEqual(44);
+    expect(css).toMatch(/\.fold\[open\] > \.foldSummary::after \{/);
+    // Everything else is outside it: what e2e/landing.spec.ts and the README's steps use (the select, the amount, the
+    // key, the mandate's heading), the verdict and its source, the scenarios and the links.
+    const outside = live.replace(fold, "");
+    for (const needle of [
+      "<select",
+      'id="live-amount"',
+      `aria-label="${LIVE_CHECK.copy.amountSlider}"`,
+      'aria-labelledby="live-key-label"',
+      "Mandate 1, as the chain has it",
+      'aria-live="polite"',
+      "Recorded answer from ",
+      ...LIVE_CHECK.scenarios.map((x) => x.title),
+    ]) {
+      expect(outside, needle).toContain(needle.replace(/'/g, "&#x27;"));
+    }
+    expect(visibleText(outside)).toContain(LIVE_CHECK.copy.explorer);
+    expect(visibleText(outside)).toContain(LIVE_CHECK.copy.injectedCanaryLink.label);
+    // The signing key is a toggle of two pressed buttons, the agent's key pressed at rest; the mandate is the one select.
+    expect(live.match(/<select/g)).toHaveLength(1);
+    const keys =
+      /<fieldset class="[^"]*" aria-labelledby="live-key-label">([\s\S]*?)<\/fieldset>/.exec(
+        live,
+      )?.[1] ?? "";
+    const pressed = [
+      ...keys.matchAll(/<button[^>]*aria-pressed="(true|false)"[^>]*>([^<]*)<\/button>/g),
+    ];
+    expect(pressed.map((m) => [(m[2] ?? "").replace(/&#x27;/g, "'"), m[1]])).toEqual([
+      [LIVE_CHECK.copy.keyAgent, "true"],
+      [LIVE_CHECK.copy.keyOther, "false"],
+    ]);
+  });
+
+  it("colours the answer by its tone with the page's pairs, and settles a live answer into place only with motion allowed", () => {
+    const css = text(SRC, "components", "site", "live.module.css");
+    const rule = (sel: string) => new RegExp(`\\n\\${sel} \\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+    for (const [sel, fg, bg] of [
+      [".pay", "ok", "ok-bg"],
+      [".refuse", "bad", "bad-bg"],
+      [".hold", "wait", "wait-bg"],
+      [".none", "plan", "plan-bg"],
+    ] as const) {
+      expect(rule(sel), sel).toContain(`color: var(--color-${fg});`);
+      expect(rule(sel), sel).toContain(`background: var(--color-${bg});`);
+    }
+    // The recorded answer the page opens with is drawn at rest, in the allowed tone.
+    const html = renderToStaticMarkup(createElement(Home));
+    expect(html).toContain(`<div class="${lc.answer} ${lc.pay}">`);
+    expect(html).not.toContain(lc.settle);
+    // The settle moves the line and does not hide it, and it runs only under no-preference.
+    const motion = css.slice(css.indexOf("@media (prefers-reduced-motion: no-preference)"));
+    expect(motion).toMatch(
+      /^@media \(prefers-reduced-motion: no-preference\) \{\s*\.settle \{\s*animation: settle /,
+    );
+    const frames = /@keyframes settle \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
+    expect(frames).toContain("transform: translateY(");
+    expect(frames).not.toContain("opacity");
+    const client = text(SRC, "components", "site", "LiveCheckClient.tsx");
+    expect(client).toContain('const settles = shown.kind === "answer" && !shown.answer.recorded;');
   });
 
   it("marks the verdict with the journey's shape for its outcome, in its own colour and hidden from a screen reader", () => {
@@ -1901,7 +2047,6 @@ describe("the live check", () => {
 describe("the problem, the comparison and the integrate section", () => {
   const prose = README.replace(/\s+/g, " ");
   const sdkReadme = text(ROOT, "packages", "sdk", "README.md");
-  const squash = (s: string) => s.replace(/\s+/g, "");
 
   it("leads the hero with the benefit and sends the first button to the live check", () => {
     expect(HERO.lede.startsWith("Give your AI agent a budget, not your wallet.")).toBe(true);
@@ -1915,8 +2060,14 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(verify?.[0]).toBeDefined();
     expect(verify?.[0]).not.toContain('target="_blank"');
     expect(STORY.proof.href).toBe("/proof/demo.vaults.probarion.testnet");
-    // The developers' way in stays one click from the hero, in the line under the buttons.
-    expect(html).toMatch(/href="#integrate"[^>]*>developers</);
+    // The quiet line under the two buttons: that proof page, then the demo video in a new tab, and nothing else.
+    const quiet = /<p class="[^"]*quiet[^"]*">([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
+    expect(hrefs(quiet)).toEqual([STORY.proof.href, HERO.demo.href]);
+    expect(spoken(quiet)).toBe(`${HERO.verify} ${HERO.demo.label}`);
+    // The hero's buttons are the two; the use cases are one scroll down the page, not a link in the hero.
+    const hero = html.slice(0, html.indexOf('id="problem"'));
+    expect(hero.split(`class="${site.btn} `).length - 1).toBe(2);
+    expect(hero).not.toContain('href="#integrate"');
   });
 
   it("reads the two headings as sentences, with a space between the halves", () => {
@@ -1931,7 +2082,7 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(closing).toBe(`${CLOSING.line1} ${CLOSING.line2}`);
   });
 
-  it("says in the problem's 'with' column only what the numbers band and the README say", () => {
+  it("says in the problem's 'with' column only what the payee panel's numerals and the README say", () => {
     expect(PROBLEM.title).toBe("Giving an AI agent a wallet means trusting a prompt with money.");
     expect(PROBLEM.with[0]).toContain("one method, `spend`");
     expect(NUMBERS.find((n) => n.name === "method")?.value).toBe("1");
@@ -1945,9 +2096,6 @@ describe("the problem, the comparison and the integrate section", () => {
     const rows = STATUS.rows.map((r) => r.row);
     for (const r of COMPARE.rows) expect(rows, r.question).toContain(r.status);
     for (const c of INTEGRATE.cards) expect(rows, c.title).toContain(c.status);
-    for (const w of INTEGRATE.who) {
-      for (const r of w.runs) expect(rows, `${w.title}, ${r.network}`).toContain(r.status);
-    }
   });
 
   it("gives the console card the pill of what was tried on testnet, and names only that (audit P1-10)", () => {
@@ -1982,30 +2130,6 @@ describe("the problem, the comparison and the integrate section", () => {
     );
   });
 
-  it("gives the comparison table its roles even where CSS turns it into blocks", () => {
-    const html = renderToStaticMarkup(createElement(Home));
-    const table =
-      /<table[^>]*aria-labelledby="compare-title"[\s\S]*?<\/table>/.exec(html)?.[0] ?? "";
-    expect(table).toContain('role="table"');
-    expect(table).toContain('role="columnheader"');
-    expect(table).toContain('role="rowheader"');
-    expect(table).toContain('role="cell"');
-    // The header row, one label row per group, and the rows.
-    expect(table.match(/<tr[^>]*role="row"/g)?.length).toBe(
-      COMPARE.rows.length + 1 + COMPARE.groups.length,
-    );
-    expect(table.match(/<tr(?![^>]*role="row")/g)).toBeNull();
-    // Each group opens with a label that spans the four columns and heads its rows.
-    expect(COMPARE.head.length).toBe(4);
-    const labels = [...table.matchAll(/<th[^>]*scope="rowgroup"[^>]*>([^<]*)<\/th>/g)];
-    expect(labels.map((m) => m[1])).toEqual(COMPARE.groups.map((g) => g.label));
-    for (const m of labels) {
-      expect(m[0]).toMatch(/\scolspan="4"/i);
-      expect(m[0]).toContain('role="rowheader"');
-    }
-    expect(table.match(/<tbody[^>]*role="rowgroup"/g)?.length).toBe(COMPARE.groups.length);
-  });
-
   it("groups the comparison's rows in order: every group has rows, next to each other, and every row a known group", () => {
     const ids = COMPARE.groups.map((g) => g.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -2017,17 +2141,14 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(runs).toEqual(ids);
   });
 
-  it("shows, in every row of the comparison, the pill of its status row and that row's name", () => {
-    const html = renderToStaticMarkup(createElement(Home));
-    const table =
-      /<table[^>]*aria-labelledby="compare-title"[\s\S]*?<\/table>/.exec(html)?.[0] ?? "";
-    const rows = table.split("<tr").slice(1).map(textContent);
+  it("links, in every row of the comparison in the docs, the status row it stands on", () => {
+    // The landing no longer draws the comparison: its rows are a table in What is Probarion.
+    const doc = text(WEB, "content", "docs", "start", "what-is-probarion.mdx").split("\n");
     for (const r of COMPARE.rows) {
       const st = statusOf(r.status);
-      const row = rows.find((t) => t.includes(r.question));
+      const row = doc.find((l) => l.startsWith(`| ${r.question} |`));
       expect(row, r.question).toBeDefined();
-      expect(row, r.question).toContain(st.pill);
-      expect(row, r.question).toContain(st.row);
+      expect(row, r.question).toContain(`(/docs/start/what-works-today#${st.id})`);
       expect(st.row).toBe(r.status);
     }
   });
@@ -2036,36 +2157,16 @@ describe("the problem, the comparison and the integrate section", () => {
     for (const r of COMPARE.rows) expect(r.diy).not.toMatch(/[A-Z][a-z]+[A-Z]|\.(com|io|xyz)\b/);
   });
 
-  it("shows SDK code that the SDK README has, line by line", () => {
-    const readme = squash(sdkReadme);
-    const SHORTENED: Record<string, string> = {
-      'import{Probarion}from"@probarion/sdk";':
-        'import { Probarion, hashInvoice } from "@probarion/sdk";',
-      "model:null,": "`model: null`",
-      "facts,": "facts: {",
-    };
-    const lines = SDK_SNIPPET.split("\n")
-      .map((l) => squash(l.replace(/\s\/\/.*$/, "")))
-      .filter((l) => l !== "" && !l.startsWith("//"));
-    expect(lines.length).toBeGreaterThan(8);
-    for (const l of lines) {
-      const backing = SHORTENED[l];
-      if (backing === undefined) expect(readme, l).toContain(l);
-      else expect(sdkReadme, l).toContain(backing);
-    }
-  });
-
-  it("lists the outcome statuses the SDK README lists", () => {
-    const block = sdkReadme.slice(sdkReadme.indexOf("`outcome.status` is one of:"));
-    const listed = [...block.slice(0, block.indexOf("```")).matchAll(/^- `(\w+)`:/gm)].map(
-      (m) => m[1],
-    );
-    expect([...INTEGRATE.statuses]).toEqual(listed);
-  });
-
-  it("is reachable from the hero, and links the docs pages that start each part", () => {
+  const integrateHtml = () => {
     const html = renderToStaticMarkup(createElement(Home));
-    for (const id of ["compare", "integrate"]) expect(html).toContain(`id="${id}"`);
+    // From the section to the next one, mainnet (the order of the spec).
+    const [start, end] = [html.indexOf('id="integrate"'), html.indexOf('id="mainnet"')];
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    return html.slice(start, end);
+  };
+
+  it("links the docs pages of the ways in, in this tab, and the MCP server's README in a new one", () => {
     expect(INTEGRATE.cards.map((c) => c.link)).toEqual([
       { route: "/docs/start/developer-quickstart", label: "Developer quickstart" },
       { route: "/docs/build/install", label: "Install" },
@@ -2073,36 +2174,61 @@ describe("the problem, the comparison and the integrate section", () => {
       { href: `${LINKS.github}/blob/main/packages/mcp/README.md`, label: "MCP server README" },
     ]);
     expect(existsSync(join(ROOT, "packages", "mcp", "README.md"))).toBe(true);
-    expect(INTEGRATE.statusesLink).toEqual({
-      route: "/docs/build/spend-outcomes",
-      label: "What each status means",
-    });
     // Each is a docs page, linked in the app (RouteLink), not as an external link.
-    const integrate = html.slice(html.indexOf('id="integrate"'));
-    for (const route of [
-      "/docs/start/developer-quickstart",
-      "/docs/build/install",
-      "/docs/build/spend-outcomes",
-    ]) {
+    const integrate = integrateHtml();
+    for (const route of ["/docs/start/developer-quickstart", "/docs/build/install"]) {
       expect(findPage(route.slice("/docs/".length)), route).toBeDefined();
       const link = new RegExp(`<a[^>]*href="${route}"[^>]*>`).exec(integrate)?.[0] ?? "";
       expect(link, route).not.toBe("");
       expect(link, route).not.toContain('target="_blank"');
     }
-    expect(integrate).toMatch(/href="\/docs\/build\/spend-outcomes"[^>]*>What each status means</);
+    expect(integrate).toMatch(
+      new RegExp(`<a[^>]*href="${LINKS.github}/blob/main/packages/mcp/README.md" target="_blank"`),
+    );
   });
 
-  const integrateHtml = () => {
-    const html = renderToStaticMarkup(createElement(Home));
-    // From the section to the next one, the payee section (the order of the spec).
-    return html.slice(html.indexOf('id="integrate"'), html.indexOf('id="payee"'));
-  };
-
-  it("titles the integrate section with what the developer keeps and what the vault holds", () => {
+  it("titles the use cases with what the developer keeps and what the vault holds, and says how to plug in", () => {
     expect(INTEGRATE.title).toBe("Your agent keeps its brain. Your vault holds the money.");
     expect(INTEGRATE.sub).toContain("You keep your model and your prompts.");
     expect(INTEGRATE.sub).toContain("a key that can call one method, `spend`");
-    expect(integrateHtml()).toContain(`>${INTEGRATE.title}</h2>`);
+    const html = integrateHtml();
+    expect(html).toContain(`>${INTEGRATE.title}</h2>`);
+    // The head's lede is the uses'; the plug-in line is said with the ways in, under their heading.
+    expect(textContent(html)).toContain(INTEGRATE.lede);
+    const ways = html.slice(html.indexOf(`>${INTEGRATE.waysTitle}</h3>`));
+    expect(textContent(ways)).toContain(INTEGRATE.sub.replace(/`/g, ""));
+  });
+
+  it("gives the SDK README's own install line under the ways in, with a copy button and the quickstart", () => {
+    const { command, copyLabel, link } = INTEGRATE.install;
+    expect(command).toBe("npm install @probarion/sdk @probarion/core");
+    // The SDK README's install block, and the README's install section, say the same line.
+    expect(sdkReadme).toMatch(new RegExp(`^${command}$`, "m"));
+    expect(README).toContain(`${command}   # the SDK for your agent`);
+    expect(JSON.parse(text(ROOT, "packages", "sdk", "package.json")).name).toBe("@probarion/sdk");
+    expect(JSON.parse(text(ROOT, "packages", "core", "package.json")).name).toBe("@probarion/core");
+    const html = integrateHtml();
+    const at = html.indexOf(`class="${ig.install}"`);
+    expect(at).toBeGreaterThan(html.indexOf(`>${INTEGRATE.waysTitle}</h3>`));
+    const install = html.slice(at);
+    // One mono line, its "$ " hidden from a screen reader, and the copy button named for what it copies.
+    expect(install).toContain(
+      `<code><span class="${ig.prompt}" aria-hidden="true">$ </span>${command}</code>`,
+    );
+    expect(copyLabel.startsWith("Copy")).toBe(true);
+    expect(install).toMatch(
+      new RegExp(`<button type="button" class="${ig.copy}" aria-label="${copyLabel}" hidden="">`),
+    );
+    expect([link.route, link.label]).toEqual([
+      "/docs/start/developer-quickstart",
+      "Developer quickstart",
+    ]);
+    expect(findPage(link.route.slice("/docs/".length))).toBeDefined();
+    expect(install).toMatch(new RegExp(`<a[^>]*href="${link.route}"[^>]*>${link.label}`));
+    // The SDK code, the addresses and the outcome statuses are the docs' now: no code box, no explorer account.
+    expect(html).not.toContain("<pre");
+    expect(html).not.toContain("nearblocks.io/address/");
+    expect(html).not.toContain("refused_by_contract");
   });
 
   /** Text as a reader gets it: the markup's entities decoded. */
@@ -2112,41 +2238,45 @@ describe("the problem, the comparison and the integrate section", () => {
       .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<");
 
-  it("keeps its headings in order: an h3 per part, an h4 per card, reference block and use", () => {
+  it("keeps its headings in order: an h3 per use, the ways' h3, an h4 per way", () => {
     const html = integrateHtml();
     const heads = [...html.matchAll(/<h([2-6])[^>]*>([\s\S]*?)<\/h\1>/g)].map(
       (x) => `${x[1]} ${decoded(x[2] ?? "")}`,
     );
     expect(heads).toEqual([
       `2 ${INTEGRATE.title}`,
-      `3 ${INTEGRATE.parts.ways}`,
+      ...INTEGRATE.who.map((w) => `3 ${w.title}`),
+      `3 ${INTEGRATE.waysTitle}`,
       ...INTEGRATE.cards.map((c) => `4 ${c.title}`),
-      `3 ${INTEGRATE.parts.code}`,
-      `4 ${INTEGRATE.addresses.title}`,
-      `4 ${INTEGRATE.statusesTitle}`,
-      `4 ${INTEGRATE.docs.title}`,
-      `3 ${INTEGRATE.parts.uses}`,
-      ...INTEGRATE.who.map((w) => `4 ${w.title}`),
     ]);
-    expect(INTEGRATE.parts).toEqual({
-      ways: "Four ways in",
-      code: "The SDK in one call",
-      codeNote: "The quick start of the SDK README, shortened.",
-      uses: "Three uses, with their evidence",
-    });
-    expect(sdkReadme).toContain("## Quick start");
+    expect(INTEGRATE.waysTitle).toBe("Four ways in");
     // The ways in get no note: the CLI's offline verify of a snapshot needs no vault and no mandate.
     const read = decoded(html);
     expect(read).not.toContain("behind each one");
-    // No middot or dash glyphs, no arrow but the new-tab one, and no name on a generic element.
-    expect(read).not.toMatch(/[→·–—]/);
-    // Every link that leaves the site ends in the shared arrow (parts.tsx Away), and no other text carries one.
+    // No middot or dash glyphs, and no name on a generic element.
+    expect(read).not.toMatch(/[·–—]/);
+    expect(html).not.toMatch(/<div[^>]*aria-label=/);
+    // Every link that leaves the site ends in the shared arrow (parts.tsx Away), and no other text carries one: the
+    // 402 run's evidence and the MCP server's README.
     const away = [...html.matchAll(/<a [^>]*target="_blank"[^>]*>([\s\S]*?)<\/a>/g)];
-    expect(away.length).toBeGreaterThan(10);
+    const out = [
+      ...INTEGRATE.who.map((w) => w.evidence.href),
+      ...INTEGRATE.cards.map((c) => ("href" in c.link ? c.link.href : "")),
+    ].filter((h) => h.startsWith("https://"));
+    expect(out).toHaveLength(2);
+    expect(away.map((a) => /href="([^"]+)"/.exec(a[0])?.[1])).toEqual(out);
     for (const [a, inner] of away)
       expect(inner, a).toContain(`<span class="${pm.ext}" aria-hidden="true">↗</span></span>`);
     expect(read.split("↗").length - 1).toBe(away.length);
-    expect(html).not.toMatch(/<div[^>]*aria-label=/);
+    // A link on this site ends in → glued to its last word, the one to the mainnet section below in ↓: each hidden
+    // from a screen reader, which reads the words alone. The status pills and the file link carry none.
+    const own = [...html.matchAll(/<a (?![^>]*target=)[^>]*>([\s\S]*?)<\/a>/g)]
+      .map((a) => a[1] ?? "")
+      .filter((inner) => !inner.includes(`>${INTEGRATE.statusPrefix}</span>`))
+      .filter((inner) => !inner.startsWith(CONSOLE_SHOTS.fullSize));
+    expect(own.length).toBeGreaterThan(4);
+    for (const inner of own) expect(inner).toMatch(/ <span aria-hidden="true">[→↓]<\/span>$/);
+    expect(read.split("↓").length - 1).toBe(1);
   });
 
   it("draws every status of the section the one way the page does, its words and tone from the status list", () => {
@@ -2156,11 +2286,9 @@ describe("the problem, the comparison and the integrate section", () => {
         /<a class="([^"]*)" href="#[^"]*"><span class="sr-only">Status: <\/span>((?:[^<]|<span class="[^"]*">[^<]*<\/span>)*)<span class="sr-only">, see its status row<\/span><\/a>/g,
       ),
     ];
-    const rows = [
-      ...INTEGRATE.cards.map((c) => c.status),
-      ...INTEGRATE.who.flatMap((w) => w.runs.map((r) => r.status)),
-    ].map(statusOf);
-    expect(rows).toHaveLength(8);
+    // The four ways in carry a pill each; a use's card carries its outcome's stamps instead.
+    const rows = INTEGRATE.cards.map((c) => statusOf(c.status));
+    expect(rows).toHaveLength(4);
     expect(pills.map((p) => decoded(p[2] ?? ""))).toEqual(rows.map((r) => r.pill));
     // A hyphenated word in a pill (rules-only) never splits.
     for (const p of pills)
@@ -2182,232 +2310,110 @@ describe("the problem, the comparison and the integrate section", () => {
     for (const c of INTEGRATE.cards) expect(html).toContain(`>${c.title}</h4>`);
   });
 
-  it("shows the snippet whole in the code box, its comments quieter, and no pill in its head", () => {
-    const html = integrateHtml();
-    const pre = /<pre>([\s\S]*?)<\/pre>/.exec(html)?.[1] ?? "";
-    expect(decoded(pre)).toBe(SDK_SNIPPET);
-    const comments = [
-      ...pre.matchAll(new RegExp(`<span class="${ig.comment}">([^<]*)</span>`, "g")),
-    ];
-    expect(comments.map((c) => decoded(c[1] ?? ""))).toEqual(
-      SDK_SNIPPET.split("\n")
-        .filter((l) => l.includes(" // "))
-        .map((l) => l.slice(l.indexOf(" // ") + 1)),
-    );
-    expect(comments.length).toBe(6);
-    expect(html).toContain(
-      `<span>${INTEGRATE.fileName}</span><span>${INTEGRATE.codeLabel}</span></div>`,
-    );
-    expect(html).toMatch(new RegExp(`<section[^>]*aria-label="${INTEGRATE.fileName}"`));
-  });
-
-  it("names the accounts an agent points at as the deployment records have them, each on its own network's explorer", () => {
-    const testnet = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
-      accounts: { factory: string };
-      demo_vault: { account: string };
-    };
-    const mainnet = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
-      vault_v0: { account_id: string };
-      factory: { deploy_tx: string | null };
-    };
-    const [tn, mn] = INTEGRATE.addresses.networks;
-    expect(tn.name).toBe("Testnet");
-    expect(tn.rows.map((r) => [r.term, r.account.id])).toEqual([
-      ["Factory", testnet.accounts.factory],
-      ["Demo vault", testnet.demo_vault.account],
-    ]);
-    expect(mn.name).toBe("Mainnet");
-    const [factory, vault] = mn.rows;
-    expect(factory).toEqual({ term: "Factory", none: "None yet" });
-    expect(mainnet.factory.deploy_tx).toBeNull();
-    expect(README).toContain("It is a standalone vault: no mainnet factory is deployed.");
-    expect([vault.term, vault.account.id, vault.after]).toEqual([
-      "Vault",
-      mainnet.vault_v0.account_id,
-      ", the one vault",
-    ]);
-    // The explorer of the account's own network, whatever network the page is opened at.
-    for (const r of tn.rows)
-      expect(r.account.url).toBe(explorerAccountUrl("testnet", r.account.id));
-    expect(vault.account.url).toBe(explorerAccountUrl("mainnet", vault.account.id));
-    expect(tn.rows[0].account.url).toBe(
-      "https://testnet.nearblocks.io/address/vaults.probarion.testnet",
-    );
-    expect(vault.account.url).toBe("https://nearblocks.io/address/v0.probarion.near");
-    for (const network of ["testnet", "mainnet"] as const) {
-      const html = landing(network);
-      const part = html.slice(html.indexOf('id="integrate"'), html.indexOf('id="payee"'));
-      const read = decoded(part);
-      for (const r of tn.rows) {
-        expect(part).toMatch(new RegExp(`<a[^>]*href="${r.account.url}" target="_blank"`));
-        expect(read).toContain(`${r.term}${r.account.id}↗${tn.explorer} (opens in a new tab)`);
-      }
-      expect(part).toMatch(new RegExp(`<a[^>]*href="${vault.account.url}" target="_blank"`));
-      expect(read).toContain(
-        `Vault${vault.account.id}↗${mn.explorer} (opens in a new tab), the one vault`,
-      );
-      expect(read).toContain("FactoryNone yet");
-    }
-    // The networks page sits under the addresses, in this tab.
-    const html = integrateHtml();
-    const block = html.slice(
-      html.indexOf(`>${INTEGRATE.addresses.title}</h4>`),
-      html.indexOf(`>${INTEGRATE.statusesTitle}</h4>`),
-    );
-    const { route, label } = INTEGRATE.addresses.link;
-    expect([route, label]).toEqual(["/docs/start/testnet-and-mainnet", "Networks and addresses"]);
-    expect(findPage(route.slice("/docs/".length))).toBeDefined();
-    const a = new RegExp(`<a[^>]*href="${route}"[^>]*>${label}<`).exec(block)?.[0] ?? "";
-    expect(a).not.toBe("");
-    expect(a).not.toContain('target="_blank"');
-  });
-
-  it("groups the docs and the source under the code: docs pages in this tab, the rest in a new one", () => {
-    const html = integrateHtml();
-    expect(INTEGRATE.docs.groups.map((g) => [g.name, g.links.map((l) => l.label)])).toEqual([
-      ["Start", ["Quickstart (testnet)"]],
-      ["Reference", ["SDK reference", "Contract reference", "CLI reference"]],
-      ["Example", ["Pay per call"]],
-      ["Source", ["GitHub", "@probarion/sdk on npm"]],
-    ]);
-    type DocLink =
-      | { route: string; label: string }
-      | { href: string; label: string; after?: string };
-    const links = INTEGRATE.docs.groups.flatMap((g): readonly DocLink[] => g.links);
-    for (const l of links) {
-      if ("route" in l) {
-        expect(findPage(l.route.slice("/docs/".length)), l.route).toBeDefined();
-        const label = l.label.replace(/[()]/g, "\\$&");
-        const a = new RegExp(`<a[^>]*href="${l.route}"[^>]*>${label}<`).exec(html)?.[0] ?? "";
-        expect(a, l.route).not.toBe("");
-        expect(a, l.route).not.toContain('target="_blank"');
-      } else {
-        expect(html, l.label).toMatch(new RegExp(`<a[^>]*href="${l.href}" target="_blank"`));
-      }
-    }
-    expect(links.find((l) => l.label === "GitHub")).toEqual({
-      href: LINKS.github,
-      label: "GitHub",
-    });
-    expect(links.find((l) => l.label === "@probarion/sdk on npm")).toEqual({
-      href: LINKS.npmSdk,
-      label: "@probarion/sdk on npm",
-    });
-    expect(LINKS.npmSdk).toBe("https://www.npmjs.com/package/@probarion/sdk");
-    expect(JSON.parse(text(ROOT, "packages", "sdk", "package.json")).name).toBe("@probarion/sdk");
-    // The example's link says what it is, to a screen reader too.
-    expect(links.find((l) => l.label === "Pay per call")).toEqual({
-      href: `${LINKS.github}/tree/main/examples/402`,
-      label: "Pay per call",
-      after: " example",
-    });
-    expect(existsSync(join(ROOT, "examples", "402", "README.md"))).toBe(true);
-    expect(decoded(html)).toContain("Pay per call↗ example (opens in a new tab)");
-    // The row comes after the code, and the networks page is under the addresses, not in it.
-    expect(html.indexOf(`>${INTEGRATE.docs.title}</h4>`)).toBeGreaterThan(html.indexOf("</pre>"));
-    expect(links.map((l) => l.label)).not.toContain(INTEGRATE.addresses.link.label);
-  });
-
-  it("gives each use a control, and per network what happened, its status pill and its evidence", () => {
+  it("gives each use its network, what the mandate controls, its outcome stamped in its tone and one record", () => {
     expect(INTEGRATE.who.map((w) => w.title)).toEqual([
       "Teams paying invoices with an agent",
       "Pay per API call",
       "Cross-chain payouts",
     ]);
-    expect(INTEGRATE.who.map((w) => w.runs.map((r) => r.network))).toEqual([
-      ["Testnet"],
-      ["Testnet"],
-      ["Testnet", "Mainnet"],
+    expect(INTEGRATE.who.map((w) => w.network)).toEqual(["Testnet", "Testnet", "Mainnet"]);
+    expect(INTEGRATE.who.map((w) => w.stamps.map((x) => `${x.tone} ${x.label}`))).toEqual([
+      ["refused Refused"],
+      ["paid Paid 20", "refused Refused 1"],
+      ["paid Paid"],
     ]);
-    expect(INTEGRATE.usesHead).toEqual([
-      "Use",
-      "The mandate controls",
-      "What happened",
-      "Evidence",
-    ]);
+    expect(INTEGRATE.controlsLabel).toBe("The mandate controls");
     const html = integrateHtml();
-    // The column heads are for the eye; the control's cell carries its own head.
-    expect(html).toContain(
-      `<div class="${ig.useHead} ${pm.label}" aria-hidden="true">${INTEGRATE.usesHead.map((h) => `<span>${h}</span>`).join("")}</div>`,
-    );
-    const read = decoded(html);
-    for (const w of INTEGRATE.who) {
-      expect(read, w.title).toContain(`${w.title}${w.body.replace(/`/g, "")}`);
-      expect(read, w.title).toContain(`${INTEGRATE.usesHead[1]}: ${w.control}`);
-      for (const r of w.runs) {
-        const row = statusOf(r.status);
-        expect(read, w.title).toContain(`${r.network}: ${r.outcome.replace(/`/g, "")}`);
-        expect(read, w.title).toContain(
-          `Status: ${row.pill}${STATUS_BOARD.pillSuffix}${r.evidence.map((e) => `${e.label}↗ (opens in a new tab)`).join("")}`,
+    // One list of three cards, the uses' anchor, before the console's shot and the ways in.
+    const open = `<ul class="${ig.uses}" id="integrate-uses" role="list">`;
+    expect(html.split(open).length - 1).toBe(1);
+    expect(html.indexOf(open)).toBeLessThan(html.indexOf("<figure"));
+    expect(html.indexOf("<figure")).toBeLessThan(html.indexOf(`>${INTEGRATE.waysTitle}</h3>`));
+    const uses = html.slice(html.indexOf(open), html.indexOf("</ul>", html.indexOf(open)));
+    const cards = uses.split(`<li class="${ig.use}">`).slice(1);
+    expect(cards).toHaveLength(INTEGRATE.who.length);
+    for (const [i, w] of INTEGRATE.who.entries()) {
+      const card = cards[i] ?? "";
+      // The network over the title, as an eyebrow over a heading; mainnet's in gold.
+      const net = w.network === "Mainnet" ? `${ig.net} ${ig.netMain}` : ig.net;
+      expect(card, w.title).toContain(
+        `<hgroup class="${ig.useHead}"><p class="${net}">${w.network}</p><h3 class="${ig.useTitle}">${w.title}</h3></hgroup>`,
+      );
+      // In reading order: what the use is, what the mandate controls, the stamps, what happened, then its record.
+      const stamps = w.stamps.map((x) => `${x.label}.`).join("");
+      expect(decoded(card), w.title).toContain(
+        `${w.body.replace(/`/g, "")}${INTEGRATE.controlsLabel}: ${w.control}${stamps}${w.outcome.replace(/`/g, "")}${w.evidence.label}`,
+      );
+      // Each stamp in its tone, with the outcome's mark; its full stop is for a screen reader.
+      for (const x of w.stamps) {
+        const tone = x.tone === "paid" ? ig.stampPaid : ig.stampRefused;
+        expect(card, x.label).toMatch(
+          new RegExp(
+            `<span class="${ig.stamp} ${tone}"><svg class="${pm.mark}"[^>]*>[\\s\\S]*?</svg>${x.label}<span class="sr-only">.</span></span>`,
+          ),
         );
-        // The pill links its row on the status board, and says so to a screen reader.
-        expect(html, w.title).toContain(`href="#${row.id}"`);
-        for (const e of r.evidence) {
-          expect(html, w.title).toContain(`href="${e.url}"`);
-          // The label's end stays whole on its line with the arrow: a transaction's short hash, in mono (bits.tsx
-          // TxLabel), or a short last part (an entry, a date) of any other label (bits.tsx ArrowLabel).
-          const a =
-            new RegExp(`<a [^>]*href="${e.url}"[^>]*>([\\s\\S]*?)</a>`).exec(html)?.[1] ?? "";
-          const glued = new RegExp(
-            `<span class="${pm.glue}">([\\s\\S]*?)<span class="${pm.ext}" aria-hidden="true">↗</span></span>`,
-          ).exec(a)?.[1];
-          if (e.label.includes(", tx ")) {
-            const hash = e.label.slice(e.label.lastIndexOf(" ") + 1);
-            expect(glued, e.label).toBe(`<span class="${pm.hash}">${hash}</span>`);
-          } else {
-            const tail = e.label.slice(e.label.lastIndexOf(", ") + 2);
-            expect(tail.length, e.label).toBeLessThanOrEqual(16);
-            expect(decoded(glued ?? ""), e.label).toBe(tail);
-          }
-        }
       }
+      // One link to the record: a page or a place on this site in this tab, a file elsewhere in a new one.
+      const e = w.evidence;
+      const links = [...card.matchAll(/<a [^>]*>/g)].map((a) => a[0]);
+      expect(links, w.title).toHaveLength(1);
+      expect(links[0], w.title).toContain(`href="${e.href}"`);
+      if (e.href.startsWith("https://")) expect(links[0], w.title).toContain('target="_blank"');
+      else expect(links[0], w.title).not.toContain("target=");
     }
+    // The stamps' tones are the page's pairs: ok on its tint for paid, bad on its tint for refused.
+    const css = text(SRC, "components", "site", "integrate.module.css");
+    expect(css).toMatch(
+      /\n\.stampPaid \{\n {2}background: var\(--color-ok-bg\);\n {2}color: var\(--color-ok\);\n\}/,
+    );
+    expect(css).toMatch(
+      /\n\.stampRefused \{\n {2}background: var\(--color-bad-bg\);\n {2}color: var\(--color-bad\);\n\}/,
+    );
   });
 
-  it("tells the invoice use as the demo vault's ledger and evidence have it", () => {
+  it("tells the invoice use as the demo vault's ledger and evidence have it, and links its card on the proof page", () => {
     const w = INTEGRATE.who[0];
-    const [r] = w.runs;
     const demo = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")).demo_vault as {
       account: string;
       refusals: { invoice: string; rule: string; ledger_seq: number }[];
     };
     const refusal = demo.refusals.find((x) => x.invoice === "INV-2002");
     expect(refusal?.rule).toBe("mandate.payee_mismatch");
-    expect(r.outcome).toContain(`\`${refusal?.rule}\``);
-    // The label names the invoice and the ledger: it is read out alone as a link, and it follows the status pill.
+    expect(w.outcome.startsWith(`${refusal?.invoice} asked to pay`)).toBe(true);
+    expect(w.outcome).toContain(`\`${refusal?.rule}\``);
+    // The record is the decision's card on the demo vault's proof page, which gives each decision id="seq-N".
     expect(demo.account).toBe("demo.vaults.probarion.testnet");
-    expect(r.evidence[0].label).toBe(
-      `${refusal?.invoice} in the demo vault's ledger, entry ${refusal?.ledger_seq}`,
-    );
+    expect(STORY.proof.href).toBe(`/proof/${demo.account}`);
+    expect(w.evidence).toEqual({
+      label: `Ledger entry ${refusal?.ledger_seq}, on the proof page`,
+      href: `${STORY.proof.href}#${seqAnchorId(refusal?.ledger_seq ?? -1)}`,
+    });
     // Entry seq 3 is line 4 of the ledger file, and it refused for that rule.
     const lines = text(ROOT, "docs", "evidence", "demo-vault", "ledger-2026-11-09.jsonl").split(
       "\n",
     );
-    const body = JSON.parse(lines[3] ?? "{}").body as {
-      seq: number;
-      verdict: string;
-      rules: unknown;
-    };
+    const body = JSON.parse(lines[3] ?? "{}").body as { seq: number; rules: unknown };
     expect(body.seq).toBe(refusal?.ledger_seq);
     expect(JSON.stringify(body.rules)).toContain(refusal?.rule ?? "?");
-    expect(r.evidence[0].url).toBe(
-      `${LINKS.github}/blob/main/docs/evidence/demo-vault/ledger-2026-11-09.jsonl#L4`,
-    );
     expect(text(ROOT, "docs", "evidence", "demo-vault", "README.md")).toContain(
       '"We changed banks": 2 USDC to `new-account.testnet` | Refused by code, rule `mandate.payee_mismatch`. Nothing was sent.',
     );
-    expect(r.outcome).toContain("`new-account.testnet`");
+    expect(w.outcome).toContain("`new-account.testnet`");
+    expect(w.outcome).toContain("nothing was sent");
     expect(w.control).toBe("Payee fixed by the mandate");
-    expect([r.network, r.status]).toEqual(["Testnet", "Payables agent"]);
+    expect([w.network, w.stamps]).toEqual(["Testnet", [{ tone: "refused", label: "Refused" }]]);
+    expect(w.body).toBe(
+      "Accounts payable in USDC, where a person signs the limits once and approves the big ones.",
+    );
   });
 
   it("tells the pay-per-call use as the 402 run's evidence has it, and does not call it x402", () => {
     const w = INTEGRATE.who[1];
-    const [r] = w.runs;
     const evidence = text(ROOT, "docs", "evidence", "402-vault", "README.md");
-    expect(r.evidence[0].url).toBe(`${LINKS.github}/blob/main/docs/evidence/402-vault/README.md`);
-    // The run the label names, by the example and its date: the MCP server pill before it is of a later release.
-    expect(r.evidence[0].label).toBe("The 402 example's own agent on testnet, 2026-11-09");
+    expect(w.evidence).toEqual({
+      label: "The 402 run, 2026-11-09",
+      href: `${LINKS.github}/blob/main/docs/evidence/402-vault/README.md`,
+    });
     expect(evidence).toContain("# The 402 example on testnet, 2026-11-09");
     expect(evidence).toContain(
       "[`agent-run-2026-11-09.txt`](agent-run-2026-11-09.txt) is what the agent printed.",
@@ -2415,83 +2421,55 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(evidence).toContain("An endpoint charged 0.01 test USDC per call; an agent paid each");
     expect(evidence).toContain("through [`@probarion/mcp`]");
     expect(evidence).toContain("under one mandate of 20 uses");
+    // The stamps count what the run's table counts: 20 paid, then the 21st refused.
     expect(evidence).toContain("| 1 to 20 | Spends 1 to 20 paid 0.01 USDC each");
     expect(evidence).toContain(
       "| 21 | Refused by code, rule `mandate.uses_exhausted`, at 18:16:25. Nothing was sent",
     );
+    expect(w.stamps).toEqual([
+      { tone: "paid", label: "Paid 20" },
+      { tone: "refused", label: "Refused 1" },
+    ]);
     expect(w.control).toBe("20 uses of 0.01 test USDC");
-    expect(r.outcome).toContain("`mandate.uses_exhausted`, before any transaction");
+    expect(w.outcome).toContain("`mandate.uses_exhausted`, before any transaction");
     expect(prose).toContain(
       "The example is not an implementation of x402 or of any other payment protocol.",
     );
     expect(text(ROOT, "examples", "402", "README.md")).toContain("Not x402");
     expect(w.body).toContain("Our own 402 format, not x402.");
-    expect([r.network, r.status]).toEqual(["Testnet", "MCP server"]);
+    expect(w.network).toBe("Testnet");
   });
 
-  it("tells the cross-chain use as the smoke run and the mainnet payout had it, one run per network", () => {
+  it("tells the cross-chain use as the recorded mainnet payouts have it: Base alone, both told in #mainnet", () => {
     const w = INTEGRATE.who[2];
-    const [t, mn] = w.runs;
+    // What the use can do, as the README says it; what ran names Base alone, since no Solana payout has run.
     expect(w.body).toBe(
       "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate.",
     );
     expect(prose).toContain("a Base or Solana address paid out through NEAR Intents");
     expect(w.control).toBe("Address fixed by the mandate");
-    // Testnet: a stand-in takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR.
-    expect(t.network).toBe("Testnet");
-    expect(t.evidence[0].url).toBe(TX.baseBurn.url);
-    expect(t.evidence[0].label).toBe(
-      `The testnet burn for a Base address, tx ${TX.baseBurn.label}`,
+    expect(w.network).toBe("Mainnet");
+    expect(w.outcome).toBe(
+      "Two payouts through NEAR Intents have run, tests to the owner's own Base address on 2026-11-13.",
     );
-    expect(CHAIN.rows[1].title).toBe("Withdrawal for a Base address");
-    expect(README).toContain(
-      "Spend 2 `burned`: 1 test USDC, `mt_burn` and `ft_burn` with the memo `WITHDRAW_TO:0x1111111111111111111111111111111111111111` the vault built from the mandate",
-    );
-    expect(t.outcome).toContain(
-      "A stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR.",
-    );
+    expect(w.outcome).not.toMatch(/solana/i);
+    // The count, the chain, the one wallet and the day, from the recorded payouts the mainnet section reads.
+    expect(PAYOUTS).toHaveLength(2);
+    expect(w.outcome.startsWith("Two payouts")).toBe(true);
+    expect([...new Set(PAYOUTS.map((p) => p.chain))]).toEqual(["base"]);
+    expect(new Set(PAYOUTS.map((p) => p.payee.toLowerCase())).size).toBe(1);
+    expect([...new Set(PAYOUTS.map((p) => p.date))]).toEqual(["2026-11-13"]);
     expect(prose).toContain(
-      "On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR.",
+      "On mainnet two payouts have run this way, both tests to the owner's own Base address on 2026-11-13.",
     );
-    expect(t.outcome).toContain(
-      "The vault built the memo `WITHDRAW_TO:0x1111…1111` from the mandate and burned 1 test USDC.",
-    );
-    expect(t.status).toBe("Vault contract");
-    // The body says what the use is; what ran is told per network, so the mainnet count lives in one place.
-    expect(w.body).not.toContain("mainnet");
-    // Mainnet: both payouts through NEAR Intents, S1 then S2, as the README's NEAR Intents row tells them, each with
-    // its transaction as the deployment record has it. A third payout, or a count that went stale, fails here.
-    const mainnet = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
-      proof: { first_base_payout_tx: string; attested_base_payout_tx: string };
-    };
-    expect(mn.network).toBe("Mainnet");
-    expect(mn.outcome).toBe(
-      "Two payouts through NEAR Intents have run, tests to the owner's own Base address on 2026-11-13: 1.00 USDC decided by code rules alone, then 0.25 USDC decided by an attested model and the code rules.",
-    );
-    expect(prose).toContain(
-      "On mainnet two payouts have run this way, both tests to the owner's own Base address on 2026-11-13. In S1 `v0.probarion.near` paid 1.00 USDC, a test decided by code rules alone",
-    );
-    expect(prose).toContain(
-      "In S2 it paid 0.25 USDC, decided by an attested model and the code rules, and the bridge released 0.2476 USDC",
-    );
-    expect(prose).toContain("the POA bridge released 0.9976 USDC on Base, keeping a fee of 0.0024");
-    const short = (h: string) => `${h.slice(0, 8)}…${h.slice(-4)}`;
-    const [s1, s2] = [mainnet.proof.first_base_payout_tx, mainnet.proof.attested_base_payout_tx];
-    expect(mn.evidence).toEqual([
-      {
-        label: `The 1.00 USDC payout to Base, tx ${short(s1)}`,
-        url: explorerTxUrl("mainnet", s1),
-      },
-      {
-        label: `The 0.25 USDC payout to Base, tx ${short(s2)}`,
-        url: explorerTxUrl("mainnet", s2),
-      },
-    ]);
-    for (const e of mn.evidence) expect(e.url.startsWith("https://nearblocks.io/txns/")).toBe(true);
-    expect(prose).toContain(`https://nearblocks.io/txns/${s1}`);
-    expect(prose).toContain(`https://nearblocks.io/txns/${s2}`);
-    expect(mn.status).toBe("Mainnet vault");
-    expect(statusOf(mn.status).pill).toContain("(2 to Base)");
+    expect(w.stamps).toEqual([{ tone: "paid", label: "Paid" }]);
+    // The record is the mainnet section below, which tells both payouts with their links.
+    expect(w.evidence).toEqual({ label: "See both on mainnet", href: "#mainnet" });
+    expect(renderToStaticMarkup(createElement(Home))).toContain('id="mainnet"');
+    // The testnet stand-in burn is the docs' now (how-one-payment-works), not the use's.
+    const html = integrateHtml();
+    expect(html).not.toContain(TX.baseBurn.url);
+    expect(decoded(html)).not.toContain("WITHDRAW_TO");
   });
 
   it("links the full comparison, with its date and what Probarion lacks", () => {
@@ -2503,11 +2481,10 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(COMPARE.more.label).toContain("NEAR Agent API, x402 and AP2");
     expect(COMPARE.more.note).toContain("2026-11-11");
     expect(COMPARE.more.note).toContain("lacks");
-    const html = renderToStaticMarkup(createElement(Home));
-    const compare = html.slice(html.indexOf('id="compare"'), html.indexOf('id="payment"'));
-    expect(compare).toContain(`href="${COMPARE.more.href}"`);
-    expect(textContent(compare)).toContain(COMPARE.more.label);
-    expect(textContent(compare)).toContain(COMPARE.more.note);
+    // The docs' comparison links it, with the date its sources were read.
+    const docs = text(WEB, "content", "docs", "start", "what-is-probarion.mdx");
+    expect(docs).toContain(`(${COMPARE.more.href})`);
+    expect(docs).toContain("with its sources read 2026-11-11");
   });
 
   it("says of a do-it-yourself contract that someone has to read its code", () => {
@@ -2582,13 +2559,53 @@ describe("the rendered landing page", () => {
     );
   });
 
-  it("links the journey's check_spend step to the live check", () => {
+  it("walks steps 1 to 4 with where each runs, links the docs for every step, then holds the live check of step 4", () => {
     const html = renderToStaticMarkup(createElement(Home));
-    expect(JOURNEY.steps[3].tryIt).toEqual({
-      label: "Run this check yourself, above",
-      href: "#try",
+    const payment = html.slice(html.indexOf('id="payment"'), html.indexOf('id="try"'));
+    expect(payment.length).toBeGreaterThan(0);
+    // Four steps of one shape: number, title, one line, then the mono tag of where it runs. No panel and no record.
+    const steps = [
+      ...payment.matchAll(new RegExp(`<li class="${j.compactStep}">([\\s\\S]*?)</li>`, "g")),
+    ].map((m) => m[1] ?? "");
+    expect(steps).toHaveLength(4);
+    expect(JOURNEY.runsOn).toEqual([
+      "the owner's NEAR wallet",
+      "NEAR AI Cloud, optional",
+      "the agent's process, `@probarion/sdk`",
+      "the vault contract on NEAR",
+    ]);
+    for (const [i, li] of steps.entries()) {
+      const step = JOURNEY.steps[i];
+      if (step === undefined) throw new Error(`no step ${i + 1}`);
+      expect(li).toMatch(
+        new RegExp(`^<div class="${pm.stepN}" aria-hidden="true">${step.n}</div>`),
+      );
+      expect(textContent(li), `step ${step.n}`).toContain(`Step ${step.n}: ${step.title}`);
+      expect(textContent(li), `step ${step.n}`).toContain(step.body.replace(/`/g, ""));
+      expect(textContent(li), `step ${step.n}`).toContain(
+        `${JOURNEY.runsOnLabel}: ${(JOURNEY.runsOn[i] ?? "").replace(/`/g, "")}`,
+      );
+      expect(li).toContain(`<p class="${j.runsOn}"><span class="${j.runsOnLabel}">`);
+    }
+    for (const gone of [j.panel, j.panelCap, j.note, j.record])
+      expect(payment).not.toContain(`class="${gone}"`);
+    expect(payment).not.toContain("Run this check yourself");
+    // Step 4, the contract's, carries the gold rule: the last of the four.
+    const css = text(SRC, "components", "site", "journey.module.css");
+    expect(/\n\.compactStep:last-child \{([^}]*)\}/.exec(css)?.[1]).toContain(
+      "border-top: 3px solid var(--color-gold-deep)",
+    );
+    // Under the steps, the docs page that walks each one with its fields and code, and it is a page the docs have.
+    expect(JOURNEY.more).toEqual({
+      label: "Every step, with its fields and code",
+      href: "/docs/start/how-one-payment-works",
     });
-    expect(html).toMatch(/href="#try"[^>]*>Run this check yourself, above</);
+    expect(payment).toContain(
+      `href="${JOURNEY.more.href}">${JOURNEY.more.label} <span aria-hidden="true">→</span>`,
+    );
+    expect(findPage(JOURNEY.more.href.slice("/docs/".length))).toBeDefined();
+    // Then the live check, inside the same section: no other section opens between the steps and #try.
+    expect(payment.slice(payment.indexOf(j.compactSteps))).not.toContain("<section class=");
   });
 
   it("says under the closing headline how long the evaluation takes", () => {
@@ -2682,128 +2699,85 @@ describe("the rendered landing page", () => {
     expect(html).toContain('aria-live="polite"');
   });
 
-  it("links every transaction on the testnet explorer, opening in a new tab", () => {
+  it("leaves the smoke run's three transactions to the docs page that the contract row links", () => {
     const html = landing();
-    for (const row of CHAIN.rows) {
-      expect(hrefs(html)).toContain(row.tx.url);
-      expect(html).toContain(row.tx.label);
+    const rows: readonly StackRow[] = STACK.rows;
+    const href = rows.find((r) => r.id === "contract")?.link?.href ?? "";
+    expect(href).toBe("/docs/start/how-one-payment-works#see-it-on-testnet");
+    expect(hrefs(html)).toContain(href);
+    const doc = text(WEB, "content", "docs", "start", "how-one-payment-works.mdx");
+    expect(doc).toContain("## See it on testnet");
+    for (const row of CHAIN.rows) expect(doc, row.title).toContain(`](${row.tx.url})`);
+  });
+
+  it("holds the smoke run's outcomes to the README's smoke table", () => {
+    expect(CHAIN.rows.map((r) => [r.outcome.word, r.outcome.tone])).toEqual([
+      ["Paid", "paid"],
+      ["Burned", "paid"],
+      ["Refused", "refused"],
+    ]);
+    const table = README.slice(README.indexOf("### NEAR testnet, 2026-11-01")).split("\n");
+    const recorded = [
+      "Spend 1 `paid`",
+      "Spend 2 `burned`",
+      "Refused by the contract: `PROBARION:NoMandate`",
+    ];
+    for (const [i, row] of CHAIN.rows.entries()) {
+      const line = table.find((l) => l.includes(`](${row.tx.url})`)) ?? "";
+      expect(line, row.title).toContain(recorded[i]);
     }
-    expect(html).toContain("(opens in a new tab)");
   });
 
-  describe("the on-chain section as it renders", () => {
+  it("closes with one action per audience, the quiet links, where to get Probarion, the trademark lead, then the console", () => {
     const html = landing();
-    const part = html.slice(
-      html.indexOf('id="chain"'),
-      html.lastIndexOf("<section", html.indexOf('id="status"')),
+    const from = html.indexOf(`class="${site.close}"`);
+    const close = html.slice(from, html.indexOf("</section>", from));
+    const links = [...close.matchAll(/<a ([^>]*)>([\s\S]*?)<\/a>/g)].map(
+      ([, attrs = "", inner = ""]) => ({
+        href: /\shref="([^"]*)"|^href="([^"]*)"/.exec(` ${attrs}`)?.[1] ?? "",
+        attrs,
+        name: textContent(inner.replace(/<span[^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/span>/g, "")),
+      }),
     );
-    /** A link's accessible name: its text without the arrow, which is hidden from screen readers. */
-    const nameOf = (a: string) =>
-      textContent(a.replace(/<span[^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/span>/g, ""));
-    const anchors = [...part.matchAll(/<a\s[^>]*>[\s\S]*?<\/a>/g)].map((m) => m[0]);
-    const anchorTo = (href: string) => anchors.find((a) => a.includes(` href="${href}"`)) ?? "";
-
-    it("says the network, the run's date and the vault once, in the head, with the vault on the explorer", () => {
-      const head = part.slice(0, part.indexOf("</header>"));
-      // The page's one record of terms (parts.tsx TermRecord), the console's shape.
-      expect(CHAIN.record.map((r) => [r.term, r.value])).toEqual([
-        ["Network", CHAIN.network],
-        ["Run", CHAIN.date],
-        ["Vault", `\`${CHAIN.vault}\``],
-      ]);
-      expect(head).toContain(`<dl class="${pm.record}">`);
-      expect(visibleText(head)).toContain(
-        `Network ${CHAIN.network} Run ${CHAIN.date} Vault ${CHAIN.vault} ↗`,
-      );
-      const vault = anchorTo(CHAIN.vaultUrl);
-      expect(head).toContain(vault);
-      expect(vault).toContain('target="_blank"');
-      expect(nameOf(vault)).toBe(`${CHAIN.vault}${CHAIN.vaultExplorer} (opens in a new tab)`);
-      // The date is said once, in the record, not on every row.
-      expect(part.split(CHAIN.date).length - 1).toBe(1);
-    });
-
-    it("gives each row its title, the call, what the chain shows and its labelled hash, in that order", () => {
-      const rows = [...part.matchAll(new RegExp(`<li class="${ch.row}">([\\s\\S]*?)</li>`, "g"))];
-      expect(rows).toHaveLength(CHAIN.rows.length);
-      expect(part).toContain(`<ul class="${ch.rows}" role="list">`);
-      for (const [i, row] of CHAIN.rows.entries()) {
-        const li = rows[i]?.[1] ?? "";
-        expect(li, row.title).toMatch(new RegExp(`<h3 class="${ch.title}">${row.title}</h3>`));
-        expect(textContent(li), row.title).toBe(
-          `${row.outcome.word}${row.title}${row.call}${row.body}${CHAIN.evidenceLabel}${row.tx.label}↗${CHAIN.txExplorer} (opens in a new tab)`.replace(
-            /`/g,
-            "",
-          ),
-        );
-        // Each row opens with its outcome, in the page's one way (bits.tsx Outcome).
-        expect(li, row.title).toContain(
-          `<span class="${pm.out} ${row.outcome.tone === "paid" ? pm.outPaid : pm.outRefused} ${ch.out}"><svg`,
-        );
-        const a = anchorTo(row.tx.url);
-        expect(a, row.title).toContain('target="_blank"');
-        // ExternalLink says "opens in a new tab" itself; the row adds only where the link goes.
-        expect(nameOf(a), row.title).toBe(
-          `${row.tx.label}${CHAIN.txExplorer} (opens in a new tab)`,
-        );
-      }
-    });
-
-    it("opens each row with the spend's outcome as the README's smoke table records it", () => {
-      expect(CHAIN.rows.map((r) => [r.outcome.word, r.outcome.tone])).toEqual([
-        ["Paid", "paid"],
-        ["Burned", "paid"],
-        ["Refused", "refused"],
-      ]);
-      const table = README.slice(README.indexOf("### NEAR testnet, 2026-11-01")).split("\n");
-      const recorded = [
-        "Spend 1 `paid`",
-        "Spend 2 `burned`",
-        "Refused by the contract: `PROBARION:NoMandate`",
-      ];
-      for (const [i, row] of CHAIN.rows.entries()) {
-        const line = table.find((l) => l.includes(`](${row.tx.url})`)) ?? "";
-        expect(line, row.title).toContain(recorded[i]);
-      }
-    });
-
-    it("points on from the foot with links that stay in the tab, each to an id the landing has", () => {
-      const foot = part.slice(part.indexOf(`<div class="${ch.foot}">`));
-      const line = new RegExp(`<p class="${ch.line}">([\\s\\S]*?)</p>`, "g");
-      const lines = [...foot.matchAll(line)].map((m) => textContent(m[1] ?? ""));
-      expect(lines).toEqual(CHAIN.foot.map(partsText));
-      const links = CHAIN.foot.flat().filter((p) => typeof p !== "string");
-      expect(links.map((l) => l.href)).toEqual([
-        "#invoices",
-        "#console",
-        CONSOLE_SHOTS.proof.href,
-        "#known-gaps",
-      ]);
-      for (const { href } of links) {
-        const a = anchorTo(href);
-        expect(a, href).not.toBe("");
-        expect(a, href).not.toMatch(/\starget=/);
-        // A moved anchor (the invoices, the console, the known gaps) fails here instead of becoming a dead link.
-        if (href.startsWith("#")) expect(html, href).toContain(` id="${href.slice(1)}"`);
-      }
-    });
-  });
-
-  it("offers the two closing links on main", () => {
-    const html = landing();
-    const links = hrefs(html);
-    expect(links).toContain("/docs/start/evaluate-in-5-minutes");
-    expect(links).not.toContain(LINKS.evaluate);
-    // An internal page opens in the same tab: the evaluate button is a Link, not ExternalLink.
-    const evaluate = html.match(/<a[^>]*href="\/docs\/start\/evaluate-in-5-minutes"[^>]*>/g) ?? [];
-    expect(evaluate).toHaveLength(1);
-    expect(evaluate[0]).not.toMatch(/\starget=/);
-    expect(links).toContain(
-      "https://github.com/probarion/probarion/blob/main/docs/specs/2026-10-21-probarion-design.md",
+    const hrefsInOrder = links.map((l) => l.href);
+    // The buttons, then the quiet links, then the places to get it, then the way into the console, last.
+    expect(hrefsInOrder).toEqual([
+      ...CLOSING.buttons.map((b) => b.href),
+      ...CLOSING.quiet.map((q) => q.href),
+      ...BUILT_ON.ships.map((s) => s.link.href),
+      NEXT_STEP.closing.route,
+    ]);
+    expect(CLOSING.buttons.map((b) => [b.label, b.href])).toEqual([
+      ["Evaluate in 5 minutes", EVALUATE_ROUTE],
+      ["Try the demo", "#try"],
+      ["GitHub", LINKS.github],
+    ]);
+    expect(CLOSING.quiet.map((q) => [q.label, q.href])).toEqual([
+      ["Explore the docs", "/docs"],
+      ["Read the spec", LINKS.spec],
+      [HERO.demo.label, HERO.demo.href],
+    ]);
+    // One solid button, the evaluation's, a page of this site in this tab; the source and the spec leave the site.
+    const cta = close.slice(close.indexOf(`<div class="${site.cta}">`));
+    const buttons = [...cta.slice(0, cta.indexOf("</div>")).matchAll(/<a ([^>]*)>/g)].map(
+      (m) => m[1] ?? "",
     );
-    expect(links).toContain("#try");
-    expect(links).toContain("#integrate");
-    expect(links).toContain("/console");
+    expect(buttons).toHaveLength(3);
+    expect(buttons.filter((a) => a.includes(site.solid))).toHaveLength(1);
+    expect(buttons[0]).toContain(site.solid);
+    const at = (href: string) => links.find((l) => l.href === href);
+    expect(at(EVALUATE_ROUTE)?.attrs).not.toMatch(/\starget=/);
+    expect(at("#try")?.attrs).not.toMatch(/\starget=/);
+    for (const href of [LINKS.github, LINKS.spec, HERO.demo.href])
+      expect(at(href)?.attrs, href).toContain('target="_blank"');
+    expect(at(NEXT_STEP.closing.route)?.name).toBe(`${NEXT_STEP.closing.text} `);
+    // The evaluate button is the page's one link to the evaluation, and the old external one is gone.
+    expect(
+      html.match(/<a[^>]*href="\/docs\/start\/evaluate-in-5-minutes"[^>]*>/g) ?? [],
+    ).toHaveLength(1);
+    expect(hrefs(html)).not.toContain(LINKS.evaluate);
+    // The trademark lead, once, as one paragraph of the closing.
+    expect(textContent(close).split(BUILT_ON.trademark.lead).length - 1).toBe(1);
   });
 
   it("sends the evaluate button to the docs page that walks through it", () => {
@@ -3510,114 +3484,80 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
     expect(HERO.lede.split(/\s+/).length).toBeLessThanOrEqual(40);
   });
 
-  it("says who it is for in one line under the mainnet record", () => {
-    expect(partsText(HERO.fineprint)).toBe(
-      "For teams whose AI agent pays supplier invoices, and for developers who want to give an agent money without the keys. You need no account to read the chain or run the verifier.",
-    );
+  it("puts the lede, its two buttons and the quiet line first, then one caption and the two cards, and nothing after them", () => {
     const html = renderToStaticMarkup(createElement(Home));
-    const lines = [...html.matchAll(/<p class="[^"]*fineprint[^"]*">([\s\S]*?)<\/p>/g)];
-    expect(lines.length).toBe(1);
-    expect(textContent(lines[0]?.[1] ?? "").replace(/ \(opens in a new tab\)/g, "")).toBe(
-      partsText(HERO.fineprint),
-    );
-    // The record sits between the buttons' row and this line.
-    const record = html.indexOf(`aria-label="${HERO.mainnet.listLabel}"`);
-    expect(record).toBeGreaterThan(html.indexOf(`>${HERO.verify} `));
-    expect(record).toBeLessThan(html.indexOf(lines[0]?.[0] ?? "?"));
-    // The cards come first in the source, the mainnet card ahead of them all, so that a phone, on one column, reaches
-    // the mainnet card right after the buttons; from 961px the grid puts the record back under the lede.
-    const card = html.indexOf(`aria-label="${HERO.s2.aria}"`);
-    expect(card).toBeGreaterThan(html.indexOf(`href="${HERO.demo.href}"`));
-    expect(card).toBeLessThan(record);
+    const hero = html.slice(0, html.lastIndexOf("<section", html.indexOf('id="problem"')));
+    const at = [
+      `>${HERO.lede}</p>`,
+      `>${HERO.tryLive}</a>`,
+      `>${HERO.docs.label}</a>`,
+      `>${HERO.verify} `,
+      `href="${HERO.demo.href}"`,
+      `>${HERO.both.lead}</p>`,
+      `aria-label="${HERO.s2.aria}"`,
+      `aria-label="${HERO.refused.aria}"`,
+    ].map((needle) => hero.indexOf(needle));
+    for (const pos of at) expect(pos).toBeGreaterThan(-1);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    // The Canary card closes the hero: no record of 2026-11-11 and no audience line after it.
+    const tail = hero.slice(hero.indexOf(`aria-label="${HERO.refused.aria}"`));
+    expect(tail.split("<article").length - 1).toBe(0);
+    expect(tail.split("</article>").length - 1).toBe(1);
+    expect(textContent(tail.slice(tail.indexOf("</article>")))).toBe("");
+    expect(hero).not.toContain(`aria-label="${HERO.mainnet.listLabel}"`);
+    expect(visibleText(hero)).not.toContain(HERO.mainnet.lead);
+    expect(visibleText(hero)).not.toContain(partsText(HERO.fineprint));
+    // Two columns from 1101px, the lede's and the cards' on two thirds; one below it, the cards after the quiet line.
     const css = text(WEB, "src", "components", "site", "hero.module.css");
-    expect(css).toContain('grid-template-areas: "lead duel" "record duel";');
-    const oneColumn = css.slice(css.indexOf("@media (max-width: 960px)"));
+    expect(css).not.toContain('grid-template-areas: "lead duel"');
+    expect(css).not.toMatch(/\.(?:recordCol|evidence|evRow|steps|s2Steps)\b/);
+    expect(css).toContain("grid-template-columns: minmax(340px, 4fr) minmax(0, 8fr);");
+    const oneColumn = css.slice(css.indexOf("@media (max-width: 1100px)"));
     expect(oneColumn.slice(0, oneColumn.indexOf("}\n}"))).toContain(
-      'grid-template-areas: "lead" "duel" "record";',
+      "grid-template-columns: minmax(0, 1fr);",
     );
   });
 
-  it("says what runs where, then the mainnet vault's payment and refusal, one row each, in the README's words", () => {
-    // "Since 2026-11-11" and "real USDC": the README's mainnet row. What runs on testnet is said after the rows.
-    expect(HERO.mainnet.lead).toBe("On NEAR mainnet since 2026-11-11.");
-    expect(statusOf("Payables agent").pill).toBe("Live on testnet");
-    expect(HERO.mainnet.intro).toContain("with real USDC");
-    // Dated, so that it does not read as the vault's whole record: the README's mainnet row says since 2026-11-11.
-    expect(HERO.mainnet.intro.endsWith(", on 2026-11-11:")).toBe(true);
-    expect(HERO.mainnet.listLabel).toBe("Mainnet transactions of v0.probarion.near, 2026-11-11");
-    expect(HERO.mainnet.txLabel).toBe("Mainnet transaction");
+  it("leaves the mainnet vault's record of 2026-11-11 to the mainnet section, in the README's words", () => {
+    // "Since 2026-11-11" and "real USDC": the README's mainnet row.
     expect(README).toContain(
       "| Mainnet vault `v0.probarion.near` | **Live on NEAR mainnet** since 2026-11-11, with real USDC",
     );
-    const [paid, refused] = HERO.mainnet.rows;
-    // The payment: spend 1 under mandate 1, to the owner's own wallet.
-    expect(paid).toMatchObject({ tone: "paid", state: "Paid", tx: MAINNET_TX.payment });
-    expect(paid.what).toBe("1 USDC to the owner's own wallet");
-    expect(README).toContain(`Under mandate 1, spend 1 paid ${paid.what}`);
-    // The refusal: mandate 999, which does not exist. "Blocked", the word of the Canary card beside it.
-    expect(refused).toMatchObject({ tone: "refused", state: "Blocked", tx: MAINNET_TX.refusal });
-    expect(refused.state).toBe(HERO.refused.state);
-    // The team's own test, said as one: an invalid mandate id is no attack the contract fended off.
-    expect(refused.what).toBe("Our test spend on mandate 999, which does not exist: `NoMandate`");
+    // The payment: spend 1 under mandate 1, to the owner's own wallet. The refusal: mandate 999, which does not exist.
+    expect(README).toContain("Under mandate 1, spend 1 paid 1 USDC to the owner's own wallet");
     expect(README).toContain(
       "a spend against mandate 999 was refused on chain with `PROBARION:NoMandate`",
     );
     expect(README).toContain(
       `| The agent key called \`spend\` on mandate 999, which does not exist | [\`${MAINNET_TX.refusal.label}\`](${MAINNET_TX.refusal.url}) | Refused by the contract: \`PROBARION:NoMandate\``,
     );
-    // Each on the mainnet explorer, never testnet's.
-    for (const row of HERO.mainnet.rows) {
-      expect(row.tx.url).toBe(explorerTxUrl("mainnet", row.tx.hash));
-      expect(row.tx.url).not.toContain("testnet");
+    // The mainnet section's line carries both, each on the mainnet explorer, never testnet's.
+    const links = MAINNET_PAYOUT.earlierLine.filter((p) => typeof p !== "string");
+    expect(links.map((l) => l.href)).toEqual([MAINNET_TX.payment.url, MAINNET_TX.refusal.url]);
+    for (const t of [MAINNET_TX.payment, MAINNET_TX.refusal]) {
+      expect(t.url).toBe(explorerTxUrl("mainnet", t.hash));
+      expect(t.url).not.toContain("testnet");
     }
-    // As a visitor reads it: the sentence names the list, and each row says what the facts say.
-    const html = renderToStaticMarkup(createElement(Home));
-    const lead = /<p class="[^"]*evLead[^"]*">([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
-    expect(textContent(lead)).toBe(`${HERO.mainnet.lead}${HERO.mainnet.intro}`.replace(/`/g, ""));
-    // The list is named on its own, without the lead, so a screen reader hears it dated.
-    const list =
-      new RegExp(`<ul[^>]*aria-label="${HERO.mainnet.listLabel}"[^>]*>([\\s\\S]*?)</ul>`).exec(
-        html,
-      )?.[1] ?? "";
-    expect(html).not.toContain('aria-labelledby="hero-mainnet"');
-    const rows = [...list.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) => m[1] ?? "");
-    expect(rows.map(spoken)).toEqual(
-      HERO.mainnet.rows.map(
-        (r) => `${r.state} ${r.what.replace(/`/g, "")} ${HERO.mainnet.txLabel} ${r.tx.label}`,
-      ),
-    );
-    // Under the rows, a pointer to the vault's later Base payouts, which the mainnet section tells with their links.
-    expect(partsText(HERO.mainnet.after)).toBe(
-      "On 2026-11-13 it made two test payouts to the owner's own Base address. The console, the live check and the Canary run on NEAR testnet, with test tokens.",
-    );
-    expect(HERO.mainnet.after).toContainEqual({
-      label: "two test payouts to the owner's own Base address",
-      href: "#mainnet",
-    });
-    expect(html).toContain('id="mainnet"');
-    expect(INTEGRATE.who[2].runs[1].outcome).toContain("Two payouts through NEAR Intents have run");
-    expect(INTEGRATE.who[2].runs[1].outcome).toContain("on 2026-11-13");
-    for (const [i, row] of HERO.mainnet.rows.entries()) {
-      expect(rows[i]).toContain(`href="${row.tx.url}"`);
-      expect(rows[i]).toContain('target="_blank"');
-    }
+    // The hero card's link scrolls to them.
+    expect(HERO.s2.read.href).toBe("#mainnet");
+    expect(renderToStaticMarkup(createElement(Home))).toContain('id="mainnet"');
   });
 });
 
 describe("links that leave the site, across the landing's sections", () => {
-  // The mainnet payouts, the status board and Built on keep their own markup for now; every other section and the
-  // closing are held here.
+  // The mainnet payouts and the status board keep their own markup for now; every other section, the ledger test
+  // with what it rests on, and the closing are held here.
   const html = renderToStaticMarkup(createElement(Home));
   const sectionAt = (id: string) => html.lastIndexOf("<section", html.indexOf(`id="${id}"`));
   const inScope =
     html.slice(0, sectionAt("mainnet")) +
-    html.slice(sectionAt("compare"), sectionAt("status")) +
+    html.slice(sectionAt("verify"), html.indexOf('id="status"')) +
     html.slice(html.indexOf(`class="${site.close}"`));
   const anchors = [...inScope.matchAll(/<a ([^>]*)>([\s\S]*?)<\/a>/g)];
 
   it("ends every one in the one ↗ (bits.tsx NewTab), glued to its last word, before its new-tab words", () => {
     const away = anchors.filter(([, attrs]) => /target="_blank"/.test(attrs ?? ""));
-    expect(away.length).toBeGreaterThan(40);
+    expect(away.length).toBeGreaterThan(14);
     const end = new RegExp(
       `<span class="${pm.ext}" aria-hidden="true">↗</span>(?:</span>)?(?:<span class="sr-only">[^<]*</span>)*<span class="sr-only"> \\(opens in a new tab\\)</span>$`,
     );
@@ -4129,7 +4069,8 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
   const P = PAYOUTS[0] as Payout;
   const html = renderToStaticMarkup(createElement(Home));
   const start = html.indexOf('id="mainnet"');
-  const section = html.slice(start, html.indexOf('id="compare"'));
+  // To the record's <section>, the next section of the page.
+  const section = html.slice(start, html.lastIndexOf("<section", html.indexOf('id="verify"')));
   const words = visibleText(section);
   const C = MAINNET_PAYOUT;
   const isView = (p: unknown): p is string => typeof p === "string" && p.startsWith("`");
@@ -4144,10 +4085,12 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
   const ORDER = newestFirst(RECORDED_RUNS).map((r) => r.payout);
   const FOLD = /<details class="[^"]*_fold_[^"]*"/;
 
-  it("sits right under the live check, before the comparison, with its two-line headline", () => {
-    expect(start).toBeGreaterThan(html.indexOf('id="try"'));
-    expect(start).toBeLessThan(html.indexOf('id="compare"'));
-    expect(html.indexOf('id="try"')).toBeGreaterThan(-1);
+  it("sits after the use cases, before the record, with its two-line headline", () => {
+    expect(start).toBeGreaterThan(html.indexOf('id="integrate"'));
+    expect(start).toBeLessThan(html.indexOf('id="verify"'));
+    expect(html.indexOf('id="integrate"')).toBeGreaterThan(-1);
+    // The record's own markup is not in the slice: the section ends where the next one opens.
+    expect(section).not.toContain('id="verify"');
     expect(section).toContain('aria-labelledby="mainnet-title"');
     expect(words).toContain(`${C.line1} ${C.line2}`);
     expect(words).toContain(sectionHead(PAYOUTS).lede.replace(/`/g, ""));
@@ -4178,17 +4121,39 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     expect(words).not.toMatch(/coming soon|placeholder|\bTBD\b/i);
   });
 
-  it("tells the transactions of 2026-11-11 once: beside a lone payout, or after the folds, so the page goes back in time", () => {
-    const aside =
-      section.match(/<aside class="[^"]*_earlier_[^"]*" aria-labelledby="mainnet-earlier">/g) ?? [];
-    expect(aside).toHaveLength(1);
-    const at = section.indexOf('aria-labelledby="mainnet-earlier"');
-    expect(visibleText(section.slice(at))).toContain(C.earlier.title);
-    if (RECORDED_RUNS.length > 1) {
-      // In no payout's article, and after the last fold.
-      for (const a of articles) expect(a.html, a.id).not.toContain("mainnet-earlier");
-      expect(at).toBeGreaterThan(section.lastIndexOf("</details>"));
+  it("tells the transactions of 2026-11-11 in one line after the payouts and the questions, so the page goes back in time", () => {
+    // No aside and no heading of their own: one paragraph, from MAINNET_PAYOUT.earlierLine.
+    expect(section).not.toContain("<aside");
+    expect(section).not.toContain("mainnet-earlier");
+    const line = new RegExp(`<p class="${mn.earlierLine}">([\\s\\S]*?)</p>`).exec(section);
+    expect(line).not.toBeNull();
+    const at = line?.index ?? -1;
+    // As it shows: the words a screen reader reads after a hash, and the arrows, dropped.
+    const shown = textContent(
+      (line?.[1] ?? "")
+        .replace(/<span class="sr-only">[^<]*<\/span>/g, "")
+        .replace(/<span aria-hidden="true">[^<]*<\/span>/g, ""),
+    )
+      .split(String.fromCharCode(0xa0))
+      .join("");
+    expect(shown).toBe(partsText(C.earlierLine));
+    // In no payout's article, and after the last fold and both questions.
+    for (const a of articles) expect(a.html, a.id).not.toContain(mn.earlierLine);
+    expect(at).toBeGreaterThan(section.lastIndexOf("</details>"));
+    for (const title of ["mainnet-ask-title", "mainnet-verify-title"])
+      expect(at, title).toBeGreaterThan(section.indexOf(`aria-labelledby="${title}"`));
+    // Each hash a link to the mainnet explorer, its network read after it, and in the section once.
+    for (const t of [MAINNET_TX.payment, MAINNET_TX.refusal]) {
+      expect(section.split(`href="${t.url}"`).length - 1, t.label).toBe(1);
+      expect(section.indexOf(`href="${t.url}"`), t.label).toBeGreaterThan(at);
     }
+    expect(line?.[1]).toContain(`<span class="sr-only">, mainnet transaction</span>`);
+    // Then the docs page that gives every value the checks read: its title, as the docs list it.
+    expect(C.more.href).toBe(docsHref("start/mainnet-payout"));
+    expect(C.more.label).toBe(findPage("start/mainnet-payout")?.title);
+    const more = section.indexOf(`href="${C.more.href}">${C.more.label}`);
+    expect(more).toBeGreaterThan(at);
+    expect(section.split(`href="${C.more.href}"`).length - 1).toBe(1);
   });
 
   it("shows the seven checks at rest, the button for scripts and a line for no script, in every payout", () => {
@@ -4242,6 +4207,26 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     expect(top).not.toMatch(FOLD);
     expect(top).not.toContain("_foldSummary_");
     expect(section.indexOf(top)).toBeLessThan(section.search(FOLD));
+    // Its stone, the seven checks and its button sit before any details; its trail and verdict follow, in one closed
+    // drawer whose summary names them.
+    const drawer = new RegExp(
+      `<details class="${mn.drawer}"><summary class="${mn.drawerSummary}"><span class="${mn.drawerLabel}">${C.trailFold}</span>`,
+    );
+    expect(C.trailFold).toBe("Its decision trail and the verifier's verdict");
+    expect(top.replace(/&#x27;/g, "'")).toMatch(drawer);
+    // The other details are the checks' values, which the server renders open (MainnetPayoutClient).
+    const details = [...top.matchAll(/<details class="([^"]*)"([^>]*)>/g)];
+    expect(details.filter((d) => d[1] === mn.vals).map((d) => d[2])).toEqual(
+      CHECKS.map(() => ' open=""'),
+    );
+    expect(details.filter((d) => d[1] === mn.drawer).map((d) => d[2])).toEqual([""]);
+    expect(details).toHaveLength(CHECKS.length + 1);
+    const drawerAt = top.indexOf(`<details class="${mn.drawer}"`);
+    expect(drawerAt).toBeGreaterThan(top.search(/<button type="button" class="[^"]*_run_/));
+    expect(drawerAt).toBeGreaterThan(top.lastIndexOf(`<details class="${mn.vals}"`));
+    const lower = visibleText(top.slice(drawerAt));
+    expect(lower).toContain(trailView(newest).title);
+    expect(lower).toContain(verifyView(newest, PAYOUTS).title);
     // Each earlier one: a details with no open attribute, so it starts closed and opens with no script.
     for (const p of earlier) {
       const at = articleOf(p);
@@ -4290,6 +4275,8 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
         />Read the chain now<span class="sr-only">[^<]*<\/span><\/button>/,
       );
       expect(body, p.id).toContain(trailView(p).title);
+      // The fold is the payout's one: inside it, the trail and the verdict show open.
+      expect(body, p.id).not.toContain(`<details class="${mn.drawer}"`);
     }
     // Spend 2's summary, word for word.
     const s2 = foldView(earlier[0] as Payout);
@@ -4323,9 +4310,18 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     expect(body(".fold[open] .foldHide")).toMatch(/display: inline;/);
     // The site's focus ring stays: no rule takes the summary's outline away.
     expect(css).not.toMatch(/\.fold[A-Za-z]*[^{]*\{[^}]*outline: (none|0)/);
-    // No script opens or closes a fold: the client component uses none of its classes.
-    const client = text(SRC, "components", "site", "MainnetPayoutClient.tsx");
-    expect(client).not.toMatch(/\bm\.fold/);
+    // The drawers (the newest payout's trail, the verify's commands) fold the same way, on one line.
+    expect(body(".drawerSummary")).toMatch(/min-height: 44px;/);
+    expect(body(".drawerSummary")).toMatch(/cursor: pointer;/);
+    expect(body(".drawerSummary")).toMatch(/list-style: none;/);
+    expect(body(".drawerSummary::-webkit-details-marker")).toMatch(/display: none;/);
+    expect(body(".drawer[open] .drawerArrow")).toMatch(/transform: rotate\(180deg\);/);
+    expect(css).not.toMatch(/\.drawer[A-Za-z]*[^{]*\{[^}]*outline: (none|0)/);
+    // No script opens or closes a fold: the client components use none of their classes.
+    for (const file of ["MainnetPayoutClient.tsx", "MainnetAskClient.tsx"]) {
+      const client = text(SRC, "components", "site", file);
+      expect(client, file).not.toMatch(/\bm\.(fold|drawer)/);
+    }
   });
 
   it("calls the burn neutral and the arrival ok", () => {
@@ -4387,8 +4383,9 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     expect(section.match(/class="[^"]*_sealCoin_/g)?.length).toBe(
       PAYOUTS.reduce((n, p) => n + p.seals.length, 0),
     );
-    // The vault's transactions of 2026-11-11 sit once: beside a lone payout, or after the folds.
-    const earlierAt = section.indexOf('aria-labelledby="mainnet-earlier"');
+    // The vault's transactions of 2026-11-11 sit once, in the one line after the payouts.
+    const earlierAt = section.indexOf(`<p class="${mn.earlierLine}">`);
+    expect(earlierAt).toBeGreaterThan(0);
     for (const row of C.earlier.rows) {
       expect(section.indexOf(`href="${row.tx.url}"`)).toBeGreaterThan(earlierAt);
       expect(section.split(`href="${row.tx.url}"`).length - 1).toBe(1);
@@ -4423,27 +4420,27 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     }
     // The words are not shown: the visible label stays as the copy has it.
     expect(section).toContain(`${C.trail.summary.label}<span class="sr-only">${own(P)}</span>`);
-    // The question to the mainnet contract is its own group: its two amounts are named in a labelled fieldset.
-    const ask =
-      /<section[^>]*aria-labelledby="mainnet-ask-title"[^>]*>[\s\S]*?<\/section>/.exec(
+    // The question to the mainnet contract is its own group: its two amounts are named in a labelled fieldset. The
+    // no-clone verify beside it is another.
+    const groupOf = (title: string) =>
+      new RegExp(`<section[^>]*aria-labelledby="${title}"[^>]*>[\\s\\S]*?</section>`).exec(
         section,
       )?.[0] ?? "";
+    const ask = groupOf("mainnet-ask-title");
+    const verify = groupOf("mainnet-verify-title");
     const buttonsOf = (h: string) =>
       [...h.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((b) => nameOf(b[1] ?? ""));
-    expect(buttonsOf(section.replace(ask, ""))).toEqual(
+    const namesOf = (h: string) =>
+      [...h.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(
+        (b) => /aria-label="([^"]*)"/.exec(b[1] ?? "")?.[1] ?? nameOf(b[2] ?? ""),
+      );
+    expect(buttonsOf(section.replace(ask, "").replace(verify, ""))).toEqual(
       ORDER.map((p) => `${C.run.button}${own(p)}`),
     );
-    // Then the no-clone verify's copy buttons: each is named for its block, starting with its visible word.
-    const askNames = [...ask.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(
-      (b) => /aria-label="([^"]*)"/.exec(b[1] ?? "")?.[1] ?? nameOf(b[2] ?? ""),
-    );
-    expect(askNames).toEqual([
-      "1 USDC",
-      "2 USDC",
-      "Copy the Bash commands",
-      "Copy the PowerShell commands",
-    ]);
-    expect(buttonsOf(ask)).toEqual(["1 USDC", "2 USDC", "Copy", "Copy"]);
+    expect(namesOf(ask)).toEqual(["1 USDC", "2 USDC"]);
+    // The no-clone verify's copy buttons: each is named for its block, starting with its visible word.
+    expect(namesOf(verify)).toEqual(["Copy the Bash commands", "Copy the PowerShell commands"]);
+    expect(buttonsOf(verify)).toEqual(["Copy", "Copy"]);
     expect(ask).toContain(
       `<fieldset class="${mn.askAmounts}" aria-label="${MAINNET_ASK.amountsLabel}">`,
     );

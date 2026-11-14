@@ -15,7 +15,6 @@ import type { TamperResult } from "./tamper";
 const blob = (path: string) => `${REPO_URL}/blob/main/${path}`;
 /** A file of this repository on GitHub, at main or at a commit. */
 export const repoFileUrl = (path: string, commit = "main") => `${REPO_URL}/blob/${commit}/${path}`;
-const tree = (path: string) => `${REPO_URL}/tree/main/${path}`;
 
 export const FIXTURE_PATH = "packages/core/test/fixtures/valid-snapshot.json";
 
@@ -510,8 +509,8 @@ export const LIVE_CHECK = {
       "The controls need JavaScript. These are the answers the vault gave, recorded on {date}:",
     noScriptTable: "Recorded answers of the vault, one per scenario",
     unit: "USDC",
-    /** The caption over the request preview, which also names it for a screen reader. Backticks are code. */
-    requestLabel: "The request sent to `check_spend`",
+    /** The summary of the fold that holds the request preview, which also names the preview for a screen reader. */
+    requestLabel: "The request it sent",
     requestFields: "invoice_hash, ref, decision_hash",
     recipientField: "recipient",
     previewNotAmount: "not an amount",
@@ -580,8 +579,6 @@ export interface JourneyStep {
   body: string;
   /** What is true of this step on testnet, set apart by a gold rule: a label, then short lines, each with its link. */
   note?: { label: string; lines: readonly NoteLine[] };
-  /** A link from this step to the live check above. */
-  tryIt?: { label: string; href: string };
   /** The panel's name for a screen reader (ScrollRegion's label). */
   panelLabel: string;
   /** The strip every panel opens with. Backticks are code. */
@@ -631,7 +628,7 @@ export const JOURNEY = {
     {
       n: 1,
       title: "The owner signs a mandate",
-      body: "From their own wallet: who gets paid, how much per payment and in total, how many times, until when, and above what amount a person must approve.",
+      body: "Who gets paid, how much per payment and in total, how many times, until when, and above what amount a person must approve.",
       panelLabel: "Mandate fields",
       caption: "An example mandate",
       panel: [
@@ -645,7 +642,7 @@ export const JOURNEY = {
     {
       n: 2,
       title: "An attested model may propose, if you use one",
-      body: "It runs in a TEE on NEAR AI Cloud. Its attestation is bound by a nonce to one position in one vault's ledger. It only gives advice: it cannot widen a mandate.",
+      body: "It runs in a TEE on NEAR AI Cloud and gives advice. It cannot widen a mandate.",
       note: {
         label: "On testnet",
         lines: [
@@ -674,7 +671,7 @@ export const JOURNEY = {
     {
       n: 3,
       title: "Code decides, and signs before anything moves",
-      body: "Deterministic rules run first and cannot be removed. The SDK signs the decision into the ledger before anything is sent, and it records refusals too.",
+      body: "Its built-in rules are deterministic and cannot be removed. The SDK signs each decision into the ledger, refusals too.",
       panelLabel: "Built-in rules",
       caption: "`decide()`, built-in rules include",
       panel: RULES_SHOWN.map((text) => ({ text })),
@@ -682,8 +679,7 @@ export const JOURNEY = {
     {
       n: 4,
       title: "The contract decides last",
-      body: "Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. Above the approval limit, the spend waits for an approver's own wallet. The agent's key cannot approve anything, not even its own payment.",
-      tryIt: { label: "Run this check yourself, above", href: "#try" },
+      body: "The agent's key calls `spend`. The vault refuses a payment outside its mandate. Above the approval limit the spend waits for an approver's own wallet, and the agent's key cannot approve anything.",
       panelLabel: "check_spend results on the testnet vault",
       caption: "`check_spend` on mandate 1, at most 5 USDC, valid until 2026-12-01",
       panel: [
@@ -1384,6 +1380,13 @@ export const MAINNET_PAYOUT = {
     show: "Show its {checks} checks and its ledger",
     hide: "Hide its {checks} checks and its ledger",
   },
+  /**
+   * The summary of the closed details under the newest payout's stone, which holds its decision trail and the
+   * verifier's verdict. An earlier payout shows both open inside its own fold.
+   */
+  trailFold: "Its decision trail and the verifier's verdict",
+  /** The section's last line: the docs page that gives each value the checks read (its title, as the docs list it). */
+  more: { label: "Mainnet payouts, step by step", href: "/docs/start/mainnet-payout" },
   earlier: {
     title: "Earlier on mainnet, 2026-11-11",
     rows: [
@@ -1459,6 +1462,8 @@ export const MAINNET_VERIFY = {
   title: "Verify the vault yourself",
   intro:
     "In an empty folder, with Node 24: these commands download the vault's signed ledger, its recorded transactions and spend 1's decision from this site, then check them against NEAR mainnet. Verify reads the chain with read-only RPC requests and signs nothing.",
+  /** The summary of the closed details that holds the two blocks, under the title and the intro. */
+  fold: "The commands, for Bash and PowerShell 5.1",
   /** The files the blocks download, under SAMPLES_MAINNET. */
   files: ["ledger.jsonl", "mainnet-proof.json", "evidence/v0-decision-m001.json"],
   blocks: [
@@ -1527,11 +1532,13 @@ export const CONSOLE_SHOTS = {
   ],
   /** The name over a shot's transaction link. The invoice's page has no transaction, and nothing stands in for one. */
   txLabel: "Testnet transaction",
-  /**
-   * Under each shot below 924px, where the page draws the capture smaller than its 856px file. From 924px to 1099px
-   * the stacked capture is drawn at its own size, so the link would open the same picture (console.module.css).
-   */
+  /** Beside the landing's shot: the file itself, which a phone draws smaller than its 856px. */
   fullSize: "Open full size",
+  /**
+   * The one shot the landing shows, in the use cases (ConsoleShots.tsx ConsoleShot), under this label: the invoice's
+   * page. The held and the paid shot are in the docs (concepts/holds-and-approvals).
+   */
+  landing: { shot: "invoice", eyebrow: "In the console" },
   shots: [
     {
       id: "held",
@@ -1600,7 +1607,7 @@ export const CHECK_HINTS: Readonly<Record<CheckId, string>> = {
   d: "Every payment on chain matches exactly one decision in the ledger.",
   e: "Model advice, when used, is signed and tied to this exact place in the ledger.",
   f: "No one holds a full-access key to the vault, and it runs a known build.",
-  g: "No key is registered for the vault in NEAR Intents, so only the vault contract can move its balance there.",
+  g: "No key is registered for the vault in NEAR Intents, so the vault contract alone can move its balance there.",
   h: "Each withdrawal to another chain names the address in the mandate and the spend's amount.",
   i: "If the vault came from a factory, it is Probarion's, and its version is one the factory lists.",
 };
@@ -1658,6 +1665,16 @@ export const TAMPER_COPY = {
     "The verifier stopped with an error before it gave a result, so the result here did not change.",
   noScript:
     "The buttons need JavaScript. The result here is the recorded run of the same verifier.",
+  /** On the landing the checks fold under this line (TamperPanel foldChecks); /proof shows them open. */
+  checksFold: `The ${CHECK_IDS.length} checks, a to i`,
+  /** Beside the verdict while the checks are folded: the checks a run did not pass, each by its letter and name. */
+  failingLabel: "Checks that did not pass",
+  /** Under the panel on the landing: the same checks on a live vault's own data. */
+  realData: [
+    "On real data: ",
+    { label: "the testnet demo vault's proof page", href: DEMO_PROOF },
+    " runs the same checks on its own ledger and chain data.",
+  ] satisfies readonly CopyPart[],
 } as const;
 
 // --- on chain -------------------------------------------------------------------------------------
@@ -2196,6 +2213,8 @@ export const STATUS_BOARD = {
   },
   /** Said after a status pill elsewhere on the page, which links its row here. */
   pillSuffix: ", see its status row",
+  /** The landing's compact board (StatusBoard compact): after the name of a gap list that folds, its size. */
+  gapCount: (n: number) => `${n} ${n === 1 ? "item" : "items"}`,
   groups: [
     {
       id: "on-chain",
@@ -2731,11 +2750,6 @@ export interface ShipCard {
   name: string;
   /** Above the name, in the gold small capitals of the rows' labels: what Probarion ships there. */
   kind: string;
-  /**
-   * The logo at the top of the card: the place's owner's own file (components/site/ShipLogos.tsx), or, on the store's
-   * card, Probarion's mark, which is the extension's own icon (the store's logo is not used).
-   */
-  icon: "npm" | "mcp" | "github" | "probarion";
   /** What a visitor gets there, starting with what they do. */
   body: string;
   /** What is there, by its exact names: a name in backticks is an identifier and is set in mono. */
@@ -2746,13 +2760,14 @@ export interface ShipCard {
   meta: string;
   /** The card's one link: its label names what it opens, and whose, as a screen reader's list of links reads it. */
   link: { label: string; href: string };
+  /** The closing's row of text links (Closing, GetProbarion): what is there, in a few words after the name. */
+  short: string;
 }
 
 /**
- * After the status list: what Probarion is built on, each with its evidence, the rest of its stack, where to get it,
- * and the trademark notices. NEAR's logo stands in for its name; NEAR AI Cloud is named in text; the npm, MCP and
- * GitHub logos sit at the top of their cards. The trademark lead is the README's License line, and the lead and
- * the notices together are the one trademark text of the section (test/built-on.test.ts holds both).
+ * What Probarion is built on and where to get it. The landing draws two parts of it, both in the closing, as text with
+ * no logos: `ships`, the row "Where to get Probarion", and the trademark lead, which is the README's License line
+ * (test/built-on.test.ts holds both). What it rests on is STACK, in the #verify section.
  */
 export const BUILT_ON = {
   id: "built-on",
@@ -2823,48 +2838,48 @@ export const BUILT_ON = {
       id: "npm",
       name: "npm public registry",
       kind: "Packages",
-      icon: "npm",
       body: "Install the CLI, the SDK, the MCP server and the core they share, each with npm provenance.",
       ids: ["`probarion`", "`@probarion/sdk`", "`@probarion/mcp`", "`@probarion/core`"],
       idsLabel: "Package names",
       meta: "Version 0.1.1",
       link: { label: "@probarion/sdk on npm", href: LINKS.npmSdk },
+      short: "4 packages, 0.1.1",
     },
     {
       id: "mcp-registry",
       name: "Official MCP Registry",
       kind: "MCP server",
-      icon: "mcp",
       body: "Find the MCP server in the MCP Registry by the name below. Its entry names the npm package.",
       ids: ["`io.github.probarion/probarion`"],
       idsLabel: "Server name",
       meta: "Version 0.1.1, from `@probarion/mcp`",
       // The address is the registry's search for the server's name, which lists its entry.
       link: { label: "Probarion in the MCP Registry", href: LINKS.mcpRegistry },
+      short: "`io.github.probarion/probarion`",
     },
     {
       id: "github",
       name: "GitHub",
       kind: "Source and CI",
-      icon: "github",
       body: "Read the MIT source and the CI that runs the sandbox tests and the reproducible build.",
       ids: ["`probarion/probarion`"],
       idsLabel: "Repository",
       meta: "MIT License",
       link: { label: "Probarion on GitHub", href: LINKS.github },
+      short: "MIT",
     },
     {
       id: "chrome-web-store",
       name: "Chrome Web Store",
       // Chrome, not any browser: the README and the extension's README say Chrome 127 or newer.
       kind: "Chrome extension",
-      icon: "probarion",
       body: "Install the extension that queues invoices from your browser. It cannot pay or approve.",
       // The listing's name, not an identifier: set in the sans.
       ids: ["Probarion"],
       idsLabel: "Listing name",
       meta: "Version 0.1.0",
       link: { label: "Probarion's store listing", href: LINKS.chromeWebStore },
+      short: "Probarion 0.1.0",
     },
   ] satisfies readonly ShipCard[],
   /**
@@ -2890,6 +2905,8 @@ export const BUILT_ON = {
 /** One row of what Probarion rests on: its part, one or two sentences, and the tokens a reader can check. */
 export interface StackRow {
   id: "contract" | "ledger" | "model" | "route";
+  /** Over the name, in the gold of the labels: what kind of part it is. */
+  label: string;
   name: string;
   /** Backticks are code. */
   body: string;
@@ -2908,10 +2925,13 @@ export interface StackRow {
  */
 export const STACK = {
   id: BUILT_ON.id,
+  eyebrow: "Architecture",
   title: "What it rests on",
+  lede: "Four parts. Each one ends in something you can check yourself.",
   rows: [
     {
       id: "contract",
+      label: "On NEAR",
       name: "Contract",
       body: "Each vault is a NEAR contract that holds its USDC and checks every payment against the owner's mandate. The agent's key can call one method.",
       tokens: [
@@ -2925,6 +2945,7 @@ export const STACK = {
     },
     {
       id: "ledger",
+      label: "Signed, anchored",
       name: "Ledger",
       body: "Every decision is signed, refusals too, and anchored on chain. Anyone can check a published ledger, a to i, with no account.",
       ...(CLI_ON_NPM ? { tokensNote: VERIFY_NOTE } : {}),
@@ -2935,12 +2956,14 @@ export const STACK = {
     },
     {
       id: "model",
+      label: "Optional, attested",
       name: "Model",
       body: "Optional. An attested model on NEAR AI Cloud reads the invoice and proposes. Its TEE evidence was checked against Intel TDX and NVIDIA NRAS on 2026-11-13. The TEE image is not pinned, so this does not show which model image ran.",
       tokens: [{ code: "verify --online", note: "checks O1 and O2" }],
     },
     {
       id: "route",
+      label: "Cross-chain",
       name: "Payout route",
       body: "A Base payee is paid through NEAR Intents. The vault builds the `WITHDRAW_TO:` memo from the mandate.",
       tokens: [{ code: "intents.near" }],
@@ -3040,60 +3063,34 @@ export const COMPARE = {
 // A wrong `status` name fails the typecheck where Compare.tsx calls statusOf(r.status); a wrong `group` fails
 // site-facts.test.ts.
 
-// --- plug in your agent ---------------------------------------------------------------------------
+// --- use cases ------------------------------------------------------------------------------------
 
-/** The SDK README's quick start, shortened. The test holds each code line to packages/sdk/README.md. */
-export const SDK_SNIPPET = `import { Probarion } from "@probarion/sdk";
-
-const probarion = new Probarion({
-  network: "testnet",
-  vault: "acme.vaults.probarion.testnet",
-  agentKey: process.env.PROBARION_AGENT_KEY, // function-call key: can only call \`spend\`
-  ledgerKey: process.env.PROBARION_LEDGER_KEY, // function-call key: can only call \`anchor\`
-  model: null, // or NEAR AI Cloud, for attested advice
-});
-
-const outcome = await probarion.process({
-  text: invoiceText, // untrusted: it is shown to the model as data and nothing else
-  ref: "INV-2026-001", // your reference; the vault accepts each ref once
-  facts, // invoice_hash, amount, po_ref, purpose_hash, payee_hint
-});
-
-console.log(outcome.status, outcome.code, outcome.spendId, outcome.txHash);`;
-
-/** One use on one network: what happened, the record to check, and the STATUS row whose pill it carries. */
-interface IntegrateRun {
+/**
+ * One use of the use cases, as a card: the network it ran on, what its mandate controls, its outcome stamped in the
+ * page's tones, and one link to its record. The body may name what the use can do (Base or Solana); the outcome names
+ * what ran, and nothing more.
+ */
+interface UseCase {
+  title: string;
+  body: string;
   network: "Testnet" | "Mainnet";
+  control: string;
+  /** The outcome's words in its tone, one stamp each: paid (ok on its tint) or refused (bad on its tint). */
+  stamps: readonly { tone: "paid" | "refused"; label: string }[];
   outcome: string;
-  /** Each named in full: they follow the status pill, and each is read out alone as a link. */
-  evidence: readonly { label: string; url: string }[];
-  /** A STATUS row by its name: a name that is not a row fails the typecheck. */
-  status: StatusRow["row"];
+  /** A page of this site (/), a place on this page (#), or a file elsewhere, which opens in a new tab. */
+  evidence: { label: string; href: string };
 }
-const integrateRun = (run: IntegrateRun): IntegrateRun => run;
-/** A transaction as evidence: what it is, then its short hash, which the section sets in mono after `, tx `. */
-const txEvidence = (what: string, t: TxFact) => ({ label: `${what}, tx ${t.label}`, url: t.url });
-/** An account to point an agent at, on its own network's explorer, whatever network the page is opened at. */
-const integrateAccount = (network: Parameters<typeof explorerAccountUrl>[0], id: string) => ({
-  id,
-  url: explorerAccountUrl(network, id),
-});
 
 export const INTEGRATE = {
   eyebrow: "Use cases",
   title: "Your agent keeps its brain. Your vault holds the money.",
   /** The head's lede: the three uses below, each with its record. */
   lede: "Three jobs an agent can do under a mandate. Each ran on our own vaults, on testnet or mainnet, and links its record.",
-  /** How a developer plugs in, said with the ways in. */
+  /** How a developer plugs in, under the ways in. */
   sub: "You keep your model and your prompts. The owner creates a vault and a mandate from their own wallet, gives the agent a key that can call one method, `spend`, and the agent pays through the SDK.",
-  /** The section's three parts, each an h3: the ways in, the code with its reference, the uses with their evidence. */
-  parts: {
-    ways: "Four ways in",
-    code: "The SDK in one call",
-    /** SDK_SNIPPET is the SDK README's quick start, shortened: the test holds each code line to the README. */
-    codeNote: "The quick start of the SDK README, shortened.",
-    uses: "Three uses, with their evidence",
-  },
+  /** After the uses and the console's shot, an h3 over the four cards. */
+  waysTitle: "Four ways in",
   /** Read before every pill of the section, by a screen reader only. */
   statusPrefix: "Status: ",
   cards: [
@@ -3123,154 +3120,65 @@ export const INTEGRATE = {
       link: { href: blob("packages/mcp/README.md"), label: "MCP server README" },
     },
   ],
-  fileName: "agent.ts",
-  codeLabel: "@probarion/sdk",
   /**
-   * Beside the code: the accounts to point an agent at, from contracts/deployments/testnet.json and mainnet.json. Each
-   * links its own network's explorer; `explorer` is said after the account, to a screen reader.
+   * Under the four cards: the SDK README's own install line (the test holds it there), with a copy button, and the
+   * quickstart. The SDK code, the addresses and the outcome statuses are in the docs (developer-quickstart,
+   * testnet-and-mainnet, spend-outcomes).
    */
-  addresses: {
-    title: "Addresses",
-    networks: [
-      {
-        name: "Testnet",
-        explorer: " on the testnet explorer",
-        rows: [
-          { term: "Factory", account: integrateAccount("testnet", "vaults.probarion.testnet") },
-          {
-            term: "Demo vault",
-            account: integrateAccount("testnet", "demo.vaults.probarion.testnet"),
-          },
-        ],
-      },
-      {
-        name: "Mainnet",
-        explorer: " on the mainnet explorer",
-        rows: [
-          { term: "Factory", none: "None yet" },
-          {
-            term: "Vault",
-            account: integrateAccount("mainnet", "v0.probarion.near"),
-            after: ", the one vault",
-          },
-        ],
-      },
-    ],
-    link: { route: "/docs/start/testnet-and-mainnet", label: "Networks and addresses" },
+  install: {
+    command: "npm install @probarion/sdk @probarion/core",
+    /** The copy button's name for a screen reader: it starts with the visible "Copy" (WCAG 2.5.3). */
+    copyLabel: "Copy the install command",
+    link: { route: "/docs/start/developer-quickstart", label: "Developer quickstart" },
   },
-  statusesTitle: "Outcome statuses",
-  statusesLead: "`outcome.status` is one of:",
-  /** After the statuses: the docs page that says what each one means and what to do next. */
-  statusesLink: { route: "/docs/build/spend-outcomes", label: "What each status means" },
-  statuses: [
-    "refused_by_code",
-    "refused_by_contract",
-    "held",
-    "paid",
-    "burned",
-    "failed",
-    "unconfirmed",
-  ],
+  /** The chip on each use, before what the mandate fixes in it. */
+  controlsLabel: "The mandate controls",
   /**
-   * Under the code: where a developer goes next, grouped by what they open it for. Docs pages by route; the example,
-   * the repository and the SDK's npm page elsewhere. `after` is said after a link's label, to a screen reader.
+   * The three uses, each as it ran on our own vaults. The invoice's refusal links its card on the demo vault's proof
+   * page; the 402 run its evidence file; the payouts to Base the mainnet section, which tells both with their links.
    */
-  docs: {
-    title: "Docs and source",
-    groups: [
-      {
-        name: "Start",
-        links: [{ route: "/docs/start/developer-quickstart", label: "Quickstart (testnet)" }],
-      },
-      {
-        name: "Reference",
-        links: [
-          { route: "/docs/build/sdk-reference", label: "SDK reference" },
-          { route: "/docs/build/contract-reference", label: "Contract reference" },
-          { route: "/docs/build/cli-reference", label: "CLI reference" },
-        ],
-      },
-      {
-        name: "Example",
-        links: [{ href: tree("examples/402"), label: "Pay per call", after: " example" }],
-      },
-      {
-        name: "Source",
-        links: [
-          { href: LINKS.github, label: "GitHub" },
-          { href: LINKS.npmSdk, label: "@probarion/sdk on npm" },
-        ],
-      },
-    ],
-  },
-  /** The uses' column heads, shown above the rows on a wide screen. The second also labels its cell when they stack. */
-  usesHead: ["Use", "The mandate controls", "What happened", "Evidence"],
-  /** Each use, with what a mandate controls in it, and per network what happened, the evidence and its status row. */
   who: [
     {
       title: "Teams paying invoices with an agent",
-      body: "Accounts payable in USDC, where a person signs the limits once and approves only the big ones.",
+      body: "Accounts payable in USDC, where a person signs the limits once and approves the big ones.",
+      network: "Testnet",
       control: "Payee fixed by the mandate",
-      runs: [
-        integrateRun({
-          network: "Testnet",
-          outcome:
-            "INV-2002 asked to pay `new-account.testnet`. Code refused it with `mandate.payee_mismatch`, and nothing was sent.",
-          evidence: [
-            {
-              label: "INV-2002 in the demo vault's ledger, entry 3",
-              url: demoLedger("L4"),
-            },
-          ],
-          status: "Payables agent",
-        }),
-      ],
+      stamps: [{ tone: "refused", label: "Refused" }],
+      // contracts/deployments/testnet.json demo_vault.refusals: INV-2002, ledger entry 3; the test holds both.
+      outcome:
+        "INV-2002 asked to pay `new-account.testnet`. Code refused it with `mandate.payee_mismatch`, and nothing was sent.",
+      evidence: { label: "Ledger entry 3, on the proof page", href: `${DEMO_PROOF}#seq-3` },
     },
     {
       title: "Pay per API call",
       body: "An agent pays an endpoint's 402 through the MCP server, under a mandate with a set number of uses. Our own 402 format, not x402.",
+      network: "Testnet",
       control: "20 uses of 0.01 test USDC",
-      runs: [
-        integrateRun({
-          network: "Testnet",
-          outcome:
-            "20 calls paid, 0.01 test USDC each. The 21st was refused by code with `mandate.uses_exhausted`, before any transaction.",
-          evidence: [
-            {
-              label: "The 402 example's own agent on testnet, 2026-11-09",
-              url: blob("docs/evidence/402-vault/README.md"),
-            },
-          ],
-          status: "MCP server",
-        }),
+      // docs/evidence/402-vault/README.md: spends 1 to 20 paid, the 21st refused by code.
+      stamps: [
+        { tone: "paid", label: "Paid 20" },
+        { tone: "refused", label: "Refused 1" },
       ],
+      outcome:
+        "20 calls paid, 0.01 test USDC each. The 21st was refused by code with `mandate.uses_exhausted`, before any transaction.",
+      evidence: {
+        label: "The 402 run, 2026-11-09",
+        href: blob("docs/evidence/402-vault/README.md"),
+      },
     },
     {
       title: "Cross-chain payouts",
       body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate.",
+      network: "Mainnet",
       control: "Address fixed by the mandate",
-      runs: [
-        integrateRun({
-          network: "Testnet",
-          outcome:
-            "A stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR. The vault built the memo `WITHDRAW_TO:0x1111…1111` from the mandate and burned 1 test USDC.",
-          evidence: [txEvidence("The testnet burn for a Base address", TX.baseBurn)],
-          status: "Vault contract",
-        }),
-        integrateRun({
-          network: "Mainnet",
-          // The README's NEAR Intents row, S1 then S2; the test holds both to it.
-          outcome:
-            "Two payouts through NEAR Intents have run, tests to the owner's own Base address on 2026-11-13: 1.00 USDC decided by code rules alone, then 0.25 USDC decided by an attested model and the code rules.",
-          evidence: [
-            txEvidence("The 1.00 USDC payout to Base", MAINNET_TX.basePayout),
-            txEvidence("The 0.25 USDC payout to Base", MAINNET_TX.attestedPayout),
-          ],
-          status: "Mainnet vault",
-        }),
-      ],
+      stamps: [{ tone: "paid", label: "Paid" }],
+      // The recorded payouts (mainnet-payout-recorded.json): two, both to one Base wallet on 2026-11-13. No Solana
+      // payout has run, so the outcome names Base alone. The testnet stand-in burn is in the docs.
+      outcome:
+        "Two payouts through NEAR Intents have run, tests to the owner's own Base address on 2026-11-13.",
+      evidence: { label: "See both on mainnet", href: "#mainnet" },
     },
-  ],
+  ] satisfies readonly UseCase[],
 } as const;
 
 // --- closing --------------------------------------------------------------------------------------

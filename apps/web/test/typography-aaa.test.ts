@@ -514,10 +514,10 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["status", ".limit", "margin-top", 15, "site", ".site"],
       ["status", ".where", "margin-top", 15, "site", ".site"],
       ["status", ".note + .note", "margin-top", 15, "site", ".site"],
-      // The Built on footer's blocks, where they stack (a tablet's lead over its notices, a phone).
-      ["ships", ".legal", "row-gap", 13, "ships", ".legal"],
-      // The two entries of the stack note, where they stack (below 1101px).
-      ["ships", ".stackList", "row-gap", 15, "site", ".site"],
+      // What it rests on: a row's link to the docs under its sentences.
+      ["ships", ".stackLink", "margin-top", 16, "ships", ".stackLink"],
+      // The compact status board: a row's Where line under its Not yet line.
+      ["status", ".cWhere", "margin-top", 15, "site", ".site"],
       ["canary", ".column p + p", "margin-top", 17, "site", ".site"],
       ["canary", ".line", "margin-top", 17, "site", ".site"],
       ["canary", ".steps", "gap", 16, "site", ".site"],
@@ -534,18 +534,15 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["journey", ".resultLine + .resultLine", "margin-top", 15, "journey", ".matrix"],
       ["journey", ".invRow", "row-gap", 15, "site", ".site"],
       ["journey", ".attFoot", "gap", 15, "journey", ".attFoot"],
-      // Integrate: a use's control over its runs when the columns stack, and a run's outcome over its evidence.
-      ["integrate", ".use", "row-gap", 15, "site", ".site"],
-      ["integrate", ".run", "row-gap", 15, "site", ".site"],
-      // The console: a step's transaction under its sentence.
-      ["console", ".tx", "margin-top", 15, "site", ".site"],
+      // The use cases: the blocks of a use's card.
+      ["integrate", ".use", "gap", 15, "site", ".site"],
+      // The console's shot: its record under the caption's sentence.
+      ["console", ".record", "margin-top", 15, "site", ".site"],
       // The chain: a row's call, what the chain shows and its transaction stacked, and the foot's two lines.
       ["chain", ".row", "row-gap", 15, "site", ".site"],
       ["chain", ".foot", "gap", 15, "site", ".site"],
       // The live check: the lines of a hijack's invoice text under its quote.
       ["live", ".injLine", "margin-top", 15, "live", ".inj"],
-      // The hero: one step of the Canary's rehearsal under the next.
-      ["hero", ".steps li + li", "margin-top", 14, "hero", ".steps"],
       // The site footer, outside .site: its base row's note over the legal links, once the row stacks at 960px and below.
       ["footer", ".base", "row-gap", 14, "footer", ".footer"],
     ];
@@ -589,9 +586,11 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["status", ".gaps"],
       ["site", ".closeNote"],
       ["integrate", ".useBody"],
-      ["console", ".actionsText"],
+      ["integrate", ".waysSub"],
+      ["console", ".body"],
       ["hero", ".cap"],
-      ["hero", ".steps"],
+      // The payee panel's body, on the ink panel at the end of the problem.
+      ["site", ".payeeBody"],
       // The ledger test: the verdict's sentence, the run note and a press that did not finish.
       ["tamper", ".plain"],
       ["tamper", ".note"],
@@ -607,9 +606,10 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["live", ".noScript"],
       ["head", ".lede"],
       ["ships", ".stackBody"],
-      ["ships", ".shipBody"],
-      ["ships", ".legalLead"],
-      ["ships", ".legalNotices"],
+      ["ships", ".stackLink"],
+      ["ships", ".tokensNote"],
+      ["ships", ".legal"],
+      ["tamper", ".realData"],
       ["docs", ".prose > :is(p, ul, ol, blockquote)"],
       ["docs", ".prose li > :is(p, ul, ol)"],
       ["docs", ".check > p"],

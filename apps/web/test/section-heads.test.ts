@@ -47,7 +47,7 @@ const MAINNET_HEAD = sectionHead(PAYOUTS);
 const SECTIONS = [
   { id: "problem", eyebrow: PROBLEM.eyebrow, title: PROBLEM.title, lede: PROBLEM.sub },
   { id: "payment", eyebrow: JOURNEY.eyebrow, title: JOURNEY.title, lede: JOURNEY.intro },
-  { id: "integrate", eyebrow: INTEGRATE.eyebrow, title: INTEGRATE.title, lede: INTEGRATE.sub },
+  { id: "integrate", eyebrow: INTEGRATE.eyebrow, title: INTEGRATE.title, lede: INTEGRATE.lede },
   {
     id: "mainnet",
     eyebrow: MAINNET_HEAD.eyebrow,
@@ -210,10 +210,9 @@ describe("the landing's one rhythm", () => {
     expect(rule(head, ".block")).toContain("border-top: 1px solid var(--color-line);");
   });
 
-  it("puts G below each section, the hero and the ink band, and none above a section", () => {
+  it("puts G below each section and the hero, and none above a section", () => {
     expect(rule(head, ".section")).toContain("padding-block: 0 var(--space-section);");
     expect(rule(hero, ".hero")).toMatch(/padding-block: [^;]+ var\(--space-section\);/);
-    expect(rule(site, ".band")).toContain("margin-bottom: var(--space-section);");
     // The closing's rule sits halfway down its gap, on the wrap's left edge like every head's hairline.
     expect(rule(site, ".close")).toContain("padding-block: 0 var(--space-section);");
     expect(rule(site, ".close")).not.toContain("border");
@@ -224,8 +223,15 @@ describe("the landing's one rhythm", () => {
     expect(rule(head, ".head .title")).toContain("max-width: 16em;");
   });
 
-  it("leaves no trailing rule under the problem's numbers, where the next head's hairline follows", () => {
-    expect(rule(site, ".numbers")).not.toContain("border-bottom");
-    expect(rule(site, ".numbers")).toContain("border-top: 1px solid var(--color-line);");
+  it("insets the payee panel in the problem, with no paper of its own: the section owns G below it", () => {
+    const panel = rule(site, ".payeePanel");
+    expect(panel).toContain("border-radius: 24px;");
+    expect(panel).toContain("background: var(--color-band);");
+    expect(panel).not.toMatch(/margin|--space-section/);
+    // The pull line before it keeps --space-block above and below, as a block does.
+    expect(rule(site, ".pull")).toContain("margin-block: var(--space-block);");
+    // The full-width ink band and the problem's numbers strip are gone, with their rules.
+    for (const old of [/\.band\b/, /\.bandGrid\b/, /\.bandSub\b/, /\.numbers\s*[{>]/])
+      expect(site).not.toMatch(old);
   });
 });
