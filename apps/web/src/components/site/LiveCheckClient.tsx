@@ -56,6 +56,8 @@ export interface LiveCheckProps {
   codes: Readonly<Record<string, string>>;
   /** Server-rendered: the explorer link, so that lib/config stays out of this file's first load. */
   explorer: ReactNode;
+  /** The panels' heading level: h3 under a section's h2, h4 inside a block whose head is an h3 (LiveCheck embedded). */
+  level?: 3 | 4;
 }
 
 interface Fields {
@@ -151,7 +153,9 @@ export function LiveCheckClient({
   copy,
   codes,
   explorer,
+  level = 3,
 }: LiveCheckProps) {
+  const H = level === 4 ? "h4" : "h3";
   const [controls, setControls] = useState<Controls>(asControls(DEFAULT));
   const [shown, setShown] = useState<Shown>({
     kind: "answer",
@@ -266,7 +270,7 @@ export function LiveCheckClient({
   return (
     <div className={lc.grid}>
       <div className={lc.panel}>
-        <h3 className={lc.title}>{copy.formTitle}</h3>
+        <H className={lc.title}>{copy.formTitle}</H>
         <p className={lc.hint}>{copy.formHint}</p>
         <fieldset className={lc.scenarios} aria-label={copy.scenariosLabel}>
           {scenarios.map((x) => (
@@ -372,7 +376,7 @@ export function LiveCheckClient({
 
       <div className={`${lc.panel} ${lc.ink} ${lc.answer}`}>
         <div className={lc.head}>
-          <h3 className={lc.title}>{copy.answerTitle}</h3>
+          <H className={lc.title}>{copy.answerTitle}</H>
           {explorer}
         </div>
         {/* While a request is out, the region is busy and its last sentence is dimmed: it is not the answer yet. */}
@@ -439,9 +443,9 @@ export function LiveCheckClient({
       </div>
 
       <div className={`${lc.panel} ${lc.mandate}`}>
-        <h3 className={lc.title}>
+        <H className={lc.title}>
           {fill(copy.mandateTitle, { id: answer?.request.mandateId ?? controls.mandateId })}
-        </h3>
+        </H>
         <p className={lc.hint}>{copy.mandateHint}</p>
         {m === undefined ? (
           <p className={lc.empty}>{copy.mandateUnread}</p>

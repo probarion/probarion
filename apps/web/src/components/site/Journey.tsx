@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { JOURNEY, type JourneyStep, type PanelLine } from "@/lib/site/facts";
 import { KeepRich, LIST } from "./bits";
 import { JourneyRecord } from "./JourneyRecord";
@@ -88,22 +89,67 @@ function Step({ step }: { step: JourneyStep }) {
   );
 }
 
+/** A step of the compact list: its number, its title and line, and the mono tag of where it runs (JOURNEY.runsOn). */
+function CompactStep({ step, runsOn }: { step: JourneyStep; runsOn: string }) {
+  return (
+    <li className={`${j.step} ${j.compactStep}`}>
+      <div className={p.stepN} aria-hidden="true">
+        {step.n}
+      </div>
+      <div className={j.stepText}>
+        <h3 className={p.stepTitle}>
+          <span className="sr-only">Step {step.n}: </span>
+          {step.title}
+        </h3>
+        <p className={p.stepBody}>
+          <KeepRich text={step.body} />
+        </p>
+        <p className={j.runsOn}>
+          <span className={j.runsOnLabel}>{JOURNEY.runsOnLabel}: </span>
+          <KeepRich text={runsOn} />
+        </p>
+      </div>
+    </li>
+  );
+}
+
 /**
- * What happens to one invoice, in two parts: how it works, in five steps of one shape, then the record of it on NEAR
- * testnet (JourneyRecord), where each claim sits next to its evidence.
+ * What happens to one invoice. In full: five steps of one shape, then the record of it on NEAR testnet (JourneyRecord),
+ * where each claim sits next to its evidence. `compact`, on the landing: steps 1 to 4, each with where it runs, and no
+ * panels or record, which the docs carry. `children` follow the steps inside the section: the landing's live check.
  */
-export function Journey() {
+export function Journey({
+  compact = false,
+  children,
+}: {
+  compact?: boolean;
+  children?: ReactNode;
+} = {}) {
   return (
     <LandingSection
       id="payment"
       head={{ eyebrow: JOURNEY.eyebrow, title: JOURNEY.title, lede: JOURNEY.intro }}
     >
-      <ol className={j.steps} {...LIST}>
-        {JOURNEY.steps.map((step) => (
-          <Step key={step.n} step={step} />
-        ))}
-      </ol>
-      <JourneyRecord />
+      {compact ? (
+        <ol className={j.steps} {...LIST}>
+          {JOURNEY.runsOn.map((runsOn, i) => {
+            const step = JOURNEY.steps[i];
+            return step === undefined ? null : (
+              <CompactStep key={step.n} step={step} runsOn={runsOn} />
+            );
+          })}
+        </ol>
+      ) : (
+        <>
+          <ol className={j.steps} {...LIST}>
+            {JOURNEY.steps.map((step) => (
+              <Step key={step.n} step={step} />
+            ))}
+          </ol>
+          <JourneyRecord />
+        </>
+      )}
+      {children}
     </LandingSection>
   );
 }

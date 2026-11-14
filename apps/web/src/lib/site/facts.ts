@@ -111,13 +111,14 @@ export function publicRoutes(): string[] {
 export { betaStrip } from "./beta";
 
 /**
- * The landing sections, in the page's order. A full path, so that each one works from every page. The mainnet section
- * is also a SITE_NAV item, which the header shows here, second, and not again among the pages.
+ * The landing sections, in the page's order. A full path, so that each one works from every page. The live check (#try)
+ * is a block of the payment section, under its steps. The mainnet section is also a SITE_NAV item, which the header
+ * shows here, third, and not again among the pages.
  */
 export const HEADER_ANCHORS: readonly { href: string; label: string }[] = [
+  { href: "/#payment", label: "How a payment works" },
   { href: "/#try", label: "Try it" },
   { href: "/#mainnet", label: "Mainnet" },
-  { href: "/#payment", label: "How a payment works" },
   { href: "/#verify", label: "Verify" },
 ];
 
@@ -137,7 +138,8 @@ const listed = (items: readonly NavItem[]) =>
 const FOOTER_PRODUCT: readonly string[] = ["/check", "/usage", "/status"];
 
 export const FOOTER = {
-  motto: "TEE protects the data. The contract protects the money.",
+  /** What the contract and the ledger do. The model is attested, not end-to-end encrypted (STATUS.gaps), so no TEE line. */
+  motto: "The contract protects the money. The ledger records every decision.",
   note: "Unaudited beta. Built for the NEAR Hackathon 2026. MIT license.",
   /** The words of `note` that link to the repository's LICENSE file. */
   license: { label: "MIT license", href: blob("LICENSE") },
@@ -242,7 +244,7 @@ export const HERO = {
   eyebrow: "A mandate layer for AI agents on NEAR",
   line1: "Spend by mandate.",
   line2: "Prove every payment.",
-  lede: "Give your AI agent a budget, not your wallet. It can pay only the payee you named, up to the limits you signed. A NEAR contract refuses everything else, and every decision goes into a signed ledger you can publish.",
+  lede: "Give your AI agent a budget, not your wallet. It pays the payee you named, within the limits you signed. A NEAR contract refuses everything else, and every decision goes into a signed ledger you can publish.",
   openConsole: "Open console",
   tryLive: "Try the demo",
   docs: { route: "/docs", label: "Explore the docs" },
@@ -357,6 +359,9 @@ export const HERO = {
   },
 } as const;
 
+/** Why a cap is not enough: COMPARE's heading and the problem's pull line, one string. */
+const CAP_LINE = "A cap stops big payments. It does not stop the wrong ones.";
+
 export const PROBLEM = {
   eyebrow: "The problem",
   title: "Giving an AI agent a wallet means trusting a prompt with money.",
@@ -369,12 +374,23 @@ export const PROBLEM = {
     "Refusals leave no record. You learn of a bad payment afterwards.",
   ],
   with: [
-    "Its key can call one method, `spend`, and only inside your caps, uses and expiry.",
+    "Its key can call one method, `spend`, inside your caps, uses and expiry.",
     "`spend` has no recipient field. The payee comes from the mandate you signed.",
     "Every decision, refusals included, is signed into a ledger the verifier checks.",
   ],
   noLabel: "No",
   yesLabel: "Yes",
+  /**
+   * Under the two columns, at weight 300: the comparison's heading (COMPARE.title), and its docs page, which carries the
+   * comparison table the landing no longer shows.
+   */
+  pull: {
+    text: CAP_LINE,
+    link: {
+      label: "Why not a spending-limit contract",
+      href: "/docs/start/what-is-probarion#why-not-a-spending-limit-contract",
+    },
+  },
 } as const;
 
 export const NUMBERS = [
@@ -464,7 +480,7 @@ export const LIVE_CHECK = {
     injectedPaidUnknownPayee:
       "{amount} USDC would go only to the payee the owner signed: the request has no field for the attacker's address.",
     hijackTail:
-      "At {max} USDC or less it would still go to {payee}, never to the address in the prompt.",
+      "At {max} USDC or less it would still go to {payee}, not to the address in the prompt.",
     unknownCode: "The contract refused it with {code}.",
     noAnswer: "No answer from testnet",
     notAmountTitle: "Not an amount",
@@ -525,7 +541,7 @@ export const LIVE_CHECK = {
     OverDailyBackstop: "Above the vault's daily backstop.",
     Frozen: "The vault is frozen. No spend or approval goes through until the owner unfreezes it.",
     NotAgent:
-      "This key is not an agent key of this vault. A key the owner never added gets nothing.",
+      "This key is not an agent key of this vault. A key the owner did not add gets nothing.",
     NotOwner: "Only the owner may do this.",
     NotApprover: "Only an approver may do this.",
     NotLedgerKey: "Only the ledger key may do this.",
@@ -598,9 +614,19 @@ export const JOURNEY_IDS = {
 
 export const JOURNEY = {
   eyebrow: "How a payment works",
-  title: "What happens to one invoice",
+  title: "Code decides. The contract has the last word.",
   intro:
-    "The owner signs the rules once. When an invoice arrives, your agent asks to pay it. It never holds the money or types an address. The model may advise, code decides, and the contract has the last word.",
+    "The owner signs the rules once. When an invoice arrives, the agent asks to pay it. It holds no money and types no address. A model may advise, code decides and signs, and the vault contract refuses a payment outside the mandate.",
+  /** The mono tag under each of steps 1 to 4, in step order, after `runsOnLabel`: where that step runs. Backticks are code. */
+  runsOnLabel: "Runs on",
+  runsOn: [
+    "the owner's NEAR wallet",
+    "NEAR AI Cloud, optional",
+    "the agent's process, `@probarion/sdk`",
+    "the vault contract on NEAR",
+  ],
+  /** Under the steps: the docs page that walks each step with its fields and code. */
+  more: { label: "Every step, with its fields and code", href: "/docs/start/how-one-payment-works" },
   steps: [
     {
       n: 1,
@@ -618,7 +644,7 @@ export const JOURNEY = {
     },
     {
       n: 2,
-      title: "A private model proposes, if there is one",
+      title: "An attested model may propose, if you use one",
       body: "It runs in a TEE on NEAR AI Cloud. Its attestation is bound by a nonce to one position in one vault's ledger. It only gives advice: it cannot widen a mandate.",
       note: {
         label: "On testnet",
@@ -980,7 +1006,7 @@ export const SPEND_REQUEST_FIELDS = [
 
 export const BAND = {
   title: "The agent cannot name a payee.",
-  body: "A forged invoice or a hijacked prompt can ask to pay anyone. `spend` has no field to put an address in, so the money can only go to a payee you signed. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate.",
+  body: "A forged invoice or a hijacked prompt can ask to pay anyone. `spend` has no field to put an address in, so the money goes to a payee you signed. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate.",
   structName: "SpendRequest",
   gone: "recipient",
   goneNote: "does not exist",
@@ -1368,6 +1394,17 @@ export const MAINNET_PAYOUT = {
       },
     ],
   },
+  /**
+   * `earlier` in one line, for the landing: the same two transactions of 2026-11-11 (MAINNET_TX), each hash a link with
+   * its network read after it.
+   */
+  earlierLine: [
+    "On NEAR mainnet since 2026-11-11: 1 USDC paid under mandate 1 (",
+    { label: MAINNET_TX.payment.label, href: MAINNET_TX.payment.url, sr: ", mainnet transaction" },
+    "), and mandate 999 refused with `NoMandate` (",
+    { label: MAINNET_TX.refusal.label, href: MAINNET_TX.refusal.url, sr: ", mainnet transaction" },
+    ").",
+  ] satisfies readonly CopyPart[],
   /** Counts in words, for the lines that read better that way. Larger counts stay digits. */
   numbers: ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"],
   and: " and ",
@@ -2848,11 +2885,77 @@ export const BUILT_ON = {
   },
 } as const;
 
+// --- what it rests on -----------------------------------------------------------------------------
+
+/** One row of what Probarion rests on: its part, one or two sentences, and the tokens a reader can check. */
+export interface StackRow {
+  id: "contract" | "ledger" | "model" | "route";
+  name: string;
+  /** Backticks are code. */
+  body: string;
+  /** Each in mono: an account, a command or a contract, with a note on what it names when one helps. */
+  tokens: readonly { code: string; note?: string }[];
+  /** Said above the tokens, when they are commands that need it (VERIFY_NOTE). */
+  tokensNote?: string;
+  /** A quiet link under the row, to the docs that show it on chain. */
+  link?: { label: string; href: string };
+}
+
+/**
+ * The block "What it rests on" (id BUILT_ON.id) in the #verify section: four text rows, no logos. The ledger row's
+ * commands are VERIFY_LINES, the same offline check the rest of the site gives. The model row says the TEE limit that
+ * HERO.s2.tee says. The trademark lead (BUILT_ON.trademark.lead) moves to the closing.
+ */
+export const STACK = {
+  id: BUILT_ON.id,
+  title: "What it rests on",
+  rows: [
+    {
+      id: "contract",
+      name: "Contract",
+      body: "Each vault is a NEAR contract that holds its USDC and checks every payment against the owner's mandate. The agent's key can call one method.",
+      tokens: [
+        { code: "v0.probarion.near", note: "mainnet" },
+        { code: "vaults.probarion.testnet", note: "the testnet factory" },
+      ],
+      link: {
+        label: "The contract alone on testnet: paid, burned for a Base address, refused NoMandate",
+        href: "/docs/start/how-one-payment-works#see-it-on-testnet",
+      },
+    },
+    {
+      id: "ledger",
+      name: "Ledger",
+      body: "Every decision is signed, refusals too, and anchored on chain. Anyone can check a published ledger, a to i, with no account.",
+      ...(CLI_ON_NPM ? { tokensNote: VERIFY_NOTE } : {}),
+      tokens: [
+        ...VERIFY_LINES.map((code) => ({ code })),
+        { code: "verify --vault", note: "a live run, which reads the chain" },
+      ],
+    },
+    {
+      id: "model",
+      name: "Model",
+      body: "Optional. An attested model on NEAR AI Cloud reads the invoice and proposes. Its TEE evidence was checked against Intel TDX and NVIDIA NRAS on 2026-11-13. The TEE image is not pinned, so this does not show which model image ran.",
+      tokens: [{ code: "verify --online", note: "checks O1 and O2" }],
+    },
+    {
+      id: "route",
+      name: "Payout route",
+      body: "A Base payee is paid through NEAR Intents. The vault builds the `WITHDRAW_TO:` memo from the mandate.",
+      tokens: [{ code: "intents.near" }],
+    },
+  ] satisfies readonly StackRow[],
+  /** Under the rows. */
+  noEndorsement: "No partnership or endorsement is implied.",
+  architecture: { label: "How the parts fit", href: "/docs/operate/architecture" },
+} as const;
+
 // --- why not just a spending limit ----------------------------------------------------------------
 
 export const COMPARE = {
   eyebrow: "Why not just a spending limit?",
-  title: "A cap stops big payments. It does not stop the wrong ones.",
+  title: CAP_LINE,
   sub: "You can write a contract with a limit in an afternoon. These are the parts that take longer, and where Probarion stands on each.",
   head: ["Question", "A limit contract you write", "Probarion", "Status"],
   /**
@@ -2977,9 +3080,12 @@ const integrateAccount = (network: Parameters<typeof explorerAccountUrl>[0], id:
 });
 
 export const INTEGRATE = {
-  eyebrow: "Plug in your agent",
+  eyebrow: "Use cases",
   title: "Your agent keeps its brain. Your vault holds the money.",
-  sub: "You keep your model and your prompts. The owner creates a vault and a mandate from their own wallet, gives the agent a key that can only call `spend`, and the agent pays through the SDK.",
+  /** The head's lede: the three uses below, each with its record. */
+  lede: "Three jobs an agent can do under a mandate. Each ran on our own vaults, on testnet or mainnet, and links its record.",
+  /** How a developer plugs in, said with the ways in. */
+  sub: "You keep your model and your prompts. The owner creates a vault and a mandate from their own wallet, gives the agent a key that can call one method, `spend`, and the agent pays through the SDK.",
   /** The section's three parts, each an h3: the ways in, the code with its reference, the uses with their evidence. */
   parts: {
     ways: "Four ways in",
@@ -3176,6 +3282,18 @@ export const CLOSING = {
   live: "A live run reads the chain itself: `verify --vault`. On `demo.vaults.probarion.testnet` it passes checks a to i.",
   evaluate: "Evaluate in 5 minutes",
   spec: "Read the spec",
+  /** One action per audience, the first solid. "Try the demo" is the hero's own button, to the same live check. */
+  buttons: [
+    { label: "Evaluate in 5 minutes", href: EVALUATE_ROUTE, solid: true },
+    { label: HERO.tryLive, href: "#try", solid: false },
+    { label: "GitHub", href: LINKS.github, solid: false },
+  ],
+  /** Under the buttons, as quiet links: the docs, the spec and the demo video, which leave the page. */
+  quiet: [
+    { label: HERO.docs.label, href: HERO.docs.route },
+    { label: "Read the spec", href: LINKS.spec },
+    { label: HERO.demo.label, href: HERO.demo.href },
+  ],
 } as const;
 
 // --- /proof with no vault -------------------------------------------------------------------------

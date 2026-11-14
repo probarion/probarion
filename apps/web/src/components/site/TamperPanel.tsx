@@ -1,4 +1,5 @@
 import type { Snapshot } from "@probarion/core";
+import type { ReactNode } from "react";
 import { CHECK_LIST, RECORDED_RESULT, TAMPER_COPY, TAMPER_EVIDENCE } from "@/lib/site/facts";
 import { NEXT_STEP } from "@/lib/site/next-step";
 import { ledgerRows, TAMPER_EDITS } from "@/lib/site/tamper";
@@ -46,13 +47,18 @@ export function TamperPanel({ next = false }: { next?: boolean }) {
   );
 }
 
-export function LedgerTest() {
+/**
+ * The landing's #verify section: the tamper test, then `children`, the blocks that follow it in the same section
+ * (what it rests on, and what works today).
+ */
+export function LedgerTest({ children }: { children?: ReactNode } = {}) {
   return (
     <LandingSection
       id="verify"
       head={{ eyebrow: TAMPER_COPY.eyebrow, title: TAMPER_COPY.title, lede: TAMPER_COPY.intro }}
     >
       <TamperPanel next />
+      {children}
     </LandingSection>
   );
 }

@@ -90,6 +90,8 @@
    * (components/site/head.module.css), and so do the hero and the ink band. 64px on a phone, 115px at 1280.
    */
   --space-section: clamp(64px, 9vw, 128px);
+  /* The paper between two blocks inside one section (SectionHead.tsx SubHead): a hairline, then this. */
+  --space-block: clamp(40px, 5vw, 72px);
 }
 
 /* The sticky header's height: a skip link, an anchor or a section jump lands clear of it. */

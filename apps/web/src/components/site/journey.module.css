@@ -28,6 +28,22 @@
   margin-top: 12px;
   font-size: 15px;
 }
+/* The landing's compact steps (Journey compact): no panel column. The narrower widths below set .step's two columns. */
+.compactStep {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+/* Where a step runs, in mono at 13px, after its label in the site's font. */
+.runsOn {
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.runsOnLabel {
+  font-family: var(--font-sans);
+  font-weight: 500;
+}
 
 /* A panel: the same caption strip on every panel, then its lines, the values left-aligned in one column. */
 .panel {

@@ -68,6 +68,7 @@ import {
   SDK_SNIPPET,
   SITE_DESCRIPTION,
   SPEND_REQUEST_FIELDS,
+  STACK,
   STATUS,
   STATUS_BOARD,
   STORY,
@@ -426,10 +427,10 @@ describe("the claims about the code", () => {
 
   it("says in the ink band that a forged invoice cannot add a payee either (audit P1-5)", () => {
     expect(BAND.body).toBe(
-      "A forged invoice or a hijacked prompt can ask to pay anyone. `spend` has no field to put an address in, so the money can only go to a payee you signed. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate.",
+      "A forged invoice or a hijacked prompt can ask to pay anyone. `spend` has no field to put an address in, so the money goes to a payee you signed. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate.",
     );
     expect(visibleText(renderToStaticMarkup(createElement(InkBand)))).toContain(
-      "so the money can only go to a payee you signed.",
+      "so the money goes to a payee you signed.",
     );
   });
 
@@ -1260,9 +1261,9 @@ describe("the payment journey", () => {
   };
 
   it("follows one invoice, and says the agent only asks to pay it (audit P1-5, P1-6)", () => {
-    expect(JOURNEY.title).toBe("What happens to one invoice");
+    expect(JOURNEY.title).toBe("Code decides. The contract has the last word.");
     expect(JOURNEY.intro).toBe(
-      "The owner signs the rules once. When an invoice arrives, your agent asks to pay it. It never holds the money or types an address. The model may advise, code decides, and the contract has the last word.",
+      "The owner signs the rules once. When an invoice arrives, the agent asks to pay it. It holds no money and types no address. A model may advise, code decides and signs, and the vault contract refuses a payment outside the mandate.",
     );
     const out = visibleText(landing());
     expect(out).toContain(JOURNEY.title);
@@ -1621,7 +1622,11 @@ describe("the live check", () => {
     expect(checks).not.toMatch(/pause/i);
     expect(LIVE_CHECK.codes.MandateInactive).toBe("The owner revoked this mandate.");
     expect(LIVE_CHECK.codes.NotAgent).toBe(
-      "This key is not an agent key of this vault. A key the owner never added gets nothing.",
+      "This key is not an agent key of this vault. A key the owner did not add gets nothing.",
+    );
+    // A hijacked prompt over the limit: where the money would still go, said without "never".
+    expect(LIVE_CHECK.copy.hijackTail).toBe(
+      "At {max} USDC or less it would still go to {payee}, not to the address in the prompt.",
     );
     expect(LIVE_CHECK.codes.Frozen).toBe(
       "The vault is frozen. No spend or approval goes through until the owner unfreezes it.",
@@ -2096,7 +2101,7 @@ describe("the problem, the comparison and the integrate section", () => {
   it("titles the integrate section with what the developer keeps and what the vault holds", () => {
     expect(INTEGRATE.title).toBe("Your agent keeps its brain. Your vault holds the money.");
     expect(INTEGRATE.sub).toContain("You keep your model and your prompts.");
-    expect(INTEGRATE.sub).toContain("a key that can only call `spend`");
+    expect(INTEGRATE.sub).toContain("a key that can call one method, `spend`");
     expect(integrateHtml()).toContain(`>${INTEGRATE.title}</h2>`);
   });
 
@@ -2528,22 +2533,53 @@ describe("the rendered landing page", () => {
 
   it("puts the sections in the order of the spec", () => {
     const html = renderToStaticMarkup(createElement(Home));
+    // Seven sections: the hero, the problem with the payee, the payment with the live check, the use cases, mainnet,
+    // the record with what it rests on and what works today, then the close.
     const ids = [
       "problem",
-      "try",
-      "mainnet",
-      "compare",
-      "payment",
-      "integrate",
       "payee",
+      "payment",
+      "try",
+      "integrate",
+      "mainnet",
       "verify",
-      "chain",
-      "status",
       "built-on",
+      "status",
+      "known-gaps",
     ];
     const at = ids.map((id) => html.indexOf(`id="${id}"`));
     for (const [i, pos] of at.entries()) expect(pos, ids[i]).toBeGreaterThan(-1);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+
+  it("builds the seven sections' new lines from the constants and records they restate", () => {
+    // The problem's pull line is the comparison's heading, and links the docs heading that carries its table.
+    expect(PROBLEM.pull.text).toBe(COMPARE.title);
+    expect(PROBLEM.pull.link.href).toBe(
+      "/docs/start/what-is-probarion#why-not-a-spending-limit-contract",
+    );
+    // One tag per step of the compact journey, steps 1 to 4.
+    expect(JOURNEY.runsOn).toHaveLength(4);
+    expect(JOURNEY.steps[1].title).toBe("An attested model may propose, if you use one");
+    // The mainnet record of 2026-11-11 in one line: its two hashes are MAINNET_TX's.
+    const links = MAINNET_PAYOUT.earlierLine.filter((p) => typeof p !== "string");
+    expect(links.map((l) => l.href)).toEqual([MAINNET_TX.payment.url, MAINNET_TX.refusal.url]);
+    expect(links.map((l) => l.label)).toEqual([MAINNET_TX.payment.label, MAINNET_TX.refusal.label]);
+    // The close: the evaluation, the hero's own demo button, GitHub; then the docs, the spec and the video.
+    expect(CLOSING.buttons.map((b) => b.label)).toEqual([CLOSING.evaluate, HERO.tryLive, "GitHub"]);
+    expect(CLOSING.buttons.map((b) => b.href)).toEqual([EVALUATE_ROUTE, "#try", LINKS.github]);
+    expect(CLOSING.quiet.map((q) => q.label)).toEqual([
+      HERO.docs.label,
+      CLOSING.spec,
+      HERO.demo.label,
+    ]);
+    // What it rests on: four rows, the ledger's commands the site's one offline check.
+    expect(STACK.rows.map((r) => r.id)).toEqual(["contract", "ledger", "model", "route"]);
+    const ledger = STACK.rows.find((r) => r.id === "ledger");
+    for (const line of VERIFY_LINES) expect(ledger?.tokens.map((t) => t.code)).toContain(line);
+    expect(INTEGRATE.lede).toBe(
+      "Three jobs an agent can do under a mandate. Each ran on our own vaults, on testnet or mainnet, and links its record.",
+    );
   });
 
   it("links the journey's check_spend step to the live check", () => {
@@ -2822,10 +2858,13 @@ describe("the footer columns", () => {
     const html = footer();
     expect(footerText(html)).toContain(FOOTER.motto);
     expect(footerText(html)).toContain(FOOTER.note);
-    // Both periods stay, with a real space between the two lines, so that a copy reads "data. The contract".
+    // Both periods stay, with a real space between the two lines, so that a copy reads "money. The ledger". No TEE
+    // line: the model is attested, and Known gaps says there is no end-to-end encryption.
+    expect(FOOTER.motto).toBe("The contract protects the money. The ledger records every decision.");
     expect(html).toContain(
-      "<span>TEE protects the data.</span> <span>The contract protects the money.</span>",
+      "<span>The contract protects the money.</span> <span>The ledger records every decision.</span>",
     );
+    expect(FOOTER.motto).not.toMatch(/TEE/);
   });
 
   it("links the note's license words to the repository's LICENSE file", () => {
@@ -3302,13 +3341,14 @@ describe("the stylesheet", () => {
       ".nav:has(> .netSwitch) .navLinks",
     );
     expect(site).not.toContain("(max-width: 1360px)");
-    // Four section links and four pages: Mainnet is a section link, so it is not a page link too.
+    // Four section links and four pages, in the page's order: Mainnet is a section link, so it is not a page link too.
     expect(HEADER_ANCHORS.map((a) => a.label)).toEqual([
+      "How a payment works",
       "Try it",
       "Mainnet",
-      "How a payment works",
       "Verify",
     ]);
+    expect(HEADER_ANCHORS.map((a) => a.href)).toEqual(["/#payment", "/#try", "/#mainnet", "/#verify"]);
   });
 });
 
@@ -4076,6 +4116,8 @@ describe("the mainnet payout (#mainnet)", () => {
     // "pay" is a proposal's action, as the ledger names it.
     const allowed = new Set<string>([
       MAINNET_PAYOUT.earlier.rows[0].text,
+      // The same spend 1, in the one line the landing gives the transactions of 2026-11-11.
+      MAINNET_PAYOUT.earlierLine[0] as string,
       MAINNET_PAYOUT.problems["owner.payee"],
     ]);
     const said = strings.map((s) => s.replace(/\bproposed (pay|\{action\})\b/g, "proposed"));
