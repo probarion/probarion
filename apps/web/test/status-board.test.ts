@@ -672,8 +672,9 @@ describe("the status board's evidence", () => {
     expect(model, "the model replay is recorded").toBeDefined();
     const footer = strings(STATUS_BOARD.footer).join("");
     expect(footer).not.toMatch(/not recorded/);
+    // "attested" is qualified as everywhere else: A1 to A8 offline (O1 and O2 were not run, the TEE is not pinned).
     expect(footer).toContain(
-      `(${model?.attested} attested, ${model?.call_failed} failed calls, money moved wrongly ${latest.headline.money_moved_wrongly.model_replay})`,
+      `(${model?.attested} attested by A1 to A8 offline, ${model?.call_failed} failed calls, money moved wrongly ${latest.headline.money_moved_wrongly.model_replay})`,
     );
   });
 

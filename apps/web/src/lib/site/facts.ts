@@ -2609,7 +2609,7 @@ export const STATUS_BOARD = {
     { label: "README Status table", href: BOARD_LINKS.readmeStatus },
     " says: the ",
     { label: "eval", href: BOARD_LINKS.eval },
-    ", run offline, its model replay on answers recorded from NEAR AI Cloud included (17/19 attested, 2/19 failed calls, money moved wrongly 0/20), one deployment for both networks, `/usage`, the watcher, health checks and `/status`, error reports to Sentry and the Docs Center. The docs page ",
+    ", run offline, its model replay on answers recorded from NEAR AI Cloud included (17/19 attested by A1 to A8 offline, 2/19 failed calls, money moved wrongly 0/20), one deployment for both networks, `/usage`, the watcher, health checks and `/status`, error reports to Sentry and the Docs Center. The docs page ",
     { label: "What works today", href: "/docs/start/what-works-today" },
     " gives each status row, and the parts this board leaves out, one word: Live, Preview or Planned.",
   ] satisfies readonly CopyPart[],
