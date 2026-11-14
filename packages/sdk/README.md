@@ -156,7 +156,7 @@ before a mandate names it: the NEAR account now and at a block about 7 days back
 archival node), `eth_getCode` and the nonce of a Base address on mainnet, and the vault's mandates and
 spends. It signs and sends nothing. A read that fails or times out (3 seconds a request) is
 `"unknown"`, not a value. `@probarion/sdk/payee` exports it alone, for a browser page. It is in this
-repository, not in release 0.1.1 on npm.
+package from release 0.1.2 on, and in this repository; release 0.1.1 on npm does not have it.
 
 ## Testing your integration
 

@@ -5,8 +5,9 @@ for AI agents on NEAR. These are checks on a NEAR payment, written as parts that
 Probarion's CLI runs two of them, the outcome proof verifier in `tx prove` and the account lock audit in
 `account audit`; Probarion's verifier, settlement watcher and console do not use them yet (**Planned**).
 
-**Unaudited beta.** Versions 0.x may change the API in a minor release. MIT licensed. This package is in
-the repository and is not on npm yet; it reaches npm with the next release. ESM, with no CommonJS build; Node 24 or newer.
+**Unaudited beta.** Versions 0.x may change the API in a minor release. MIT licensed. This package is on
+npm once release 0.1.2 is published; until then, build it from a clone (below). ESM, with no CommonJS build;
+Node 24 or newer.
 
 The pure functions use no network, no filesystem and no Node built-in, so they run the same in Node and in a
 browser. The online helpers take any JSON-RPC client (an object with `call(method, params)`: `httpJsonRpc(url)`
@@ -160,8 +161,8 @@ for (const event of scanAllEvents(result.outcomes).events) {
 The `examples/` folder of the repository has one example for each primitive: `prove-receipt.ts`,
 `read-events.ts`, `audit-account.ts` and `check-payout.ts`.
 
-Probarion's CLI runs two of them on the chain, in the CLI built from this repository (npm 0.1.1 does not have
-these commands). Both read views and proofs over JSON-RPC and sign nothing. From a clone, after
+Probarion's CLI runs two of them on the chain, in the CLI built from this repository and from release 0.1.2
+on (npm 0.1.1 does not have these commands). Both read views and proofs over JSON-RPC and sign nothing. From a clone, after
 `pnpm --filter @probarion/core build`, `pnpm --filter @probarion/sdk build`, `pnpm --filter @probarion/near build`
 and `pnpm --filter probarion build`:
 

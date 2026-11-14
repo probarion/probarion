@@ -52,7 +52,7 @@ export const TABLES: readonly RefTable[] = [
         cells: {
           option: "`--rpc <urls>`",
           fallback: "`NEAR_RPC_URLS`, else the network's default RPCs",
-          does: "Comma-separated NEAR RPC URLs. Only the commands that read the chain use them: `vault create`, `check`, `payee check` and `verify`. An empty list is an error, and `verify --offline` refuses it.",
+          does: "Comma-separated NEAR RPC URLs. Only the commands that read the chain use them: `vault create`, `check`, `payee check`, `account audit`, `tx prove` (for the head, when `--head-rpc` is not given) and `verify`. An empty list is an error, and `verify --offline` refuses it.",
         },
       },
       {
@@ -60,7 +60,7 @@ export const TABLES: readonly RefTable[] = [
         cells: {
           option: "`-V`, `--version`",
           fallback: "None",
-          does: "Prints the CLI's version, `0.1.1`, and exits 0.",
+          does: "Prints the CLI's version, `0.1.2`, and exits 0.",
         },
       },
       {
