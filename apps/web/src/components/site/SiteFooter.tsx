@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Fragment } from "react";
+import { LinkPending } from "@/components/pending/LinkPending";
 import { RouteLink } from "@/components/RouteLink";
 import { FOOTER } from "@/lib/site/facts";
 import { BrandMark } from "./BrandMark";
@@ -34,6 +35,7 @@ export function SiteFooter() {
             <Link className={`${s.brand} ${f.brand}`} href="/" aria-label="Probarion home">
               <BrandMark gradientId="probarion-coin-footer" />
               probarion
+              <LinkPending />
             </Link>
             {/* A space between the two lines, so that a copy or a screen reader reads "data. The contract". */}
             <p className={f.motto}>
