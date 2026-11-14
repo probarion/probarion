@@ -1,10 +1,17 @@
 import bs58 from "bs58";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  SIGN_IN_CLOSED,
+  SIGN_IN_TIMED_OUT,
+  SIGN_IN_TIMEOUT_MS,
+  type SignInPhase,
+} from "@/lib/ui/pending";
 import {
   decodeNonce,
   type Nep413Wallet,
   normalizeSignature,
   type SignedMessage,
+  signInErrorText,
   signInWithWallet,
 } from "./signin";
 
@@ -209,6 +216,196 @@ describe("signInWithWallet (NEP-413)", () => {
     await expect(
       signInWithWallet(fakeWallet({ accountId: "alice.near" }).wallet, b.impl),
     ).resolves.toBe("alice.near");
+  });
+});
+
+describe("signInWithWallet: the steps it reports", () => {
+  /** Records the phases, and when the wallet was asked, in one list. */
+  function recorded(signed: Partial<SignedMessage> | Error = {}) {
+    const steps: string[] = [];
+    const { wallet } = fakeWallet(signed);
+    const sign = wallet.signMessage.bind(wallet);
+    wallet.signMessage = async (p) => {
+      steps.push("signs");
+      return sign(p);
+    };
+    const onPhase = (phase: SignInPhase) => {
+      steps.push(phase);
+    };
+    return { steps, wallet, onPhase };
+  }
+
+  it("says wallet before the wallet is asked, verify before the post, open once signed in", async () => {
+    const { impl, calls } = fakeFetch([json(CHALLENGE), json({ accountId: "alice.near" })]);
+    const { steps, wallet, onPhase } = recorded();
+    await expect(signInWithWallet(wallet, impl, onPhase)).resolves.toBe("alice.near");
+    expect(steps).toEqual(["wallet", "signs", "verify", "open"]);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("never says open when sign-in did not happen", async () => {
+    const refused = recorded();
+    const a = fakeFetch([json(CHALLENGE), json({ error: "bad_signature" }, 401)]);
+    await expect(signInWithWallet(refused.wallet, a.impl, refused.onPhase)).rejects.toThrow();
+    expect(refused.steps).toEqual(["wallet", "signs", "verify"]);
+
+    const closed = recorded(new Error("User rejected"));
+    const b = fakeFetch([json(CHALLENGE)]);
+    await expect(signInWithWallet(closed.wallet, b.impl, closed.onPhase)).rejects.toThrow();
+    expect(closed.steps).toEqual(["wallet", "signs"]);
+
+    const down = recorded();
+    const c = fakeFetch([json({}, 503)]);
+    await expect(signInWithWallet(down.wallet, c.impl, down.onPhase)).rejects.toThrow();
+    expect(down.steps).toEqual([]);
+  });
+
+  it("a phase callback that throws changes nothing", async () => {
+    const { impl, calls } = fakeFetch([json(CHALLENGE), json({ accountId: "alice.near" })]);
+    const { wallet, seen } = fakeWallet({});
+    const onPhase = () => {
+      throw new Error("the view broke");
+    };
+    await expect(signInWithWallet(wallet, impl, onPhase)).resolves.toBe("alice.near");
+    expect(seen).toHaveLength(1);
+    expect(calls).toHaveLength(2);
+  });
+});
+
+describe("signInWithWallet: the server's 15 s", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const timeout = () =>
+    new DOMException("The operation was aborted due to timeout", "TimeoutError");
+
+  /** AbortSignal.timeout with the clock in the test's hands: `fire()` makes every signal so far time out now. */
+  function clock() {
+    const controllers: AbortController[] = [];
+    const spy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+      const c = new AbortController();
+      controllers.push(c);
+      return c.signal;
+    });
+    const fire = () => {
+      for (const c of controllers) c.abort(timeout());
+    };
+    return { spy, fire };
+  }
+
+  /** A server that gives `replies` in turn and then never answers: it waits on the request's signal. */
+  function hangingAfter(replies: Response[]) {
+    const calls: Call[] = [];
+    const impl = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      const next = replies.shift();
+      if (next) return next;
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+      });
+    }) as typeof fetch;
+    return { impl, calls };
+  }
+
+  it("gives both requests a 15 s signal", async () => {
+    const { spy } = clock();
+    const { impl, calls } = fakeFetch([json(CHALLENGE), json({ accountId: "alice.near" })]);
+    await signInWithWallet(fakeWallet({}).wallet, impl);
+    expect(SIGN_IN_TIMEOUT_MS).toBe(15_000);
+    expect(spy.mock.calls).toEqual([[SIGN_IN_TIMEOUT_MS], [SIGN_IN_TIMEOUT_MS]]);
+    expect(calls.map((c) => c.init?.signal instanceof AbortSignal)).toEqual([true, true]);
+  });
+
+  it("a challenge that does not come says so, and the wallet is not asked", async () => {
+    const { fire } = clock();
+    const { impl } = hangingAfter([]);
+    const { wallet, seen } = fakeWallet({});
+    const steps: SignInPhase[] = [];
+    const signingIn = signInWithWallet(wallet, impl, (p) => {
+      steps.push(p);
+    });
+    fire();
+    await expect(signingIn).rejects.toThrow(new Error(SIGN_IN_TIMED_OUT));
+    expect(SIGN_IN_TIMED_OUT).toBe(
+      "The server did not answer in 15 s. You are not signed in. Try again.",
+    );
+    expect(seen).toHaveLength(0);
+    expect(steps).toEqual([]);
+  });
+
+  it("a challenge whose body stops coming says the same", async () => {
+    const res = json(CHALLENGE);
+    vi.spyOn(res, "json").mockRejectedValue(timeout());
+    const { wallet, seen } = fakeWallet({});
+    const once = (async () => res) as unknown as typeof fetch;
+    await expect(signInWithWallet(wallet, once)).rejects.toThrow(new Error(SIGN_IN_TIMED_OUT));
+    expect(seen).toHaveLength(0);
+  });
+
+  it("a verify that does not answer says so, after the wallet signed once, and never says open", async () => {
+    const { fire } = clock();
+    const { impl, calls } = hangingAfter([json(CHALLENGE)]);
+    const { wallet, seen } = fakeWallet({});
+    const steps: SignInPhase[] = [];
+    const signingIn = signInWithWallet(wallet, impl, (p) => {
+      steps.push(p);
+      if (p === "verify") setTimeout(fire, 0);
+    });
+    await expect(signingIn).rejects.toThrow(new Error(SIGN_IN_TIMED_OUT));
+    expect(seen).toHaveLength(1);
+    expect(calls.map((c) => c.url)).toEqual(["/api/auth/challenge", "/api/auth/verify"]);
+    expect(steps).toEqual(["wallet", "verify"]);
+  });
+
+  it("a failure that is not the timeout keeps its own words", async () => {
+    const offline = (async () => {
+      throw new TypeError("Failed to fetch");
+    }) as unknown as typeof fetch;
+    await expect(signInWithWallet(fakeWallet({}).wallet, offline)).rejects.toThrow(
+      "Sign-in is unavailable right now. Nothing was signed. Try again later.",
+    );
+    const replies = [json(CHALLENGE)];
+    const verifyDown = (async (input: Parameters<typeof fetch>[0]) => {
+      if (String(input) === "/api/auth/verify") throw new TypeError("Failed to fetch");
+      const next = replies.shift();
+      if (!next) throw new Error("unexpected extra fetch");
+      return next;
+    }) as typeof fetch;
+    await expect(signInWithWallet(fakeWallet({}).wallet, verifyDown)).rejects.toThrow(
+      new TypeError("Failed to fetch"),
+    );
+  });
+});
+
+describe("signInErrorText", () => {
+  it("a closed selector or wallet, or a no, reads as closed, not as the wallet's raw words", () => {
+    for (const raw of [
+      "User rejected",
+      "User rejected the request",
+      "Wallet closed",
+      "User cancelled the action",
+      "User canceled",
+      "Request was rejected by the user",
+      "user denied the request",
+    ]) {
+      expect(signInErrorText(new Error(raw)), raw).toBe(SIGN_IN_CLOSED);
+    }
+    expect(SIGN_IN_CLOSED).toBe("You closed the wallet before signing. You are not signed in.");
+  });
+
+  it("keeps every other message as it is, the server's refusals and the timeout included", () => {
+    for (const message of [
+      "Your wallet's signature was not accepted. Choose an account whose full-access key can sign messages (bad_signature)",
+      "The sign-in challenge expired or was already used (challenge_missing_or_expired)",
+      SIGN_IN_TIMED_OUT,
+      "Sign-in is unavailable right now. Nothing was signed. Try again later.",
+      "The wallet connector did not load (boom). Reload the page.",
+      "Wallet is still loading",
+    ]) {
+      expect(signInErrorText(new Error(message)), message).toBe(message);
+    }
+    expect(signInErrorText("plain words")).toBe("plain words");
   });
 });
 

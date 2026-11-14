@@ -13,18 +13,29 @@ import {
 import type { Network } from "@/lib/config";
 import { confirmTxAction, sendBaselineAction } from "@/lib/near/confirm-action";
 import type { TxResult } from "@/lib/near/outcome";
-import { type SendWallet, sendWalletTx } from "@/lib/near/send";
+import { type SendDeps, type SendWallet, sendWalletTx } from "@/lib/near/send";
 import { type Nep413Wallet, type SignedMessage, signInWithWallet } from "@/lib/near/signin";
 import type { WalletTx } from "@/lib/near/tx";
+import type { SignInPhase } from "@/lib/ui/pending";
 import { type ConnectorLike, connectorFor } from "./connector";
 
 type WalletLike = Nep413Wallet & SendWallet;
+
+/** What a send tells its button along the way: "confirm" once the wallet answered with a transaction. */
+export interface SendOptions {
+  onPhase?: SendDeps["onPhase"];
+}
+
+/** What sign-in tells its button along the way: "wallet", "verify", then "open" (lib/near/signin.ts). */
+export interface SignInOptions {
+  onPhase?: (phase: SignInPhase) => void;
+}
 
 interface WalletCtx {
   ready: boolean;
   /** The account the connected wallet is signed in as. Not the same as the session cookie. */
   accountId: string | null;
-  signIn(): Promise<string>;
+  signIn(opts?: SignInOptions): Promise<string>;
   signOut(): Promise<void>;
   /**
    * Asks the connected wallet for a NEP-413 message signature (the owner's confirmation of an invoice payment). It
@@ -33,9 +44,10 @@ interface WalletCtx {
   signMessage(p: { message: string; recipient: string; nonce: Uint8Array }): Promise<SignedMessage>;
   /**
    * Asks the wallet to sign and send once, then reads the result from the chain. It never throws and
-   * never sends the same transaction twice: a result it cannot confirm comes back as `unknown`.
+   * never sends the same transaction twice: a result it cannot confirm comes back as `unknown`. `onPhase` only changes
+   * what the button says.
    */
-  sendTx(tx: WalletTx, signerId?: string): Promise<TxResult>;
+  sendTx(tx: WalletTx, signerId?: string, opts?: SendOptions): Promise<TxResult>;
 }
 
 const Ctx = createContext<WalletCtx | null>(null);
@@ -129,11 +141,14 @@ export function WalletProvider({ network, children }: { network: Network; childr
     }
   }, []);
 
-  const signIn = useCallback(async () => {
-    const id = await signInWithWallet(await wallet());
-    setAccountId(id);
-    return id;
-  }, [wallet]);
+  const signIn = useCallback(
+    async (opts?: SignInOptions) => {
+      const id = await signInWithWallet(await wallet(), undefined, opts?.onPhase);
+      setAccountId(id);
+      return id;
+    },
+    [wallet],
+  );
 
   const signMessage = useCallback(
     async (p: { message: string; recipient: string; nonce: Uint8Array }) =>
@@ -150,13 +165,14 @@ export function WalletProvider({ network, children }: { network: Network; childr
   }, []);
 
   const sendTx = useCallback(
-    (tx: WalletTx, signerId?: string): Promise<TxResult> =>
+    (tx: WalletTx, signerId?: string, opts?: SendOptions): Promise<TxResult> =>
       sendWalletTx(
         {
           network,
           getWallet: wallet,
           baseline: () => sendBaselineAction(),
           confirm: (request) => confirmTxAction(request),
+          onPhase: opts?.onPhase,
         },
         tx,
         signerId,

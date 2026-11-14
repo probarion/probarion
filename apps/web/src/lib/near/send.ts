@@ -29,6 +29,11 @@ export interface SendDeps {
   baseline(): Promise<number | null>;
   /** Reads the transaction from the chain and checks it is the one shown (the `confirmTxAction` server action). */
   confirm(request: ConfirmRequest): Promise<TxResult>;
+  /**
+   * Told "confirm" once, when the wallet has answered with a transaction and NEAR is asked for its result, so a button
+   * can say who it waits on now. For the view only: what it does or throws changes nothing here.
+   */
+  onPhase?: (phase: "confirm") => void;
 }
 
 /** A server action's answer crossed the network: take only a well-formed result, for this hash. */
@@ -72,6 +77,8 @@ function startBaseline(deps: SendDeps): Promise<number | null> {
  *   one, never the one the wallet says it used.
  * - No hash (a cancel, a closed window, a wallet that says nothing) is "not confirmed": we cannot
  *   tell it from a transaction that went out, so the caller locks the button like for `unknown`.
+ * - `deps.onPhase("confirm")` is told once, between the wallet's hash and the chain read, never on a path without a
+ *   hash. It only changes what the button says.
  * - It never throws.
  */
 export async function sendWalletTx(
@@ -135,6 +142,11 @@ export async function sendWalletTx(
   // (the server then still requires it to be the signed-in account).
   const signer = signerId ?? report.signerId ?? accounts[0] ?? null;
   if (signer === null) return unconfirmed(report);
+  try {
+    deps.onPhase?.("confirm");
+  } catch {
+    // the caller's view only: the result is still read from the chain below
+  }
   try {
     return asResult(
       await deps.confirm({

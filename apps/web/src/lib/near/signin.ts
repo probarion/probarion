@@ -4,6 +4,13 @@
  * This is a message signature, not a transaction: it moves no funds and adds no keys.
  */
 
+import {
+  SIGN_IN_CLOSED,
+  SIGN_IN_TIMED_OUT,
+  SIGN_IN_TIMEOUT_MS,
+  type SignInPhase,
+} from "@/lib/ui/pending";
+
 export interface SignedMessage {
   accountId: string;
   publicKey: string;
@@ -118,16 +125,46 @@ function refusalMessage(code: string): string {
 const SIGN_IN_UNAVAILABLE =
   "Sign-in is unavailable right now. Nothing was signed. Try again later.";
 
-/** Signs in and returns the account the server verified. Throws a message safe to show the user. */
+/** A request the browser stopped waiting for (`AbortSignal.timeout`), not one that failed on its own. */
+function timedOut(e: unknown): boolean {
+  return isRecord(e) && e.name === "TimeoutError";
+}
+
+/** Tells the caller the step, for its words only: what the callback does or throws changes nothing here. */
+function tell(onPhase: ((phase: SignInPhase) => void) | undefined, phase: SignInPhase): void {
+  try {
+    onPhase?.(phase);
+  } catch {
+    // the caller's view only
+  }
+}
+
+/**
+ * Signs in and returns the account the server verified. Throws a message safe to show the user.
+ *
+ * `onPhase` hears "wallet" before the wallet is asked to sign, "verify" before the signature is posted, and "open" once
+ * the server has signed the owner in. The challenge and the verify request each stop waiting after 15 s and say so; the
+ * wallet's own step has no timeout.
+ */
 export async function signInWithWallet(
   wallet: Nep413Wallet,
   fetchImpl: typeof fetch = fetch,
+  onPhase?: (phase: SignInPhase) => void,
 ): Promise<string> {
-  const res0 = await fetchImpl("/api/auth/challenge", { credentials: "same-origin" }).catch(
-    () => null,
-  );
+  let res0: Response | undefined;
+  try {
+    res0 = await fetchImpl("/api/auth/challenge", {
+      credentials: "same-origin",
+      signal: AbortSignal.timeout(SIGN_IN_TIMEOUT_MS),
+    });
+  } catch (e) {
+    throw new Error(timedOut(e) ? SIGN_IN_TIMED_OUT : SIGN_IN_UNAVAILABLE);
+  }
   if (!res0?.ok) throw new Error(SIGN_IN_UNAVAILABLE);
-  const challenge: unknown = await res0.json().catch(() => null);
+  const challenge: unknown = await res0.json().catch((e: unknown) => {
+    if (timedOut(e)) throw new Error(SIGN_IN_TIMED_OUT);
+    return null;
+  });
   if (
     !isRecord(challenge) ||
     typeof challenge.message !== "string" ||
@@ -140,6 +177,7 @@ export async function signInWithWallet(
   }
   const nonce = decodeNonce(challenge.nonce);
 
+  tell(onPhase, "wallet");
   const signed = await wallet.signMessage({
     message: challenge.message,
     recipient: challenge.recipient,
@@ -149,16 +187,25 @@ export async function signInWithWallet(
     throw new Error("The wallet did not return a complete signature");
   }
 
-  const res = await fetchImpl("/api/auth/verify", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      accountId: signed.accountId,
-      publicKey: signed.publicKey,
-      signature: normalizeSignature(signed.signature),
-    }),
-  });
+  tell(onPhase, "verify");
+  let res: Response;
+  try {
+    res = await fetchImpl("/api/auth/verify", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId: signed.accountId,
+        publicKey: signed.publicKey,
+        signature: normalizeSignature(signed.signature),
+      }),
+      signal: AbortSignal.timeout(SIGN_IN_TIMEOUT_MS),
+    });
+  } catch (e) {
+    // Stopped before an answer came, so no session cookie was set: the owner is not signed in.
+    if (timedOut(e)) throw new Error(SIGN_IN_TIMED_OUT);
+    throw e;
+  }
   if (!res.ok) {
     const body: unknown = await res.json().catch(() => null);
     throw new Error(
@@ -168,7 +215,21 @@ export async function signInWithWallet(
     );
   }
   const verified: unknown = await res.json().catch(() => null);
+  tell(onPhase, "open");
   return isRecord(verified) && typeof verified.accountId === "string" && verified.accountId !== ""
     ? verified.accountId
     : signed.accountId;
+}
+
+/**
+ * What the selector or a wallet says when the owner closed it or said no: near-connect's "User rejected" (the
+ * selector) and "Wallet closed" (a wallet's window), and the wallets' own "User cancelled" or "Rejected by user".
+ */
+const CLOSED =
+  /\b(?:user (?:rejected|cancell?ed|closed|denied)|wallet closed|(?:rejected|cancell?ed|denied) by (?:the )?user)\b/i;
+
+/** A sign-in error in words for the owner: a closed wallet or selector reads as such, not as "User rejected". */
+export function signInErrorText(e: unknown): string {
+  const message = e instanceof Error ? e.message : String(e);
+  return CLOSED.test(message) ? SIGN_IN_CLOSED : message;
 }

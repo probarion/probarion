@@ -18,6 +18,8 @@ function setup(opts: {
   getWallet?: () => Promise<SendWallet>;
   accountsFail?: boolean;
   baseline?: () => Promise<number | null>;
+  /** The view's phase callback; by default it records what it was told, and `null` leaves it out. */
+  onPhase?: SendDeps["onPhase"] | null;
 }) {
   const calls = {
     sign: 0,
@@ -27,6 +29,8 @@ function setup(opts: {
     order: [] as string[],
     confirm: [] as ConfirmRequest[],
     params: [] as unknown[],
+    /** The wallet asked, the view told, the chain asked, in order: "sign", "phase:confirm", "confirm". */
+    steps: [] as string[],
   };
   const wallet: SendWallet = {
     async getAccounts() {
@@ -37,6 +41,7 @@ function setup(opts: {
     async signAndSendTransaction(p) {
       calls.sign++;
       calls.order.push("sign");
+      calls.steps.push("sign");
       calls.params.push(p);
       return (opts.signs ?? (async () => ({ transaction: { hash: HASH, signer_id: OWNER } })))();
     },
@@ -51,11 +56,15 @@ function setup(opts: {
     },
     confirm: async (request) => {
       calls.confirm.push(request);
+      calls.steps.push("confirm");
       return opts.confirm
         ? opts.confirm(request)
         : { status: "ok", txHash: request.hash, code: null, error: null };
     },
   };
+  if (opts.onPhase !== null) {
+    deps.onPhase = opts.onPhase ?? ((phase) => calls.steps.push(`phase:${phase}`));
+  }
   return { deps, calls, wallet };
 }
 
@@ -509,5 +518,89 @@ describe("sendWalletTx: W-T6-R2", () => {
       expect(calls.sign).toBe(1);
       expect(r).toMatchObject({ status: "unknown", txHash: null });
     });
+  });
+});
+
+describe("sendWalletTx: the confirm phase, for the button's words only", () => {
+  it("tells the view once, after the wallet answered with a hash and before NEAR is asked", async () => {
+    let answer: (outcome: unknown) => void = () => undefined;
+    const { deps, calls } = setup({
+      signs: () => new Promise((resolve) => (answer = resolve)),
+    });
+    const sent = sendWalletTx(deps, freezeTx(VAULT), OWNER);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // the wallet is open: still the wallet's phase
+    expect(calls.steps).toEqual(["sign"]);
+    answer({ transaction: { hash: HASH, signer_id: OWNER } });
+    expect(await sent).toEqual(ok());
+    expect(calls.steps).toEqual(["sign", "phase:confirm", "confirm"]);
+  });
+
+  it("tells it once also for a wallet error that carries a hash, which is checked on chain", async () => {
+    const { deps, calls } = setup({
+      signs: async () =>
+        Promise.reject(Object.assign(new Error("Exceeded 60 seconds"), { txHash: HASH })),
+    });
+    await sendWalletTx(deps, freezeTx(VAULT), OWNER);
+    expect(calls.steps).toEqual(["sign", "phase:confirm", "confirm"]);
+  });
+
+  it.each([
+    ["a cancel", async () => Promise.reject(new Error("User rejected the request"))],
+    ["a closed wallet", async () => Promise.reject(new Error("Wallet closed"))],
+    ["an outcome with no transaction", async () => ({ status: { SuccessValue: "" } })],
+    ["an empty answer", async () => undefined],
+    ["a hash that is not base58", async () => ({ transaction: { hash: "not-a-hash" } })],
+  ])("%s: no hash, so the view is not told and NEAR is not asked", async (_name, signs) => {
+    const { deps, calls } = setup({ signs });
+    expect(await sendWalletTx(deps, freezeTx(VAULT), OWNER)).toMatchObject({
+      status: "unknown",
+      txHash: null,
+    });
+    expect(calls.steps).toEqual(["sign"]);
+  });
+
+  it("is not told when the send stops before the wallet is asked", async () => {
+    const { deps, calls } = setup({ accounts: ["stranger.near"] });
+    expect((await sendWalletTx(deps, freezeTx(VAULT), OWNER)).status).toBe("failed");
+    expect(calls.steps).toEqual([]);
+  });
+
+  it("a view callback that throws changes nothing: one signature, one chain read, the chain's result", async () => {
+    const quiet = setup({ onPhase: null });
+    const expected = await sendWalletTx(quiet.deps, freezeTx(VAULT), OWNER);
+    let told = 0;
+    const { deps, calls } = setup({
+      onPhase: () => {
+        told++;
+        throw new Error("the view broke");
+      },
+    });
+    const r = await sendWalletTx(deps, freezeTx(VAULT), OWNER);
+    expect(r).toEqual(expected);
+    expect(r).toEqual(ok());
+    expect(told).toBe(1);
+    expect(calls.sign).toBe(1);
+    expect(calls.confirm).toEqual(quiet.calls.confirm);
+  });
+
+  it("a view callback that throws does not hide what the chain said, a refusal included", async () => {
+    const failed: TxResult = { status: "failed", txHash: HASH, code: "NotOwner", error: "panic" };
+    const { deps, calls } = setup({
+      confirm: async () => failed,
+      onPhase: () => {
+        throw new Error("the view broke");
+      },
+    });
+    expect(await sendWalletTx(deps, freezeTx(VAULT), OWNER)).toEqual(failed);
+    expect(calls.sign).toBe(1);
+    expect(calls.confirm).toHaveLength(1);
+  });
+
+  it("works the same without a view callback", async () => {
+    const { deps, calls } = setup({ onPhase: null });
+    expect(deps.onPhase).toBeUndefined();
+    expect(await sendWalletTx(deps, freezeTx(VAULT), OWNER)).toEqual(ok());
+    expect(calls.steps).toEqual(["sign", "confirm"]);
   });
 });

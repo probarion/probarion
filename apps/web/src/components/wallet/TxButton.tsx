@@ -1,14 +1,24 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { busyLabel } from "@/components/pending/busy-label";
+import { useElapsed } from "@/components/pending/hooks";
+import { elapsedClock, hintText } from "@/components/pending/status-line";
 import { actionButtonClass } from "@/components/ui";
 import type { Network } from "@/lib/config";
 import { type DangerTone, walletConfirm } from "@/lib/console/confirm-dialog";
 import { actionKey, browserStore, clearLock, readLock, writeLock } from "@/lib/near/lock";
 import { type DescribeResult, sendLocked, type TxResult } from "@/lib/near/outcome";
 import { actionLabel, type WalletTx } from "@/lib/near/tx";
+import {
+  slowHint,
+  TX_PHASE_LABEL,
+  TX_PHASE_LABELS,
+  TX_PHASE_LINE,
+  type TxPhase,
+} from "@/lib/ui/pending";
 import { TxResultNote } from "./TxResultNote";
 import { useWallet } from "./WalletProvider";
 
@@ -23,6 +33,13 @@ type Prepared = WalletTx | { error: string };
  * With `tx` the lock is keyed by the transaction itself. With `prepare()` the transaction is only
  * known after the click, so a `lockKey` naming the action is REQUIRED, and the types enforce it:
  * without one a reload would forget an unconfirmed send and let the owner sign it again.
+ *
+ * While a click runs, the button says who it waits on (lib/ui/pending.ts): the console ("Preparing…"), the wallet
+ * ("Check your wallet…"), NEAR ("Confirming on NEAR…"), the page's own finish, then "Updating the page…". Its one
+ * status region, mounted from the first render, carries the line under it, the one slow hint and the result (a lock
+ * read back after a reload is shown beside it, not read out). While busy it stays focusable (aria-disabled) and a
+ * click does nothing; `disabled` is only for a button that cannot act: the wallet still loading, the wrong account,
+ * the lock. The wallet step never times out and is never reset here.
  */
 export interface TxButtonBaseProps {
   label: string;
@@ -38,6 +55,8 @@ export interface TxButtonBaseProps {
   /** Wording for the result, live or read back after a reload (so a reloaded lock reads the same). */
   describe?: DescribeResult;
   onResult?: (r: TxResult) => void | Promise<void>;
+  /** The button's words while `onResult` runs, such as "Registering the vault…". Without it: "Finishing…". */
+  finishing?: string;
   /**
    * Called with `true` when a click starts waiting for the wallet and the chain, and with `false` when that is over
    * (and once with `false` when the button mounts). Lets the page keep other actions, such as asking for a new
@@ -64,9 +83,21 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
   const router = useRouter();
   const inflight = useRef(false); // state updates are async; two fast clicks must not both sign
   const [busy, setBusy] = useState(false);
+  // Who a running click waits on now. Only the words follow it: what is sent, and how often, does not.
+  const [phase, setPhase] = useState<TxPhase>("wallet");
+  // After a result the page reads its data again. Until it has, the button says so and a click does nothing.
+  const [refreshing, startRefresh] = useTransition();
+  // The guard is raised before the refresh starts and follows `refreshing` only once a render has committed: the
+  // transition's own render reads `refreshing` as false before it commits, while the button still says it is updating.
+  const refreshingNow = useRef(false);
+  useEffect(() => {
+    refreshingNow.current = refreshing;
+  });
   const [prepared, setPrepared] = useState<WalletTx | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TxResult | null>(null);
+  // The lock read back on load. It is shown, but beside the status region, so a reload does not read it out again.
+  const [readBack, setReadBack] = useState<TxResult | null>(null);
   const { ask, dialog } = useConfirm();
   const preview = props.tx ?? prepared;
   const locked = sendLocked(result);
@@ -78,8 +109,11 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
   // A reload must not undo the lock: pick it up again (after hydration, so server and client agree).
   useEffect(() => {
     // (also when the action changes, e.g. another vault name: its result is not this one's)
-    setResult(readLock(browserStore(), key));
+    const back = readLock(browserStore(), key);
+    setResult(back);
+    setReadBack(back);
   }, [key]);
+  const quiet = result !== null && result === readBack;
 
   const onBusyChange = useRef(props.onBusyChange);
   onBusyChange.current = props.onBusyChange;
@@ -87,8 +121,39 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
     onBusyChange.current?.(busy);
   }, [busy]);
 
+  // The unlock control goes away with the lock: hand the focus to the button it unlocked, not to the page.
+  const button = useRef<HTMLButtonElement>(null);
+  const unlocking = useRef(false);
+  useEffect(() => {
+    if (locked || !unlocking.current) return;
+    unlocking.current = false;
+    button.current?.focus();
+  }, [locked]);
+  // And the other way: the lock disables the button, so if a click's lock finds it focused, the unlock control takes it.
+  const unlockControl = useRef<HTMLButtonElement>(null);
+  const focusUnlock = useRef(false);
+  useEffect(() => {
+    if (!locked || !focusUnlock.current) return;
+    focusUnlock.current = false;
+    unlockControl.current?.focus();
+  }, [locked]);
+
+  // The phase's clock (aria-hidden, from 5 s) and its one hint: the wallet's at 20 s, NEAR's at 15 s. Neither ends
+  // the wait: the wallet step has no timeout, and the chain read ends in a result or the lock.
+  const elapsed = useElapsed(busy, phase);
+  const waitingOn = phase === "wallet" || phase === "confirm" ? phase : null;
+  const hint = busy && waitingOn ? slowHint(waitingOn, elapsed) : null;
+  const line = busy ? TX_PHASE_LINE[phase] : null;
+  const shown: TxPhase | null = busy ? phase : refreshing ? "refresh" : null;
+  const now =
+    shown === "finish" && props.finishing ? props.finishing : TX_PHASE_LABEL[shown ?? "wallet"];
+  // Every label the button can show, its own included, so neither a phase nor the wallet becoming ready moves it.
+  const sizes = [...TX_PHASE_LABELS, props.label, ...(props.finishing ? [props.finishing] : [])];
+  const notReady = useId();
+
   async function run(opener?: HTMLElement) {
     if (inflight.current || locked) return;
+    if (refreshingNow.current) return;
     if (props.confirm) {
       // A second click while the question is open is answered "no" by the dialog itself. A "no" returns here, before
       // the busy state, the in-flight guard, the error and the lock are touched: the button is as it was.
@@ -100,11 +165,13 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
       if (!(await ask(question, opener))) return;
       // The page was inert while the dialog was open, but what is true now decides, not what was true at the click.
       if (inflight.current || lockedNow.current) return;
+      if (refreshingNow.current) return;
     }
     inflight.current = true;
     setBusy(true);
     setError(null);
     setResult(null);
+    setPhase(props.tx ? "wallet" : "prepare");
     try {
       const next: Prepared | undefined = props.tx ?? (await props.prepare?.());
       if (!next) throw new Error("Nothing to sign");
@@ -113,15 +180,29 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
         return;
       }
       setPrepared(next);
-      const r = await sendTx(next, props.expectedSigner);
+      setPhase("wallet");
+      // NEAR's turn ("confirm") is told by the send itself, once the wallet has answered with a transaction.
+      const r = await sendTx(next, props.expectedSigner, { onPhase: setPhase });
       writeLock(browserStore(), key ?? actionKey(next), r);
       setResult(r);
+      // Read before the render that disables a locked button (the lock is already written, and this cannot throw).
+      focusUnlock.current =
+        sendLocked(r) && button.current?.ownerDocument.activeElement === button.current;
+      if (props.onResult) setPhase("finish");
       try {
         await props.onResult?.(r);
       } catch (e) {
         console.error("TxButton onResult failed", e);
       }
-      router.refresh();
+      refreshingNow.current = true;
+      startRefresh(() => {
+        // A throw here would reach the route's error page and take the result off the screen.
+        try {
+          router.refresh();
+        } catch (e) {
+          console.error("TxButton refresh failed", e);
+        }
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -133,12 +214,17 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
   return (
     <div className="my-2">
       <button
+        ref={button}
         type="button"
         className={actionButtonClass(props.confirmTone, props.wide)}
-        disabled={!ready || busy || wrongSigner || locked}
+        disabled={!ready || wrongSigner || locked}
+        aria-disabled={busy || refreshing ? true : undefined}
+        aria-describedby={ready ? undefined : notReady}
         onClick={(e) => run(e.currentTarget)}
       >
-        {busy ? "Waiting for your wallet and the network…" : props.label}
+        {ready
+          ? busyLabel(props.label, now, shown !== null, sizes)
+          : busyLabel(props.label, props.label, true, sizes)}
       </button>
       {wrongSigner ? (
         <p className="mt-1 text-xs text-bad wrap-anywhere">
@@ -147,31 +233,64 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
       ) : null}
       {preview && !props.hidePreview ? (
         <p className="mt-1 text-xs text-mute wrap-anywhere">
-          You sign: {preview.summary} — {preview.receiverId}.
+          You sign: {preview.summary}, on {preview.receiverId}.
           {preview.actions.map(actionLabel).join(" + ")}
         </p>
       ) : null}
-      {error ? <p className="mt-1 text-xs text-bad">{error}</p> : null}
-      {result ? (
+      {/* The button's one status region: phase changes, the hint and the outcome are read out; clocks are not. */}
+      <div role="status">
+        {line ? (
+          <p className="mt-1 animate-pending-in text-xs text-mute wrap-anywhere">
+            {line}
+            {/* once the hint is there, its clock is the one that runs */}
+            {hint ? null : elapsedClock(elapsed)}
+          </p>
+        ) : null}
+        {hint ? (
+          <p key={`hint-${phase}`} className="mt-1 text-xs wrap-anywhere">
+            {hintText(hint, elapsed)}
+          </p>
+        ) : null}
+        {error ? <p className="mt-1 text-xs text-bad">{error}</p> : null}
+        {result && !quiet ? (
+          <TxResultNote
+            result={result}
+            network={props.network}
+            account={accountId}
+            describe={props.describe}
+            inRegion
+          />
+        ) : null}
+      </div>
+      {/* A lock read back on load sits where the result would, out of the region: not news, so not read out. */}
+      {result && quiet ? (
         <TxResultNote
           result={result}
           network={props.network}
           account={accountId}
           describe={props.describe}
+          inRegion
         />
       ) : null}
       {locked ? (
         <button
+          ref={unlockControl}
           type="button"
           className="mt-1 text-xs text-mute underline"
           onClick={() => {
             clearLock(browserStore(), key ?? (preview ? actionKey(preview) : null));
+            unlocking.current = true;
             setResult(null);
           }}
         >
           I checked the explorer: unlock this button
         </button>
       ) : null}
+      {ready ? null : (
+        <span id={notReady} hidden>
+          Loading your wallet…
+        </span>
+      )}
       {dialog}
     </div>
   );
