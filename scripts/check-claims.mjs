@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Checks that README.md (and AGENTS.md and JUDGES.md) claim only what this repository records.
+// Checks that README.md (and AGENTS.md, JUDGES.md, docs/TRACKS.md and docs/agent-market-2026-11.md, the CLAIM_DOCS)
+// claim only what this repository records.
 //
 // It runs straight after `git clone`: Node 20 or newer, built-in modules only, no install, no build
 // and, unless --online is given, no network.
@@ -13,9 +14,10 @@
 // Exit 0: every claim checked out. Exit 1: a claim does not match the repository (or, with --online,
 // the chain or a public endpoint); each one is printed as file:line [check] what is wrong. Exit 2: the
 // checker could not run, or with --online an endpoint did not answer, so the checks that needed it
-// stayed unchecked (each is listed; the others still ran).
+// stayed unchecked (each is listed; the others still ran). While it runs, it says on stderr how many
+// files it reads, and how many it has read every 500 files.
 //
-// Offline checks, over README.md, AGENTS.md and JUDGES.md (links also over SECURITY.md, CONTRIBUTING.md and the
+// Offline checks, over the CLAIM_DOCS (links also over SECURITY.md, CONTRIBUTING.md and the
 // Markdown files under docs/evidence):
 //   links     each relative link or image resolves to a file of the repository (git's file list, so
 //             case matters as on GitHub), each #anchor to a heading (GitHub's slug) and each #Lnn to a
@@ -58,7 +60,13 @@ import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CLAIM_DOCS = ["README.md", "AGENTS.md", "JUDGES.md"];
+const CLAIM_DOCS = [
+  "README.md",
+  "AGENTS.md",
+  "JUDGES.md",
+  "docs/TRACKS.md",
+  "docs/agent-market-2026-11.md",
+];
 const LINK_ONLY_DOCS = ["SECURITY.md", "CONTRIBUTING.md"];
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -256,9 +264,10 @@ function listFiles(root) {
 
 /**
  * The checkout at root. `overrides` maps a path to the text it should have instead (a test edits a
- * claim in memory this way), or to null to leave the file out.
+ * claim in memory this way), or to null to leave the file out. `onRead` gets the number of files read
+ * so far, each time one more is read.
  */
-export function loadRepo(root, overrides = {}) {
+export function loadRepo(root, overrides = {}, onRead = () => {}) {
   const listed = listFiles(root);
   const git = listed.git;
   const files = listed.files.filter((f) => overrides[f] !== null);
@@ -277,6 +286,7 @@ export function loadRepo(root, overrides = {}) {
       const text =
         typeof overrides[rel] === "string" ? overrides[rel] : readFileSync(join(root, rel), "utf8");
       cache.set(rel, text.replace(/\r\n?/g, "\n"));
+      onRead(cache.size);
     }
     return cache.get(rel);
   };
@@ -2810,17 +2820,29 @@ async function onlineStoreItem(ctx, item, description) {
 // ---------------------------------------------------------------------------------------------
 // Running it
 
+// A progress line each time this many more files have been read.
+const PROGRESS_EVERY = 500;
+
 /**
  * Runs every check over a checkout. Returns { problems, unreachable, counts, facts }; a problem is
- * { check, file, line, message }.
+ * { check, file, line, message }. `progress` gets a line to show while it runs: one when the files
+ * are listed, then one each PROGRESS_EVERY files read.
  */
 export async function checkClaims({
   root = DEFAULT_ROOT,
   online = false,
   net = {},
   overrides = {},
+  progress = () => {},
 } = {}) {
-  const repo = loadRepo(root, overrides);
+  const repo = loadRepo(root, overrides, (n) => {
+    if (n % PROGRESS_EVERY === 0) progress(`${n} files read`);
+  });
+  // Most of the time goes to reading files, the first time each one is read: on a fresh Windows
+  // clone that took about 8 ms a file here, and the claim-marker scan alone reads about a thousand.
+  progress(
+    `reading up to ${repo.files.length} files; the first run on a fresh Windows clone can take a few minutes`,
+  );
   const report = new Report();
   const ctx = {
     repo,
@@ -2924,7 +2946,10 @@ export async function main(argv) {
     );
     return 2;
   }
-  const report = await checkClaims({ root, online });
+  // On stderr, so that stdout stays the report: the problems, then the one summary line. Not
+  // "check-claims:", which starts the crash line that scripts/judge.mjs reports for an exit 2.
+  const progress = (line) => console.error(`check-claims (progress): ${line}`);
+  const report = await checkClaims({ root, online, progress });
   if (verbose) {
     for (const [k, v] of report.counts) console.log(`  ${k}: ${v}`);
     for (const [k, v] of report.facts) console.log(`  fact ${k}: ${v}`);

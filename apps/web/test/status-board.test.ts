@@ -1,7 +1,7 @@
 // The landing's status board (components/site/StatusBoard.tsx): every row stands on a status row, every mark is held to
 // the words of the record that backs it, every evidence link to a named constant and its source, and the copy to the
 // site's rules. Nothing here fetches: links are checked against the repository and the transactions it records.
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import GithubSlugger from "github-slugger";
@@ -12,6 +12,7 @@ import Home from "@/app/page";
 import { StatusBoard } from "@/components/site/StatusBoard";
 import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { explorerTxUrl } from "@/lib/config";
+import { PAGES, pageFile } from "@/lib/docs/registry";
 import { REPO_URL } from "@/lib/proof/cli";
 import {
   BASE_TX,
@@ -48,6 +49,15 @@ import {
 import { linkProblem } from "./docs-helpers";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
+/** INV-2001 on the testnet demo vault, the transaction the invoice story and the Payables row link. */
+const DEMO_PAID_TX: TxFact = (() => {
+  const [link] = STORY.invoices[0].evidence.tx as readonly { label: string; url: string }[];
+  return {
+    hash: link?.url.split("/").pop() ?? "?",
+    label: link?.label ?? "?",
+    url: link?.url ?? "?",
+  };
+})();
 const ROOT = join(WEB, "..", "..");
 const text = (...p: string[]) => readFileSync(join(...p), "utf8");
 /** Whitespace folded, so a sentence a Markdown file wraps reads as one line. */
@@ -226,7 +236,7 @@ const BACKING: Readonly<Record<string, { proof: readonly Quote[]; use?: readonly
         "judges",
         "On mainnet, the 3 of `v0.probarion.near` of 2026-11-13, entries 0, 1 and 4, pass A1 to A7",
       ],
-      ["judges", "O1 and O2 have not run on them"],
+      ["judges", "and O1 and O2 in a live run at 17:52 UTC on 2026-11-13"],
     ],
   },
 };
@@ -439,11 +449,13 @@ describe("the status board's rows", () => {
     expect(what).toContain(
       "The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed.",
     );
-    // What is still not done after S2: no customer payment, and no online check of the mainnet decisions.
+    // What is still not done after S2: no customer payment, and spend 1 without the SDK. The online check of the
+    // mainnet decisions ran on 2026-11-13 at 17:52 UTC, so the row no longer says it has not.
     expect(row?.limit).toContain("No customer payment yet");
-    expect(row?.limit).toContain("`verify --online` (O1 and O2) has not run");
+    expect(row?.limit).toContain("Spend 1 was sent without the SDK");
+    expect(row?.limit).not.toMatch(/has not run|not been checked online/);
     expect(row?.limit).not.toMatch(/No payment on a model's proposal/);
-    // Its evidence: spend 3 on NEAR, what arrived on Base, and the S2 run beside the S1 run.
+    // Its evidence: spend 3 on NEAR, what arrived on Base, the S2 run beside the S1 run, and the online check.
     const hrefs = row?.evidence.map((e) => e.href) ?? [];
     for (const href of [
       BOARD_TX.basePayout.url,
@@ -452,6 +464,7 @@ describe("the status board's rows", () => {
       BASE_TX.attestedPayout.url,
       BOARD_LINKS.mainnetRunS1,
       BOARD_LINKS.mainnetRunS2,
+      BOARD_LINKS.mainnetVerifyOnline,
     ]) {
       expect(hrefs, href).toContain(href);
     }
@@ -459,21 +472,125 @@ describe("the status board's rows", () => {
     const s2 = flat(text(ROOT, "docs", "evidence", "mainnet-v0", "s2-2026-11-13", "README.md"));
     expect(s2).toContain("**Decided by an attested model and the code rules.**");
     expect(s2).toContain("verdict `allow`, `decided_by` `model+rules`");
-    expect(s2).toContain("which has not run on this decision");
+    // The S2 record kept what it said at the time of the run, and its dated section gives the later online check.
+    expect(s2).toContain("which had not run on this decision when this record was written");
+    expect(s2).toContain("## The online check, 2026-11-13");
+    expect(s2).toContain("passed O1 and O2 for all three attested decisions, entries 0, 1 and 4");
+    expect(s2).toContain("[output](verify-online-2026-11-13.txt)");
+    expect(s2).not.toContain("which has not run on this decision");
     expect(SOURCES.judges).toContain(
       "spend 3 paid it to the owner's own Base address, a test: 0.25 USDC sent, 0.2476 USDC arrived",
     );
-    // The model run's row tells the 3 mainnet decisions, and that O1 and O2 have not run on them.
+    // The model run's row tells the 3 mainnet decisions; O1 and O2 passed on them, and the image is still not pinned.
     const model = ITEMS.find((i) => i.id === "attested-model-run");
     expect(model?.what).toContain("On mainnet, the 3 of 2026-11-13 pass A1 to A8 offline.");
     expect(model?.what).toContain("Code refused 2 of them and allowed the third");
-    expect(model?.limit).toContain("has not run on the 3 mainnet decisions");
+    expect(model?.limit).toContain("The TEE measurement is not pinned");
+    expect(model?.limit).not.toMatch(/has not run on the 3 mainnet decisions/);
+    expect(model?.evidence.map((e) => e.href)).toContain(BOARD_LINKS.mainnetVerifyOnline);
     // On the page, word for word.
     const out = visibleText(board());
     expect(out).toContain(
       "The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed.",
     );
-    expect(out).toContain("verify --online (O1 and O2) has not run on the 3 mainnet decisions");
+    expect(out).not.toContain("has not run on the 3 mainnet decisions");
+    expect(out).not.toContain("has not run on the vault's 3 attested decisions");
+  });
+
+  it("cites the online check of the mainnet vault's 3 attested decisions, and the file says they passed", () => {
+    const row = ITEMS.find((i) => i.id === "mainnet-vault");
+    const online = row?.evidence.find((e) => e.href === BOARD_LINKS.mainnetVerifyOnline);
+    expect(online?.kind).toBe("verify");
+    expect(online?.label).toBe("online check, 2026-11-13");
+    expect(online?.note).toBe("O1 and O2 pass, 3 of 3");
+    expect(BOARD_LINKS.mainnetVerifyOnline).toBe(
+      `${REPO_URL}/blob/main/docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt`,
+    );
+    const log = text(
+      ROOT,
+      "docs",
+      "evidence",
+      "mainnet-v0",
+      "s2-2026-11-13",
+      "verify-online-2026-11-13.txt",
+    );
+    expect(log).toContain("Probarion verify: v0.probarion.near (mainnet)");
+    expect(log).toContain("entries 6, anchors 4");
+    expect(log).toContain("8 passed, 0 failed, 0 unproven, 1 skipped");
+    expect(log).toContain("\nRESULT: PASS");
+    expect(log).toContain(
+      "A8 (request binding and mandate match) passes for 3 of 3 attested decisions (seq 0, 1, 4)",
+    );
+    expect(log).toContain("online: 3 DCAP-genuine TDX quotes bound to this request");
+    expect(log).toContain("3 GPU payloads bound to the request nonce and verified by NRAS (O2)");
+    // O1 does not pin the measurement: the file says so, and the row next to it keeps that limit.
+    expect(log).toContain("measurement not pinned, so quote_verified stays false");
+    expect(ITEMS.find((i) => i.id === "attested-model-run")?.limit).toContain(
+      "so no check shows which model image ran",
+    );
+    // On the page, the link is there with its note.
+    const html = board();
+    expect(html).toContain(BOARD_LINKS.mainnetVerifyOnline);
+    expect(visibleText(html)).toContain("O1 and O2 pass, 3 of 3");
+  });
+
+  it("no file says any more that O1 and O2 have not run on the mainnet decisions, and each docs page citing the run links it", () => {
+    // The read-only run of 2026-11-13 at 17:52 UTC passed O1 and O2 on entries 0, 1 and 4. Evidence files keep what
+    // they said at the time of a run, and older CHANGELOG releases keep their words; the Unreleased section is held.
+    const docs = join(WEB, "content", "docs");
+    const pages = readdirSync(docs, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".mdx"))
+      .map((f) => join(docs, f));
+    const changelog = text(ROOT, "CHANGELOG.md");
+    const start = changelog.indexOf("## Unreleased");
+    const unreleased = changelog.slice(start, changelog.indexOf("\n## ", start + 1));
+    const texts: [string, string][] = [
+      ...[
+        "README.md",
+        "JUDGES.md",
+        "SECURITY.md",
+        join("docs", "THREAT_MODEL.md"),
+        join("apps", "web", "src", "lib", "site", "facts.ts"),
+        join("apps", "web", "src", "lib", "site", "ops-copy.ts"),
+      ].map((f): [string, string] => [f, text(ROOT, f)]),
+      ...pages.map((f): [string, string] => [f, readFileSync(f, "utf8")]),
+      ["CHANGELOG.md, Unreleased", unreleased],
+    ];
+    const OLD = [
+      /have not been checked online/i,
+      /O1 and O2 have not (?:run|checked)/i,
+      /has not run on (?:it|them|this decision|those attested decisions|the 3 mainnet decisions|the three)\b/i,
+      /has not checked the mainnet model decisions/i,
+      /mainnet model decisions are not checked online/i,
+      /No online check of the attested decisions/i,
+    ];
+    expect(pages.length).toBeGreaterThan(30);
+    expect(start).toBeGreaterThan(0);
+    expect(unreleased.length).toBeGreaterThan(1000);
+    for (const [name, body] of texts) {
+      for (const old of OLD) expect(flat(body), `${name}: ${old}`).not.toMatch(old);
+    }
+    // Each docs page with the online output among its sources links it.
+    const file = "docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt";
+    const citing = PAGES.filter((p) => p.sources.includes(file));
+    expect(citing.map((p) => p.path).sort()).toEqual([
+      "build/let-an-agent-pay",
+      "build/sdk-reference",
+      "operate/architecture",
+      "resources/glossary",
+      "start/how-one-payment-works",
+      "start/mainnet-payout",
+      "start/testnet-and-mainnet",
+      "start/what-is-probarion",
+      "start/what-works-today",
+      "trust/security-model",
+      "trust/verifier-checks",
+    ]);
+    for (const p of citing) {
+      expect(text(docs, `${pageFile(p.path)}.mdx`), p.path).toContain(
+        `${REPO_URL}/blob/main/${file}`,
+      );
+    }
   });
 });
 
@@ -678,7 +795,7 @@ describe("the status board's evidence", () => {
       ...Object.values(MAINNET_TX),
       ...Object.values(BOARD_TX),
       ...Object.values(BASE_TX),
-      HERO.paid.tx,
+      DEMO_PAID_TX,
       HERO.refused.tx,
     ];
     const onBoard = evidence.filter((e) => facts.some((f) => f.url === e.href));
@@ -756,6 +873,18 @@ describe("the status board's evidence", () => {
         "A1 to A8 on all 3",
         "A8 (request binding and mandate match) passes for 3 of 3 attested decisions (seq 0, 1, 4)",
       ],
+      [
+        "attested-model-run",
+        BOARD_LINKS.mainnetVerifyOnline,
+        "O1 and O2 on all 3",
+        "online: 3 DCAP-genuine TDX quotes bound to this request",
+      ],
+      [
+        "mainnet-vault",
+        BOARD_LINKS.mainnetVerifyOnline,
+        "O1 and O2 pass, 3 of 3",
+        "3 GPU payloads bound to the request nonce and verified by NRAS (O2)",
+      ],
     ];
     for (const [id, href, note, line] of logs) {
       expect(evidence.find((e) => e.id === id && e.href === href)?.note, `${id} ${href}`).toBe(
@@ -765,7 +894,7 @@ describe("the status board's evidence", () => {
       expect(text(ROOT, file), file).toContain(line);
     }
     // The mainnet verify is the live run after S2, on the whole ledger: its 3 attested decisions pass A1 to A7 too, and
-    // it ran without --online, so O1 and O2 are still to run on mainnet.
+    // it ran without --online. O1 and O2 ran later, in their own file, which the logs above and a test of the rows hold.
     const mainnetLog = text(
       ROOT,
       BOARD_LINKS.mainnetVerify.replace(
@@ -818,7 +947,7 @@ describe("the status board's evidence", () => {
       ...Object.values(MAINNET_TX),
       ...Object.values(BOARD_TX),
       ...Object.values(BASE_TX),
-      HERO.paid.tx,
+      DEMO_PAID_TX,
       HERO.refused.tx,
     ];
     let named = 0;
@@ -852,7 +981,7 @@ describe("the status board's evidence", () => {
     }
     // A verify output is a log or a result file in the evidence, and its note is the result, set in ink.
     const verify = evidence.filter((e) => e.kind === "verify");
-    expect(verify.length).toBe(8);
+    expect(verify.length).toBe(10);
     for (const e of verify) {
       expect(e.href.startsWith(`${REPO_URL}/blob/main/docs/evidence/`), e.label).toBe(true);
       expect(e.href.endsWith(".txt") || e.href.endsWith(".json"), e.label).toBe(true);
@@ -948,7 +1077,7 @@ describe("the status board's page structure and copy", () => {
     const rows = [
       ...COMPARE.rows.map((r) => r.status),
       ...INTEGRATE.cards.map((c) => c.status),
-      ...INTEGRATE.who.map((w) => w.status),
+      ...INTEGRATE.who.flatMap((w) => w.runs.map((r) => r.status)),
     ];
     for (const r of rows) expect(page).toContain(`href="#${statusOf(r).id}"`);
     // The comparison and the integrate cards draw no pill of their own any more.
@@ -1005,8 +1134,9 @@ describe("the status board's page structure and copy", () => {
     const css = text(WEB, "src", "components", "site", "status.module.css");
     const tsx = text(WEB, "src", "components", "site", "StatusBoard.tsx");
     expect(tsx).toContain('import b from "./status.module.css";');
-    // The section keeps the landing's own section classes, as every other section does.
-    expect(tsx).toMatch(/<section className=\{`\$\{s\.section\} \$\{s\.flush\}`\} id="status">/);
+    // The section opens with the landing's shared head, as every other section does; the board's columns are set on
+    // its wrap.
+    expect(tsx).toMatch(/<LandingSection\s+id="status"\s+wrapClassName=\{b\.board\}/);
     // The column labels repeat what every row says to a screen reader, so they are hidden from it.
     expect(tsx.match(/className=\{`?\$?\{?b\.colLabel[^>]*aria-hidden="true"/g)?.length).toBe(3);
     // Below 1280px no column header shows, so each Where line names itself; from 1280px its label is for a screen

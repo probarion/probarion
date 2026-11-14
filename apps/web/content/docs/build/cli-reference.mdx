@@ -1,10 +1,10 @@
-The `probarion` CLI dry-runs a spend, verifies a vault, exports the ledger, generates keys and prints the transactions that a vault's owner and approvers sign. It signs nothing itself: for each owner or approver call it checks your input against the contract's rules, writes the arguments to a file and prints the near-cli-rs command for that person to sign. The tables below list every command and option of the CLI, version 0.1.1, the release on npm, as `packages/cli/src/program.ts` builds it, and a test fails when the code gains or loses a command or an option that they do not list.
+The `probarion` CLI dry-runs a spend, checks a payee, verifies a vault, exports the ledger, generates keys and prints the transactions that a vault's owner and approvers sign. It signs nothing itself: for each owner or approver call it checks your input against the contract's rules, writes the arguments to a file and prints the near-cli-rs command for that person to sign. The tables below list every command and option of the CLI, version 0.1.1, as `packages/cli/src/program.ts` builds it in this repository, and a test fails when the code gains or loses a command or an option that they do not list. `payee check` is in this repository and newer than 0.1.1, the release on npm, so `npx probarion` does not have it yet: run it in a clone, as `node packages/cli/dist/bin.js payee check ...`.
 
 ## How to read the tables
 
 Each table holds one command group, and each row one command. A row's anchor is its command with `cli-` in front and hyphens for spaces: `vault create` is at [`#cli-vault-create`](#cli-vault-create).
 
-- **Command** is what follows the program name. Only `help` takes a positional argument, the command whose help it prints: every other input is an option. In your own project folder, run a command as `npx probarion vault create ...`, or as `probarion vault create ...` after `npm install -g probarion`. In a clone of the repository, run the CLI the clone builds, as `node packages/cli/dist/bin.js vault create ...`. [Install the packages](/docs/build/install) has both.
+- **Command** is what follows the program name. Only `help` and `payee check` take a positional argument: `help` takes the command whose help it prints, and `payee check` the payee it checks. Every other input is an option. In your own project folder, run a command as `npx probarion vault create ...`, or as `probarion vault create ...` after `npm install -g probarion`. In a clone of the repository, run the CLI the clone builds, as `node packages/cli/dist/bin.js vault create ...`. [Install the packages](/docs/build/install) has both.
 - **Options** lists every option of the command, spelled as the CLI's help spells it. "(required)" means the command stops with an error without that option. "(default `x`)" is the value the option takes when you leave it out. Every command but `help` also takes `--help`.
 - **Who signs** names the account whose wallet signs the printed near-cli-rs command, with the prepaid gas and the deposit that command attaches. "Nothing" means the command prints no transaction.
 
@@ -16,7 +16,7 @@ The placeholders in the options mean:
 - `<pk>`: an ed25519 public key, written `ed25519:...`.
 - `<account>`: a NEAR account id. `<list>`: account ids separated by commas.
 
-Three options recur. `--vault <id>` falls back to `PROBARION_VAULT_ID`, and every command that has the option needs one of the two, except `verify --offline`, which refuses it. `--sign-as <account>` writes the signer into the printed command. Without it, the command holds a placeholder such as `<owner-account-id>`, which the shell refuses as pasted. `--out-dir <dir>` is the folder for the arguments file. [Configure](/docs/build/install#configure) lists every environment variable the CLI reads.
+Three options recur. `--vault <id>` falls back to `PROBARION_VAULT_ID`, and every command that has the option needs one of the two, except `payee check`, which warns without one, and `verify --offline`, which refuses it. `--sign-as <account>` writes the signer into the printed command. Without it, the command holds a placeholder such as `<owner-account-id>`, which the shell refuses as pasted. `--out-dir <dir>` is the folder for the arguments file. [Configure](/docs/build/install#configure) lists every environment variable the CLI reads.
 
 ## Program options
 
@@ -121,6 +121,12 @@ Both mandate commands print a call the owner signs. A mandate has no edit call: 
 
 <RefTable id="cli-commands-check" />
 
+## Payee commands
+
+`payee check` is advice for the owner before a mandate names a payee: it reads the chain, signs nothing and changes nothing on chain. A read it could not make warns, so a check with a failed read does not answer `ALLOW`. It is in this repository and newer than npm 0.1.1. [Mandates](/docs/concepts/mandates#why-a-mandate-cannot-be-edited) explains why a mandate's payee never changes.
+
+<RefTable id="cli-commands-payee" />
+
 ## The verify command
 
 `verify` runs the verifier's nine checks against the chain, or against a saved snapshot. [Verifier checks a to i](/docs/trust/verifier-checks) says what each check proves, and [Verify a vault yourself](/docs/trust/verify-a-vault) walks through a run on a live vault.
@@ -135,7 +141,7 @@ Commander, the CLI's argument parser, adds `help` to the program and to each com
 
 ## Exit codes
 
-`check` and `verify` give their result as the exit code, so a usage error of theirs exits 64 rather than 1, and a script can tell a refusal or a failed check from a mistyped flag.
+`check`, `payee check` and `verify` give their result as the exit code, so a usage error of theirs exits 64 rather than 1, and a script can tell a refusal, a blocked payee or a failed check from a mistyped flag.
 
 <RefTable id="cli-exit-codes" />
 

@@ -17,7 +17,10 @@ import type {
   MandateView,
   ModelProposal,
   Payee,
+  PayeeAssessment,
   PayeeHint,
+  PayeeRef,
+  PayeeSignals,
   RuleId,
   RuleResult,
   Snapshot,
@@ -59,6 +62,11 @@ describe("@probarion/core root exports (plan 04 ICR 7, plan 05 ICR 3)", () => {
       "isSolanaAddress",
       "assetMatchesChain",
       "isNearTxHash",
+      "assessPayee",
+      "parsePayeeRef",
+      "payeeRefOf",
+      "samePayee",
+      "lookalikeOf",
     ] as const;
     const exported: Record<string, unknown> = { ...core };
     for (const name of functions) expect(typeof exported[name], name).toBe("function");
@@ -93,7 +101,10 @@ describe("@probarion/core root exports (plan 04 ICR 7, plan 05 ICR 3)", () => {
       MandateView,
       ModelProposal,
       Payee,
+      PayeeAssessment,
       PayeeHint,
+      PayeeRef,
+      PayeeSignals,
       RuleResult,
       Snapshot,
       SpendRequest,
@@ -102,13 +113,13 @@ describe("@probarion/core root exports (plan 04 ICR 7, plan 05 ICR 3)", () => {
       VerifyReport,
       VersionView,
     ];
-    const count: Exported["length"] = 24;
+    const count: Exported["length"] = 27;
     const sample: { hash: Hex32; verdict: Verdict; rule: RuleId } = {
       hash: "0".repeat(64),
       verdict: "allow",
       rule: "mandate.none",
     };
-    expect(count).toBe(24);
+    expect(count).toBe(27);
     expect(sample.verdict).toBe("allow");
   });
 });

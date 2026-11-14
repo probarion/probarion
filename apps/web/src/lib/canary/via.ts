@@ -13,6 +13,8 @@ export const CANARY_VIA = [
   "tamper",
   "ext",
   "usage",
+  // A link the team sends by hand on Telegram (`/canary?via=tg`): the database's check is a shape, so no migration.
+  "tg",
 ] as const;
 
 export type CanaryVia = (typeof CANARY_VIA)[number];

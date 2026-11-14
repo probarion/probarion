@@ -6,10 +6,16 @@ describe("parseVia", () => {
     for (const via of CANARY_VIA) expect(parseVia(via)).toBe(via);
   });
 
-  it("is the closed set the site audit named, plus the /usage page's link", () => {
+  it("is the closed set the site audit named, plus the /usage page's link and the team's Telegram link", () => {
     expect([...CANARY_VIA].sort()).toEqual(
-      ["ext", "home", "proof", "readme", "share", "tamper", "usage", "x"].sort(),
+      ["ext", "home", "proof", "readme", "share", "tamper", "tg", "usage", "x"].sort(),
     );
+  });
+
+  it("keeps a Telegram link's source, and only in its exact word", () => {
+    expect(parseVia("tg")).toBe("tg");
+    expect(withVia("/canary/rules", "tg")).toBe("/canary/rules?via=tg");
+    for (const other of ["TG", "telegram", "t.me"]) expect(parseVia(other)).toBeNull();
   });
 
   it("is null for anything else: an unknown word, another case, blanks, a list, no value", () => {

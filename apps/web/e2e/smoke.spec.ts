@@ -114,7 +114,7 @@ const ADDRESSES = [
 ];
 
 for (const { name, home } of ADDRESSES) {
-  for (const width of [375, 1120, 1280, 1440]) {
+  for (const width of [375, 1120, 1200, 1280, 1440]) {
     test(`the home page and its header fit at ${width} px on the ${name} address`, async ({
       page,
       baseURL,
@@ -129,8 +129,8 @@ for (const { name, home } of ADDRESSES) {
 }
 
 // With one network served the switch renders nothing, so its bar is this one with the switch taken out: the links stay
-// in the bar from 1101 px up, as they did before the switch existed.
-for (const width of [1120, 1280]) {
+// in the bar from 1241 px up, and below that they are in the menu.
+for (const width of [1280, 1440]) {
   test(`with one network served, the header keeps its links in the bar at ${width} px`, async ({
     page,
   }) => {
@@ -142,3 +142,14 @@ for (const width of [1120, 1280]) {
     expect(await overflowOf(page)).toEqual({ page: 0, bar: 0 });
   });
 }
+
+test("with one network served, the header folds its links into the menu at 1120 px", async ({
+  page,
+}) => {
+  await homeWithSwitch(page, "/", 1120);
+  await page.locator(SWITCH).evaluate((el) => el.remove());
+  const nav = page.locator(MAIN_NAV);
+  await expect(nav.locator("summary")).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Verify", exact: true })).toBeHidden();
+  expect(await overflowOf(page)).toEqual({ page: 0, bar: 0 });
+});

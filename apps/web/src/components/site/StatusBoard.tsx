@@ -18,6 +18,7 @@ import {
   type UseMark,
 } from "@/lib/site/facts";
 import { Rich } from "./Rich";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 import b from "./status.module.css";
 
@@ -396,51 +397,48 @@ function KnownGaps() {
  */
 export function StatusBoard() {
   return (
-    <section className={`${s.section} ${s.flush}`} id="status">
-      <div className={`${s.wrap} ${b.board}`}>
-        <p className={s.eyebrow}>{STATUS_BOARD.eyebrow}</p>
-        <div className={s.sectionHead}>
-          <h2 className={s.h2}>{STATUS.title}</h2>
-          <p>{STATUS_BOARD.lede}</p>
-        </div>
-        <Summary />
-        <Key />
-        {BOARD_GROUPS.map((g) => (
-          <div key={g.id} className={b.group} data-group={g.id}>
-            <div className={b.groupHead}>
-              <div className={b.groupName}>
-                <h3 className={b.groupTitle}>{g.title}</h3>
-                <p>{g.sub}</p>
-              </div>
-              <span className={`${b.colLabel} ${b.colMarks}`} aria-hidden="true">
-                <span>{STATUS_BOARD.columns.proof}</span>
-                <span>{STATUS_BOARD.columns.use}</span>
-              </span>
-              <span className={b.colLabel} aria-hidden="true">
-                {STATUS_BOARD.columns.where}
-              </span>
-              <span className={b.colLabel} aria-hidden="true">
-                {STATUS_BOARD.columns.evidence}
-              </span>
+    <LandingSection
+      id="status"
+      wrapClassName={b.board}
+      head={{ eyebrow: STATUS_BOARD.eyebrow, title: STATUS.title, lede: STATUS_BOARD.lede }}
+    >
+      <Summary />
+      <Key />
+      {BOARD_GROUPS.map((g) => (
+        <div key={g.id} className={b.group} data-group={g.id}>
+          <div className={b.groupHead}>
+            <div className={b.groupName}>
+              <h3 className={b.groupTitle}>{g.title}</h3>
+              <p>{g.sub}</p>
             </div>
-            <ul className={b.rows} {...LIST}>
-              {g.items.map((item) => (
-                <Row key={item.id} item={item} />
-              ))}
-            </ul>
+            <span className={`${b.colLabel} ${b.colMarks}`} aria-hidden="true">
+              <span>{STATUS_BOARD.columns.proof}</span>
+              <span>{STATUS_BOARD.columns.use}</span>
+            </span>
+            <span className={b.colLabel} aria-hidden="true">
+              {STATUS_BOARD.columns.where}
+            </span>
+            <span className={b.colLabel} aria-hidden="true">
+              {STATUS_BOARD.columns.evidence}
+            </span>
           </div>
-        ))}
-        <div className={b.notes}>
-          <h3 className={b.notesTitle}>{STATUS_BOARD.notesTitle}</h3>
-          <p className={b.note}>
-            <Parts parts={STATUS_BOARD.footer} />
-          </p>
-          <p className={b.note}>
-            <Rich text={STATUS.checked} />
-          </p>
+          <ul className={b.rows} {...LIST}>
+            {g.items.map((item) => (
+              <Row key={item.id} item={item} />
+            ))}
+          </ul>
         </div>
-        <KnownGaps />
+      ))}
+      <div className={b.notes}>
+        <h3 className={b.notesTitle}>{STATUS_BOARD.notesTitle}</h3>
+        <p className={b.note}>
+          <Parts parts={STATUS_BOARD.footer} />
+        </p>
+        <p className={b.note}>
+          <Rich text={STATUS.checked} />
+        </p>
       </div>
-    </section>
+      <KnownGaps />
+    </LandingSection>
   );
 }

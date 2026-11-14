@@ -17,6 +17,10 @@ export interface CliIo {
     onlineVerifier?: OnlineAttestationVerifier | null;
     txIndex?: TxIndex | null;
   };
+  /** Tests and hosts only: the fetch `payee check` reads the chains with. The `probarion` binary passes nothing. */
+  payeeDeps?: {
+    fetch?: typeof fetch;
+  };
 }
 
 export function processIo(): CliIo {

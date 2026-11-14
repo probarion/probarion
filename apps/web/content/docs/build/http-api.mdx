@@ -78,7 +78,7 @@ The owner signs the deposit transaction that `POST /api/topup/quote` returns, in
 
 </Callout>
 
-On testnet, `POST /api/topup/faucet` mints 25 test USDC into the vault, and your wallet signs nothing: the team's mint-only key signs the mint. The faucet is Preview: it is built and tested, and its key is set on probarion.xyz; on 2026-11-09 its button minted 25 test USDC into the testnet demo vault, `demo.vaults.probarion.testnet`. It works once a UTC day per vault, within daily caps per account and for all vaults together. Those day counters start again at midnight UTC, and a `429` from one of them gives the seconds until then as its `Retry-After`. Each press also counts against a press limit per account, before any read of the chain, and that limit's `429` gives the end of its own window instead. A refusal from the checks that run before the day counters does not use up the vault's day.
+On testnet, `POST /api/topup/faucet` mints 25 test USDC into the vault, and your wallet signs nothing: the team's mint-only key signs the mint. The faucet is Live on testnet: it is built and tested, and its key is set on probarion.xyz; on 2026-11-09 its button minted 25 test USDC into the testnet demo vault, `demo.vaults.probarion.testnet`. It works once a UTC day per vault, within daily caps per account and for all vaults together. Those day counters start again at midnight UTC, and a `429` from one of them gives the seconds until then as its `Retry-After`. Each press also counts against a press limit per account, before any read of the chain, and that limit's `429` gives the end of its own window instead. A refusal from the checks that run before the day counters does not use up the vault's day.
 
 <RefTable id="http-api-topup" />
 

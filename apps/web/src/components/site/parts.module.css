@@ -1,0 +1,179 @@
+/*
+ * The look of the pieces every landing section shares (bits.tsx, parts.tsx): the new-tab arrow, a hash, an outcome
+ * with its mark, a record of terms, a part's head, the one small label, and the status pill's wrapped shape. A
+ * section's own module lays these out and does not restyle them. Every colour is a token from app/globals.css.
+ */
+
+/* ↗ after a link that leaves the site. Inline-block, so that the link's underline does not run under it; a dark
+   ground sets --ext to its own mute. */
+.ext {
+  display: inline-block;
+  margin-left: 3px;
+  font-size: max(12px, 0.9em);
+  color: var(--ext, var(--color-mute));
+  text-decoration: none;
+}
+.glue,
+.keep {
+  white-space: nowrap;
+}
+/* A short hash: mono, a little smaller than the words around it, never under the site's 12.5px floor for mono. It
+   never wraps: it is glued to its arrow. */
+.hash {
+  font-family: var(--font-mono);
+  font-size: max(12.5px, 0.92em);
+  letter-spacing: -0.01em;
+}
+
+/* An outcome: a quiet word with a small mark, unlike the filled pills kept for what is shipped. */
+.out {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.mark {
+  flex: none;
+  width: 11px;
+  height: 11px;
+}
+.outPaid {
+  --mark: var(--color-ok);
+}
+.outRefused {
+  --mark: var(--color-bad);
+}
+.outHeld {
+  --mark: var(--color-gold-deep);
+}
+.outNone {
+  --mark: var(--color-mute);
+}
+.fill {
+  fill: var(--mark, currentColor);
+}
+.ring {
+  fill: none;
+  stroke: var(--mark, currentColor);
+  stroke-width: 1.6;
+}
+
+/*
+ * The one small label: every column head, group label, record term and evidence label of the landing's sections, in
+ * sentence case. Gold stays for the section's eyebrow.
+ */
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  text-transform: none;
+  color: var(--color-mute);
+}
+
+/* What a set of rows shares, said once, under a section's lede: terms over values, side by side. */
+.record {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 16px;
+  column-gap: 40px;
+  margin-top: 24px;
+}
+.record > div {
+  min-width: 0;
+}
+.record dd {
+  margin-top: 2px;
+  font-size: 15px;
+}
+/* A class and two elements, so that it beats .site code's 0.86em whatever order the modules load in. */
+.record dd code {
+  font-size: 14px;
+}
+
+/* A part of a section: a hairline, an optional label, its title, an optional line under it, on one left edge. */
+.partHead {
+  padding-top: 18px;
+  border-top: 1px solid var(--color-line);
+  margin-bottom: 22px;
+}
+.partLabel {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.partTitle {
+  font-weight: 400;
+  font-size: clamp(22px, 2vw, 26px);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.partLabel + .partTitle {
+  margin-top: 4px;
+}
+.partNote {
+  margin-top: 8px;
+  max-width: var(--container-measure);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+
+/* A pill that wraps: a smaller radius, so two lines read as a label and not as a blob; one line looks the same. Two
+   classes, so that it beats site.module.css .pill whatever order the modules load in. */
+.pill.pill {
+  border-radius: 10px;
+}
+
+/* A numbered step, the journey's and the console's alike: the number in light gold, the title, then its sentence. */
+.stepN {
+  font-weight: 300;
+  font-size: 42px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--color-gold-small);
+  font-variant-numeric: tabular-nums;
+}
+.stepTitle {
+  font-weight: 400;
+  font-size: clamp(23px, 2.2vw, 30px);
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.stepBody {
+  margin-top: 10px;
+  max-width: var(--container-measure);
+  font-size: 16px;
+  color: var(--color-mute);
+}
+
+@media (max-width: 900px) {
+  .stepN {
+    font-size: 34px;
+  }
+}
+@media (max-width: 620px) {
+  .stepN {
+    font-size: 26px;
+    line-height: 1.1;
+    padding-top: 1px;
+  }
+  .partHead {
+    padding-top: 14px;
+    margin-bottom: 16px;
+  }
+}
+
+/* Windows contrast themes drop a mark's colour: it takes the forced text colour; its word says the same. */
+@media (forced-colors: active) {
+  .fill {
+    fill: CanvasText;
+  }
+  .ring {
+    stroke: CanvasText;
+  }
+}

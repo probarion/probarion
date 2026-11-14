@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import c from "@/components/site/canary.module.css";
 import s from "@/components/site/site.module.css";
+import { CostsCard, MainnetRecordCard } from "@/components/usage/MainnetSections";
 import {
   Definitions,
   PilotsCard,
@@ -54,12 +55,16 @@ async function load(): Promise<{ network: Network; usage: UsageMetrics | null }>
  * The public usage numbers: counts of vaults, payments, refusals and decisions, with the team, external owners and Canary
  * participants in separate columns, and what each number means. The numbers are for the network of the address the page was opened at. When
  * they cannot be read the page says so and keeps the header and the definitions: it does not fail for want of them.
+ * Before them come the mainnet vault's record and what a spend costs, from the committed evidence (MainnetSections.tsx):
+ * what has happened leads, whatever the database holds, and none of it is added into the counts.
  */
 export default async function UsagePage() {
   const { network, usage } = await load();
   return (
     <div className={`${s.site} ${s.wrap} ${c.page}`}>
       <UsageHeader network={network} />
+      <MainnetRecordCard />
+      <CostsCard />
       {usage === null ? (
         <Unavailable />
       ) : (

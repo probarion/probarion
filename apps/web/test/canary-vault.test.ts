@@ -517,7 +517,7 @@ describe("what SECURITY.md, the privacy page and the threat model say about the 
     const invoices = PRIVACY_PAGE.sections.find((s) => s.id === "invoices");
     const said = flat((invoices?.paragraphs ?? []).join(" "));
     expect(said).toContain(
-      "The attested decisions recorded in the repository so far: on testnet, two of the Canary's, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, and five of the payables agent's on the demo vault, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. On mainnet, three on v0.probarion.near of 2026-11-13, which pass A1 to A7 and, with the invoice texts, A8 offline, and have not been checked online; one of them led to a 0.25 USDC test payout to the owner's own Base address. The TEE measurement is not pinned, and A8 was not run on the Canary's two; on the demo vault's five it passed on 2026-11-12, with the invoices committed in the repository.",
+      "The attested decisions recorded in the repository so far: on testnet, two of the Canary's, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, and five of the payables agent's on the demo vault, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. On mainnet, three on v0.probarion.near of 2026-11-13, which pass A1 to A7 and, with the invoice texts, A8 offline and, in a later run that day, O1 and O2 online; one of them led to a 0.25 USDC test payout to the owner's own Base address. The TEE measurement is not pinned, and A8 was not run on the Canary's two; on the demo vault's five it passed on 2026-11-12, with the invoices committed in the repository.",
     );
     expect(said).not.toContain("offline and O1 and O2 online");
     expect(said).not.toContain("checked offline only");
@@ -616,10 +616,14 @@ describe("what SECURITY.md, the privacy page and the threat model say about the 
     expect(start).toBeGreaterThan(0);
     const next = unreleased.indexOf("\n- ", start + 1);
     const entry = flat(unreleased.slice(start, next < 0 ? undefined : next));
-    const pill = STATUS.rows.find((r) => r.id === "attested-model-run")?.pill;
-    expect(pill).toBe("Checked online on testnet, image not pinned");
+    // The entry gives the pill as it read then; since the mainnet vault's online run of 2026-11-13 it names both
+    // networks (test/mainnet-ask.test.ts).
+    const then = "Checked online on testnet, image not pinned";
+    expect(STATUS.rows.find((r) => r.id === "attested-model-run")?.pill).toBe(
+      "Checked online on testnet and mainnet, image not pinned",
+    );
     expect(entry).toContain(
-      `the status row "Live attested model run" reads "${pill}", and stays Preview`,
+      `the status row "Live attested model run" reads "${then}", and stays Preview`,
     );
     expect(entry).toContain(
       "each TDX quote is a genuine Intel TDX quote (Intel DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose report data holds the signing address and the entry's nonce",

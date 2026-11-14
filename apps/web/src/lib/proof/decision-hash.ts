@@ -1,7 +1,7 @@
 // The audit links of /proof (G4) in the browser: open the decision card a #seq-N or #spend-N link points at, and the
 // address a "Copy audit link" control copies. Without JavaScript a link to the card still scrolls to it (its id is on
-// the card, outside its <details>); this only opens it, and the "older decisions" group around it. No imports, so the
-// client component that calls it stays small.
+// the card, outside its <details>); this only opens it, and the closed groups around it (the next and the older
+// decisions). No imports, so the client component that calls it stays small.
 
 /** The part of the DOM this needs: enough for a test to stand in for a browser. */
 export interface HashElement {
@@ -24,8 +24,8 @@ const isDetails = (el: HashElement): boolean => el.tagName.toUpperCase() === "DE
 
 /**
  * Opens the decision card that `hash` ("#seq-14", "#spend-4") points at: its own <details>, and every closed
- * <details> around it (the "older decisions" group). When one around it was closed, the browser could not scroll to
- * the card, so this scrolls it into view. True when a card was found. Any other fragment is left alone.
+ * <details> around it (the "next" or "older decisions" group). When one around it was closed, the browser could not
+ * scroll to the card, so this scrolls it into view. True when a card was found. Any other fragment is left alone.
  */
 export function openLinkedDecision(doc: HashDocument, hash: string): boolean {
   const id = hash.startsWith("#") ? hash.slice(1) : hash;

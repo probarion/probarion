@@ -1394,15 +1394,15 @@ export function planSteps(root = ROOT) {
       "@probarion/core",
       "packages/core",
       "@probarion/core tests pass",
-      "806 in `@probarion/core`",
+      "888 in `@probarion/core`",
     ),
     vitest(
       "@probarion/sdk",
       "packages/sdk",
       "@probarion/sdk tests pass",
-      "782 in `@probarion/sdk`",
+      "824 in `@probarion/sdk`",
     ),
-    vitest("probarion", "packages/cli", "CLI (probarion) tests pass", "341 in the CLI"),
+    vitest("probarion", "packages/cli", "CLI (probarion) tests pass", "364 in the CLI"),
     vitest(
       "@probarion/mcp",
       "packages/mcp",
@@ -1420,7 +1420,7 @@ export function planSteps(root = ROOT) {
       id: "test-apps-web",
       kind: "known-skip",
       title: "web console tests: not run here, too long",
-      ref: { file: "README.md", quote: "8,349 in the web console" },
+      ref: { file: "README.md", quote: "9,647 in the web console" },
       expected: "SKIPPED",
       command: "pnpm --filter @probarion/web test",
       detail:

@@ -59,14 +59,11 @@ const IN_ORDER = [
   "resources/changelog",
 ];
 
-/** Flows not yet run end to end with real wallets (spec §13.7). Check again after T18. */
-const PREVIEW = [
-  "start/owner-quickstart",
-  "start/developer-quickstart",
-  "concepts/holds-and-approvals",
-  "concepts/ledger-and-anchors",
-  "build/let-an-agent-pay",
-];
+/**
+ * Flows not yet run end to end as written (spec §13.7). Holds and approvals and the ledger left this list on
+ * 2026-11-13, once their runs were recorded (test/docs-status-labels.test.ts).
+ */
+const PREVIEW = ["start/owner-quickstart", "start/developer-quickstart", "build/let-an-agent-pay"];
 
 describe("the docs pages", () => {
   it("are the pages of the spec, in reading order", () => {

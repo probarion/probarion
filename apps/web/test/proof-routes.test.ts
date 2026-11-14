@@ -1,5 +1,7 @@
 // The /proof pages and snapshot.json as a visitor meets them: what each state shows, and what an invalid or hidden
 // vault answers. The reader is a fake (no RPC, no network); the snapshots are signed fixtures that core checks.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { LedgerEntry, Snapshot } from "@probarion/core";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -451,6 +453,46 @@ describe("/proof/[vault]", () => {
     expect((view.props as { decisions: unknown }).decisions).toMatchObject([
       { id: "seq-0", spendIds: ["spend-1"] },
     ]);
+  });
+
+  it("tells the snapshot's story first, then the result, the live TEE check, the checks and each decision", async () => {
+    const { snapshot, out } = await served("ok", "testnet");
+    const order = [
+      "data-story=",
+      'data-headline="ok"',
+      'id="tee-check"',
+      'aria-labelledby="checks"',
+      'id="decisions"',
+      'id="verify"',
+    ].map((m) => out.indexOf(m));
+    expect(order.every((at) => at > -1)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // Counted from this snapshot and dated with its full time, the one the verifier prints.
+    const story = text(out.slice(order[0], out.indexOf("</ul>", order[0])));
+    expect(story).toContain(
+      `As of ${snapshot.taken_at}, this vault has paid out 1 spend on chain, 25 USDC in all.`,
+    );
+    expect(story).toContain("It was paid on the code rules alone.");
+    expect(story).toContain(
+      "No decision was refused or held, and the contract refused no payment.",
+    );
+  });
+
+  it("leaves the story out, and still shows the checks, when the decision rows cannot be built", async () => {
+    h.rowsDown = true;
+    const { out } = await served("ok", "testnet");
+    expect(out).not.toContain("data-story=");
+    expect(out).toContain('data-headline="ok"');
+  });
+
+  it("stays force-dynamic and rate-limited per IP: no revalidate and no route cache", () => {
+    const src = readFileSync(
+      fileURLToPath(new URL("../src/app/proof/[vault]/page.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(src).toContain('export const dynamic = "force-dynamic";');
+    expect(src).toMatch(/takeToken\(serviceDb\(\), `proof:\$\{ip\}`/);
+    expect(src).not.toMatch(/revalidate|unstable_cache|"use cache"|fetchCache|cacheLife/);
   });
 
   it("builds the decision rows once per cached snapshot, not once per view", async () => {
@@ -960,17 +1002,26 @@ describe("the landing page and the menu", () => {
     expect(renderToStaticMarkup(createElement(SiteHeader))).toContain(`href="/proof"`);
     expect(text(out)).not.toMatch(/are coming/);
     expect(text(out)).toContain(cli("verify --offline"));
-    expect(text(out)).toContain("packages/core/test/fixtures/valid-snapshot.json");
+    // A file path reads as one (bits.tsx CodeLabel draws its folders and its file name as two code runs).
+    const joined = out.replace(/<wbr\/>/g, "").replace(/<\/code><span class="[^"]*"><code>/g, "");
+    expect(text(joined)).toContain("packages/core/test/fixtures/valid-snapshot.json");
+    // Step 5's labelled note, read as a person reads it: no new-tab arrow, no screen-reader words.
+    const note = text(out.replace(/<span[^>]*aria-hidden="true"[^>]*>↗<\/span>/g, ""))
+      .replace(/ \(opens in a new tab\)/g, "")
+      .replace(/ ([.,])/g, "$1");
+    expect(note).toContain(
+      "On real data. The testnet demo vault&#x27;s proof page runs the same checks on its own ledger and chain data. Its record, below",
+    );
     if (CLI_ON_NPM) {
-      expect(text(out)).toContain(
-        "These commands run on a test fixture: this site serves an exact copy of the file in the repository. The testnet demo vault&#x27;s proof page runs the same checks on its own ledger and chain data.",
+      expect(note).toContain(
+        "What the commands run on A test fixture. This site serves an exact copy of the file in the repository.",
       );
       expect(text(out)).toContain("curl -O https://probarion.xyz/samples/valid-snapshot.json");
       expect(text(out)).toContain("npx probarion verify --offline valid-snapshot.json");
       expect(text(out)).not.toContain("run it at the root of a clone");
     } else {
-      expect(text(out)).toContain(
-        "This command runs on a test fixture. Build it from a clone first (README step 1). The testnet demo vault&#x27;s proof page runs the same checks on its own ledger and chain data.",
+      expect(note).toContain(
+        "What the command runs on A test fixture. The command reads the file in the repository. Build the CLI from a clone first (README step 1).",
       );
       expect(text(out)).not.toContain("npx probarion");
     }

@@ -1,0 +1,267 @@
+/*
+ * The hero (Hero.tsx): the headline, the lede and its buttons, the demo video's link, then the mainnet record and the
+ * audience line; beside them the caption and the two cards, the steps of each under it. On one column (960px and below)
+ * the cards come right after the buttons, and the record after the cards. The cards' own look (.card, .metal, .obsidian,
+ * .rows, .state) stays in site.module.css; this module lays the section out and lines the two cards up. Every colour is
+ * a token from app/globals.css, and nothing moves on scroll.
+ */
+
+/*
+ * Like every section, it owns G (--space-section) of paper below itself. Less paper above the eyebrow and under the
+ * headline than before (at most 44px each), so that at 1280 by 860 both cards' links are on the first screen.
+ */
+.hero {
+  padding-block: clamp(24px, 3.2vw, 44px) var(--space-section);
+}
+/*
+ * Two columns: the lede over the record on the left, the cards on the right across both rows. The lede's row takes its
+ * own height and the record's row the rest, so the record starts right under the lede, as one column would put it.
+ */
+.heroGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "lead duel" "record duel";
+  column-gap: clamp(32px, 5vw, 72px);
+  margin-top: clamp(28px, 3vw, 44px);
+  align-items: start;
+}
+.leadCol {
+  grid-area: lead;
+  min-width: 0;
+}
+.recordCol {
+  grid-area: record;
+  min-width: 0;
+}
+
+/*
+ * The mainnet record: what runs where, then one row per transaction, ruled like the cards' rows. A row is the outcome
+ * (the page's mark and word) beside what happened, and the transaction on a line under it, its label and hash, so the
+ * words and the hashes line up from row to row at every width. A line under the rows points to the later payouts.
+ */
+.evidence {
+  margin-top: 30px;
+  max-width: 34em;
+  font-size: 15px;
+}
+.evLead {
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.evLead strong {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.evLead code {
+  color: var(--color-ink);
+}
+.evRows {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 16px;
+  margin-top: 12px;
+  border-bottom: 1px solid var(--color-line);
+}
+.evRow {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  row-gap: 2px;
+  padding-block: 11px;
+  border-top: 1px solid var(--color-line);
+  line-height: 1.5;
+}
+.evOut {
+  font-size: 15px;
+}
+.evWhat {
+  min-width: 0;
+}
+.evTx {
+  grid-column: 2;
+  font-size: 14px;
+}
+/* Two classes, so that the hash link is in ink whatever order the modules load in. */
+.evTx .evHash {
+  color: var(--color-ink);
+}
+/* A browser without subgrid lets each row wrap on its own: the columns do not line up, and nothing is cut. */
+@supports not (grid-template-columns: subgrid) {
+  .evRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 16px;
+  }
+  .evTx {
+    flex-basis: 100%;
+  }
+}
+/* The demo video, a light link on its own line under the buttons. */
+.demo {
+  margin-top: 14px;
+  font-size: 15px;
+}
+.evAfter {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+
+/* A card's state: the page's outcome (bits.tsx Outcome), its mark in the card's own tone. Two classes, so that the
+   card's tone wins over the mark's default whatever order the modules load in. */
+.paid .state,
+.canary .state {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-fg);
+}
+.canary .state {
+  --mark: var(--color-band-bad);
+}
+/* A card's new-tab arrow (bits.tsx NewTab) in the card's own mute, which reads on its gold or obsidian ground. */
+.paid,
+.canary {
+  --ext: var(--c-mute);
+}
+
+/*
+ * The pair. The shared caption is first in the source and sits above both cards at every width. From 621px the two
+ * cards sit side by side on one grid: each card's four parts (label and state, amount, rows, link) take the same four
+ * rows (subgrid), so the labels, the amounts, the rows and the links line up, and each card's steps sit under it.
+ */
+.duel {
+  grid-area: duel;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.cardLabel {
+  min-width: 0;
+}
+.cap {
+  max-width: var(--container-measure);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-mute);
+  text-wrap: pretty;
+}
+.capLead {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+/* The Canary's rehearsal, numbered in the step numbers' mono and gold-ink. */
+.steps {
+  max-width: var(--container-measure);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-mute);
+  counter-reset: step;
+  text-wrap: pretty;
+}
+.steps li {
+  display: grid;
+  grid-template-columns: 1.5em minmax(0, 1fr);
+  counter-increment: step;
+}
+.steps li + li {
+  margin-top: 14px;
+}
+.steps li::before {
+  content: counter(step);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-gold-ink);
+}
+/* The mainnet card's steps, then the online check of the model's TEE evidence and its limit, on the steps' measure. */
+.tee {
+  max-width: var(--container-measure);
+  margin-top: 14px;
+  padding-left: 1.5em;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-mute);
+  text-wrap: pretty;
+}
+
+/*
+ * Two classes in each selector that overrides a card rule of site.module.css (.card's flex column, .cardLink's
+ * alignment), so it wins whatever order the two modules load in. Below 621px the cards stay the flex columns they are.
+ */
+@media (min-width: 621px) {
+  .duel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto repeat(4, auto) auto;
+    grid-template-areas: "both both" "paid canary" "paid canary" "paid canary" "paid canary" "s2steps steps";
+    column-gap: 14px;
+    row-gap: 0;
+  }
+  .duel > .paid,
+  .duel > .canary {
+    display: grid;
+    grid-template-rows: subgrid;
+    row-gap: 18px;
+    align-content: start;
+  }
+  /* The Canary card has a 1px edge; the paid card gets a clear one, so their rows start at the same height. */
+  .duel > .paid {
+    grid-area: paid;
+    border: 1px solid transparent;
+  }
+  .duel > .canary {
+    grid-area: canary;
+  }
+  .duel > .cap {
+    grid-area: both;
+    margin-bottom: 14px;
+    padding-inline: 4px;
+  }
+  .duel > .s2Steps {
+    grid-area: s2steps;
+    margin-top: 18px;
+    padding-inline: 4px;
+  }
+  .duel > .steps {
+    grid-area: steps;
+    margin-top: 18px;
+    padding-inline: 4px;
+  }
+  .duel .cardRows {
+    align-self: start;
+  }
+  .duel .cardEnd {
+    align-self: end;
+    justify-self: start;
+  }
+}
+/*
+ * From 1101px the text column is a little wider (3:4, not 5:7), so that at 1280px, with a 15px scrollbar, the two
+ * buttons and "Verify it yourself" keep one row and the mainnet record moves up toward the first screen. Below 1101px
+ * the cards keep the 5:7 width that holds a vault name on one line.
+ */
+@media (min-width: 1101px) {
+  .heroGrid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 4fr);
+  }
+}
+@media (max-width: 960px) {
+  .heroGrid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: "lead" "duel" "record";
+    row-gap: clamp(32px, 5vw, 72px);
+  }
+}
+@media (max-width: 620px) {
+  .duel {
+    gap: 12px;
+  }
+  .duel > .steps,
+  .duel > .s2Steps {
+    margin-top: 6px;
+  }
+}

@@ -1,0 +1,527 @@
+/*
+ * The live check (#try): what the agent tries and the contract's answer side by side, then the mandate as the chain
+ * has it, one strip of eight fields across both. The answer panel is the ink band's colours. Every colour is a token
+ * from app/globals.css.
+ */
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 22px;
+}
+.panel {
+  min-width: 0;
+  padding: 24px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 20px;
+}
+.title {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.hint {
+  margin-top: 4px;
+  max-width: var(--container-measure);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-mute);
+  text-wrap: pretty;
+}
+
+/* --- What the agent tries: five scenarios, then four fields on one label column ------------------------------- */
+
+.scenarios {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+  margin: 18px 0 0;
+  padding: 0;
+  border: 0;
+}
+/* An odd last scenario takes the whole row, so no cell is left empty beside it. */
+.scenario:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+/* A column from the top, so that a title sits level with its neighbour's when one sub-line wraps. */
+.scenario {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.scenario small {
+  display: block;
+  margin-top: 3px;
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.scenario:hover {
+  border-color: var(--color-mute);
+}
+/* A 2px ink border (1px less padding, so nothing moves), which forced colours keep, as they do not keep a shadow. */
+.scenario[aria-pressed="true"] {
+  padding: 11px 13px;
+  border-width: 2px;
+  border-color: var(--color-ink);
+  background: var(--color-surface);
+}
+
+.fields {
+  margin-top: 20px;
+}
+.field {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding-block: 11px;
+  border-top: 1px solid var(--color-line);
+  font-size: 15px;
+}
+.label {
+  color: var(--color-mute);
+}
+.control {
+  min-width: 0;
+  max-width: 440px;
+}
+/* The mute edge of every field: 8.7:1 on the white panel, where a field's boundary needs 3:1 (WCAG 1.4.11). */
+.field select,
+.field input:not([type="range"]) {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-mute);
+  border-radius: 10px;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 16px;
+}
+.amountRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.amountRow input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--color-gold-deep);
+}
+.amountRow input:not([type="range"]) {
+  flex: none;
+  width: 96px;
+}
+.payee {
+  display: inline-block;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid var(--color-line);
+  border-radius: 7px;
+  background: var(--color-paper);
+}
+/* What the payee is, said plainly under it: the status colours are kept for statuses. */
+.lockNote {
+  display: block;
+  margin-top: 5px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+
+/*
+ * The invoice text of a hijack, in small groups under one red rule: its label, the quoted text, then two short lines.
+ * 15px between two lines: with the 1.55 line, 2.5em or more from line top to line top (WCAG 1.4.8).
+ */
+.inj {
+  margin-top: 20px;
+  max-width: var(--container-measure);
+  padding: 1px 0 1px 14px;
+  border-left: 3px solid var(--color-bad);
+  font-size: 15px;
+  line-height: 1.55;
+}
+/* Close to the quote under it, which it labels. */
+.injLabel {
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-bad);
+}
+.injQuote {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.injLine {
+  margin-top: 15px;
+}
+.injLink {
+  white-space: nowrap;
+}
+
+/* --- The contract's answer: the verdict and its sentence, where it came from, the request, then the method ----- */
+
+.ink {
+  background: var(--color-band);
+  color: var(--color-band-fg);
+  border-color: var(--color-band-line);
+}
+.ink :focus-visible {
+  outline-color: var(--color-band-fg);
+}
+/* A column, so that any height the panel takes from the row sits above its foot, not under it. */
+.answer {
+  display: flex;
+  flex-direction: column;
+}
+/* The title, and at its right the panel's one link. On a narrow panel the link goes under the title. */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 20px;
+}
+.explorer {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  white-space: nowrap;
+}
+/* After a link that opens a new tab. Inline-block, so that the link's underline does not run under it. */
+/* The page's new-tab arrow (bits.tsx NewTab) takes the dark panel's mute. */
+.explorer {
+  --ext: var(--color-band-mute);
+}
+
+/* The verdict: its mark, then the word. The mark is a flex item, so it never sits on a line apart from the word. */
+.verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.28em;
+  margin-top: 16px;
+  font-size: clamp(32px, 3.4vw, 44px);
+  font-weight: 300;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+.word {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* The journey's outcome marks, in the verdict's own colour (currentColor), which forced colours replace. */
+.mark {
+  flex: none;
+  width: 0.38em;
+  height: 0.38em;
+  margin-top: 0.37em;
+}
+.pay {
+  color: var(--color-band-fg);
+}
+.refuse {
+  color: var(--color-band-bad);
+}
+.hold {
+  color: var(--color-gold-light);
+}
+.none {
+  color: var(--color-band-mute);
+}
+.why {
+  margin-top: 10px;
+  max-width: var(--container-measure);
+  min-height: 3.1em;
+  font-size: 17px;
+  line-height: 1.55;
+}
+/* While a request is out, the region is aria-busy and still shows the last answer's sentence: it is dimmed. */
+.busy .verdict,
+.busy .why {
+  color: var(--color-band-mute);
+}
+/*
+ * Where the answer came from, with the raw answer as code. Two lines kept free (three in a narrow answer column, four
+ * on a phone): it switches between "Asking" and the answer's source, so the request under it does not move.
+ */
+.source {
+  margin-top: 12px;
+  min-height: 3.1em;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-band-mute);
+  overflow-wrap: anywhere;
+}
+.source code {
+  font-size: 0.93em;
+  color: var(--color-band-fg);
+}
+.retry {
+  align-self: flex-start;
+  margin-top: 14px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-band-fg);
+  border-radius: 999px;
+  background: none;
+  color: var(--color-band-fg);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+/* The request: one caption strip, then the lines, which scroll sideways inside the panel on a narrow screen. */
+.request {
+  min-width: 0;
+  margin-top: 18px;
+  overflow: hidden;
+  border: 1px solid var(--color-band-line);
+  border-radius: 12px;
+}
+.requestCap {
+  padding: 8px 14px 7px;
+  border-bottom: 1px solid var(--color-band-line);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-band-mute);
+}
+.requestCap code {
+  font-size: 1em;
+  color: var(--color-band-fg);
+}
+.requestBody {
+  position: relative;
+  overflow-x: auto;
+  /* A scrollbar in the panel's own colours, not the light one a browser draws by default. */
+  scrollbar-color: var(--color-band-mute) var(--color-band);
+}
+/* The ring is drawn inside the panel's own border. */
+.requestBody:focus-visible {
+  outline-offset: -3px;
+}
+.requestBody pre {
+  padding: 12px 14px 13px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.gone {
+  color: var(--color-band-bad);
+}
+.comment {
+  color: var(--color-band-mute);
+}
+
+/* What was asked and of which host, at the foot of the panel under a hairline: one short line each. */
+.foot {
+  margin-top: auto;
+  padding-top: 18px;
+}
+.footList {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-band-line);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.footRow {
+  display: contents;
+}
+.footList dt {
+  color: var(--color-band-mute);
+}
+.footList dd {
+  overflow-wrap: anywhere;
+}
+/* Two classes and an element: code in the 13.5px list keeps the list's size, never .site code's 0.86em (11.6px). */
+.footList dd code {
+  font-size: 1em;
+}
+
+/* --- The mandate, as the chain has it: eight fields on a grid, who and how much first ------------------------- */
+
+.mandate {
+  grid-column: 1 / -1;
+}
+/* Its 80 characters on one line across the strip, where there is room: AAA's measure is 80 or fewer (WCAG 1.4.8). */
+.mandate .hint {
+  max-width: 44em;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 28px;
+  margin-top: 18px;
+}
+.facts > div {
+  min-width: 0;
+  padding: 12px 0 14px;
+  border-top: 1px solid var(--color-line);
+}
+.facts dt {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+/* A value breaks inside itself only where it is wider than its whole cell. */
+.facts dd {
+  min-width: 0;
+  margin-top: 3px;
+  font-size: 17px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+}
+/* An identifier the chain holds (payee, agent_pk, status) is mono; a quantity stays in the sans. */
+.facts .id {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+/* No mandate, or one not read: the head stays, and one sentence under the same hairline. */
+.empty {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-line);
+  font-size: 16px;
+}
+
+/* With no JavaScript: the recorded answers, one per scenario. */
+.noScript {
+  margin-bottom: 12px;
+  max-width: var(--container-measure);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-mute);
+}
+.table {
+  margin-bottom: 22px;
+}
+.table th,
+.table td {
+  text-align: left;
+  padding: 4px 16px 4px 0;
+}
+
+/* Below 1101px the strip's four columns are too narrow for an account name: two by four. */
+@media (max-width: 1100px) {
+  .facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/*
+ * From 961px to 1200px the answer column is narrow (about 390px to 515px of text): the source line, with a refusal's
+ * raw answer in mono, takes three lines up to about 1120px. 1200px leaves room for a longer time or block number.
+ */
+@media (min-width: 961px) and (max-width: 1200px) {
+  .source {
+    min-height: 4.65em;
+  }
+}
+/* At 960px and below: the form, then the answer, then the strip. */
+@media (max-width: 960px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 620px) {
+  .panel {
+    padding: 20px;
+  }
+  .scenarios {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .control {
+    max-width: none;
+  }
+  /* The slider gets a row of its own, as wide as the panel, with a 44px touch height. */
+  .amountRow {
+    flex-wrap: wrap;
+  }
+  .amountRow input[type="range"] {
+    flex-basis: 100%;
+    height: 44px;
+  }
+  /* Four lines kept free here: at 320px to 390px the answer's source, with its raw answer, takes four. */
+  .source {
+    min-height: 6.2em;
+  }
+  /* The method and the host stack: each label over its value. */
+  .footList {
+    display: block;
+  }
+  .footRow {
+    display: block;
+  }
+  .footRow + .footRow {
+    margin-top: 8px;
+  }
+  /* A phone reads the mandate as rows: the field at the left, its value at the right, or under it whole. */
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 14px;
+  }
+  .facts > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2px 14px;
+    padding-block: 10px;
+  }
+  .facts dd {
+    margin: 0 0 0 auto;
+    text-align: right;
+    font-size: 16px;
+  }
+  .facts .id {
+    font-size: 14px;
+  }
+}
+/* Five below 360px: at 320px to 359px the source line of a refusal, with its raw answer in mono, takes five. */
+@media (max-width: 359px) {
+  .source {
+    min-height: 7.75em;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scenario {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  /* The chosen scenario keeps its 2px border, in the selection colour of the system. */
+  .scenario[aria-pressed="true"] {
+    border-color: Highlight;
+  }
+  /* The hijack's red rule takes the forced text colour, so it still shows on a dark Canvas. */
+  .inj {
+    border-left-color: CanvasText;
+  }
+}

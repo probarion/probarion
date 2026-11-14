@@ -1,0 +1,271 @@
+/*
+ * Why not just a spending limit? (Compare.tsx). One real table in three layouts: four columns from 961px (question,
+ * your contract, Probarion, status), a question line over three aligned columns from 621 to 960px, and one column with
+ * short run-in labels at 620px and under. The eight rows sit in two groups, each opened by a label. The column heads
+ * and the group labels are the page's one label (parts.module.css .label; test/site-facts.test.ts holds them to it),
+ * and the status is the page's own pill (parts.tsx StatusPill), with the name of the status row it comes from under
+ * it. Every colour is a token from app/globals.css. Nothing moves on scroll.
+ */
+
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--color-surface);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.table th,
+.table td {
+  min-width: 0;
+  padding: 16px 20px;
+  border-top: 1px solid var(--color-line);
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+}
+
+/* The header row: the page's label on paper. Only "Probarion" is in ink. */
+.table .head th {
+  padding-block: 12px;
+  border-top: 0;
+  background: var(--color-paper);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  text-transform: none;
+  color: var(--color-mute);
+}
+.table .head .headOurs {
+  color: var(--color-ink);
+}
+.colQuestion {
+  width: 23%;
+}
+.colDiy {
+  width: 23%;
+}
+.colOurs {
+  width: 34%;
+}
+.colStatus {
+  width: 20%;
+}
+
+/* A group's label: the page's label, as the column heads. The first row under it hangs from it, with no rule between
+   them. Gold is the section eyebrow's alone. */
+.table .group th {
+  padding: 22px 20px 2px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  text-transform: none;
+  color: var(--color-mute);
+}
+.table tbody:first-of-type .group th {
+  padding-top: 18px;
+  border-top: 0;
+}
+.table .group + tr > * {
+  padding-top: 8px;
+  border-top: 0;
+}
+
+.table .question {
+  font-weight: 500;
+}
+.table .diy {
+  color: var(--color-mute);
+}
+/* The pill sits at the top of its line, so that it centres on the first line of the answers beside it. */
+.status > :first-child {
+  vertical-align: top;
+}
+/* Under the pill: the status row it comes from, so that "On testnet" or "0.1.1 on npm" says of what. */
+.source {
+  display: block;
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+/* The short labels that open the two answers on a phone. Hidden from screen readers, which hear the column headers. */
+.runIn {
+  display: none;
+}
+
+/* Under the table: the sourced comparison, its text on the cells' left edge (their padding and the table's border). */
+.more {
+  margin-top: 18px;
+  padding-inline: 21px;
+}
+.moreLink,
+.moreNote {
+  max-width: var(--container-measure);
+}
+.moreLink {
+  font-size: 16px;
+  font-weight: 500;
+}
+.moreNote {
+  margin-top: 2px;
+  font-size: 15px;
+  color: var(--color-mute);
+}
+
+/* 961 to 1100px: the same four columns, a little tighter, and a wider status column for the longest pill. */
+@media (min-width: 961px) and (max-width: 1100px) {
+  .table th,
+  .table td,
+  .table .group th {
+    padding-inline: 16px;
+  }
+  .colQuestion {
+    width: 21%;
+  }
+  .colDiy {
+    width: 21%;
+  }
+  .colOurs {
+    width: 34%;
+  }
+  .colStatus {
+    width: 24%;
+  }
+  .more {
+    padding-inline: 17px;
+  }
+}
+
+/* 621 to 960px: each question is a line of its own over three aligned columns, under one visible header row. */
+@media (max-width: 960px) {
+  .table,
+  .table thead,
+  .table tbody,
+  .table th,
+  .table td {
+    display: block;
+  }
+  .table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 0.95fr);
+    column-gap: 20px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--color-line);
+  }
+  .table th,
+  .table td,
+  .table .head th,
+  .table .group th,
+  .table tbody:first-of-type .group th,
+  .table .group + tr > * {
+    width: auto;
+    padding: 0;
+    border-top: 0;
+  }
+  .table .head tr {
+    padding-block: 12px;
+    border-top: 0;
+    background: var(--color-paper);
+  }
+  /* The question is the line above each row, so its header is read, not shown. */
+  .table .head .colQuestion {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .table .question {
+    grid-column: 1 / -1;
+    margin-bottom: 6px;
+    font-size: 16px;
+  }
+  .table tr.group {
+    display: block;
+    padding: 22px 20px 2px;
+  }
+  .table tbody:first-of-type tr.group {
+    padding-top: 18px;
+    border-top: 0;
+  }
+  .table tr.group + tr {
+    padding-top: 8px;
+    border-top: 0;
+  }
+  .more {
+    padding-inline: 21px;
+  }
+}
+
+/*
+ * 620px and under: one column. The header row is read, not shown, and short run-in labels name the two answers. No
+ * panel: the rows sit on paper between hairlines, as the status list does, so the text gets the whole column.
+ */
+@media (max-width: 620px) {
+  .table {
+    border: 0;
+    border-bottom: 1px solid var(--color-line);
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
+  }
+  .table .head {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .table tr {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+    padding: 14px 0 16px;
+  }
+  .table .question {
+    margin-bottom: 0;
+  }
+  .table tr.group {
+    padding: 28px 0 0;
+  }
+  .table tbody:first-of-type tr.group {
+    padding-top: 0;
+  }
+  .table tr.group + tr {
+    padding-top: 6px;
+  }
+  .runIn {
+    display: inline;
+    margin-right: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    line-height: 1.5;
+    text-transform: none;
+    color: var(--color-mute);
+  }
+  .ours .runIn {
+    color: var(--color-ink);
+  }
+  .table .status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-top: 6px;
+  }
+  .source {
+    margin-top: 0;
+  }
+  .more {
+    padding-inline: 0;
+  }
+}

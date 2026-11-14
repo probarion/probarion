@@ -3,9 +3,10 @@ import c from "@/components/site/canary.module.css";
 import { ScrollRegion } from "@/components/site/ScrollRegion";
 import s from "@/components/site/site.module.css";
 import u from "@/components/site/usage.module.css";
-import { brandCardClass, linePillClass } from "@/components/ui";
+import { brandCardClass, ExternalLink, linePillClass } from "@/components/ui";
 import { thousands } from "@/lib/canary/format";
 import type { Network } from "@/lib/config";
+import { REPO_URL } from "@/lib/proof/cli";
 import {
   definitions,
   deltaText,
@@ -33,6 +34,16 @@ const T = USAGE_COPY.tiles;
 const M = USAGE_COPY.table;
 const C = USAGE_COPY.costs;
 
+/** The pilot form: a GitHub issue form (.github/ISSUE_TEMPLATE/pilot.yml), so the issue it opens is public. */
+export const PILOT_FORM_URL = `${REPO_URL}/issues/new?template=pilot.yml`;
+
+/** Where the unit costs and the pilots card point: the costs measured on mainnet, and the pilot form. */
+export const POINTERS = {
+  gasMeasured: "measured on mainnet, see What it costs",
+  pilot: "Run a pilot",
+  pilotNote: "The form opens a GitHub issue, which is public.",
+} as const;
+
 /** The segment columns, with the heading each one has in the tables. */
 const COLUMNS: readonly { segment: Segment; heading: string }[] = [
   { segment: "team", heading: M.team },
@@ -59,11 +70,12 @@ export function UsageHeader({ network }: { network: Network }) {
   );
 }
 
-function Tile({ label, value, sub }: { label: string; value: number; sub: string }) {
+/** A count with its label. A zero is drawn smaller than a count, so that what has happened leads the page. */
+export function Tile({ label, value, sub }: { label: string; value: number; sub: string }) {
   return (
     <div className={c.tile}>
       <p className={c.tileLabel}>{label}</p>
-      <p className={c.tileValue}>{thousands(value)}</p>
+      <p className={value === 0 ? u.counts : c.tileValue}>{thousands(value)}</p>
       <p className={c.tileSub}>{sub}</p>
     </div>
   );
@@ -140,7 +152,8 @@ export function UsageTable({ usage }: { usage: UsageMetrics }) {
 
 /**
  * What a decision costs, from what was measured. A price in dollars appears only when `price` is set (lib/usage/pricing.ts),
- * and the gas and hosting rows say that they are not measured or published yet instead of showing a guess.
+ * and the hosting row says that it is not published yet instead of showing a guess. The gas row points at What it costs
+ * (MainnetSections.tsx), where the gas each mainnet spend burned is shown with its reading.
  */
 export function UnitCostsCard({
   totals,
@@ -193,8 +206,10 @@ export function UnitCostsCard({
             </tr>
             <tr>
               <th scope="row">{C.gas}</th>
-              <td colSpan={COLUMNS.length} className={`${c.num} ${c.quiet}`}>
-                {C.gasUnset}
+              <td colSpan={COLUMNS.length} className={c.num}>
+                <a className={c.link} href="#costs">
+                  {POINTERS.gasMeasured}
+                </a>
               </td>
             </tr>
             <tr>
@@ -223,6 +238,12 @@ export function PilotsCard({ pilots, names }: { pilots: SegmentCounts; names: re
           {USAGE_COPY.pilots.named} {names.join(", ")}
         </p>
       ) : null}
+      <p className={c.line}>
+        <ExternalLink className={c.link} href={PILOT_FORM_URL}>
+          {POINTERS.pilot}
+        </ExternalLink>
+        . {POINTERS.pilotNote}
+      </p>
     </section>
   );
 }

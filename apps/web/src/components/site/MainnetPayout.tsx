@@ -19,9 +19,11 @@ import {
   verifyView,
 } from "@/lib/site/mainnet-payout-section";
 import { CHECK_ORDER, liveCopy, type Tone } from "@/lib/site/mainnet-payout-view";
+import { MainnetAsk } from "./MainnetAsk";
 import { MainnetPayoutClient } from "./MainnetPayoutClient";
 import m from "./mainnet.module.css";
 import { Rich } from "./Rich";
+import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
 const C = MAINNET_PAYOUT;
@@ -228,6 +230,11 @@ function Verify({ view }: { view: VerifyView }) {
         <span className={m.verifyCounts}>{view.counts}</span>
         {view.attested === null ? null : <span className={m.verifyAttested}>{view.attested}</span>}
       </div>
+      {view.later === null ? null : (
+        <p className={m.verifyLater}>
+          <Parts parts={view.later} />
+        </p>
+      )}
       <p className={m.verifyFoot}>{view.foot}</p>
       <ul className={m.verifyLinks} {...LIST}>
         <li>
@@ -369,10 +376,10 @@ function FoldedPayout({ run }: { run: RecordedRun }) {
 }
 
 /**
- * The payouts to Base on NEAR mainnet (#mainnet), between the ink band, which says the agent cannot name a payee, and
- * the console screenshots. The newest payout shows first and open; each earlier one follows, folded. Each count and
- * amount comes from the data, so another payout adds a fold and changes no copy. The page is complete with no
- * JavaScript and no network; each stone's button re-reads its payout from the visitor's browser.
+ * The payouts to Base on NEAR mainnet (#mainnet), right under the live check (#try). The newest payout shows first and
+ * open, then the visitor's own question to the mainnet vault, then each earlier payout, folded. Each count and amount
+ * comes from the data, so another payout adds a fold and changes no copy. The page is complete with no JavaScript and
+ * no network; each stone's button re-reads its payout from the visitor's browser, and the question asks the vault.
  */
 export function MainnetPayout() {
   if (RECORDED_RUNS.length === 0) return null;
@@ -380,34 +387,35 @@ export function MainnetPayout() {
   const [newest, ...earlier] = newestFirst(RECORDED_RUNS);
   if (newest === undefined) return null;
   return (
-    <section className={m.section} id="mainnet" aria-labelledby="mainnet-title">
-      <div className={s.wrap}>
-        <p className={s.eyebrow}>{head.eyebrow}</p>
-        <div className={m.head}>
-          <h2 className={s.h2} id="mainnet-title">
+    <LandingSection
+      id="mainnet"
+      head={{
+        eyebrow: head.eyebrow,
+        title: (
+          <>
             <span className={m.headLine}>{head.line1}</span>{" "}
             <span className={`${m.headLine} ${s.gold}`}>{head.line2}</span>
-          </h2>
-          <p className={m.lede}>
-            <Rich text={head.lede} />
-          </p>
-        </div>
-        <div className={m.payouts}>
-          <PayoutBlock run={newest} many={earlier.length > 0} />
-          {earlier.length > 0 ? (
-            <>
-              <div className={m.folds}>
-                {earlier.map((run) => (
-                  <FoldedPayout key={run.payout.id} run={run} />
-                ))}
-              </div>
-              <div className={m.earlierAfter}>
-                <Earlier />
-              </div>
-            </>
-          ) : null}
-        </div>
+          </>
+        ),
+        lede: head.lede,
+      }}
+    >
+      <div className={m.payouts}>
+        <PayoutBlock run={newest} many={earlier.length > 0} />
+        <MainnetAsk />
+        {earlier.length > 0 ? (
+          <>
+            <div className={m.folds}>
+              {earlier.map((run) => (
+                <FoldedPayout key={run.payout.id} run={run} />
+              ))}
+            </div>
+            <div className={m.earlierAfter}>
+              <Earlier />
+            </div>
+          </>
+        ) : null}
       </div>
-    </section>
+    </LandingSection>
   );
 }
