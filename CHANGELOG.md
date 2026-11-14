@@ -15,6 +15,18 @@ The software is an unaudited beta.
 
 ### Added
 
+- The record of a drill on the mainnet vault, run on 2026-11-14 between 01:06 and 01:13 UTC. Rehearsed by the team;
+  a hijacked agent key could send exactly this. No USDC moved. The agent key sent a spend of 50 USDC on mandate 1,
+  whose cap is 1 USDC a payment, and `v0.probarion.near` refused it on chain with `PROBARION:OverPerPayment`; the
+  owner froze the vault, a spend of 2 USDC sent while it was frozen was refused with `PROBARION:Frozen`, and the owner
+  unfroze it. Both spends were over mandate 1's 1 USDC cap, so neither could have paid even if the vault had not been
+  frozen, and the 15 Tgas of gas each carried was a safety margin with no part in the refusals.
+  `docs/evidence/mainnet-v0/drill-2026-11-14/` holds the four transactions, the vault's views before, during and
+  after, the three requests with their sha256, and the gas of each transaction. `docs/mainnet-proof.json` and its copy
+  under `/samples/mainnet/` record the four as `v0_drill_over_cap`, `v0_drill_freeze`, `v0_drill_frozen_refused` and
+  `v0_drill_unfreeze`. The README, `JUDGES.md`, `docs/TRACKS.md`, the threat model, the status board, `/usage` (from
+  the proof file) and four docs pages now tell the drill, and the agent key's allowance, read again at 01:16 UTC, is
+  0.2458808163 NEAR at nonce 224068463000006.
 - A no-clone check of the mainnet vault. The site serves `v0.probarion.near`'s signed ledger after S2, the recorded
   transactions, spend 1's pre-ledger decision and the two invoice texts under `/samples/mainnet/`, each a byte copy
   of its source in `docs/` (`apps/web/test/samples-mainnet.test.ts` compares them). In an empty folder, one `curl`

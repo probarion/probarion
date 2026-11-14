@@ -20,6 +20,10 @@ Status on 2026-11-07, and for mainnet on 2026-11-13:
   ([the run](evidence/mainnet-v0/s1-2026-11-13/README.md)); an attested model and the code rules decided
   spend 3 ([the run](evidence/mainnet-v0/s2-2026-11-13/README.md)). A later read-only `verify --online` passed O1
   and O2 on those attested decisions ([output](evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)).
+  On 2026-11-14, in a drill the team rehearsed, the contract refused two spends signed with the agent key, one of
+  50 USDC on mandate 1, whose cap is 1 USDC a payment, with `OverPerPayment`, and one of 2 USDC while the owner had
+  frozen the vault, with `Frozen`; the owner then unfroze it, and no USDC moved
+  ([the drill](evidence/mainnet-v0/drill-2026-11-14/README.md)).
 - How to report a weakness, and what is in scope: [SECURITY.md](../SECURITY.md).
 
 How evidence is named in this file:

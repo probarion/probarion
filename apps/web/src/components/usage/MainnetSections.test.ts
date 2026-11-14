@@ -133,7 +133,7 @@ describe("the mainnet record card", () => {
       "The two refused decisions were false: on 2026-11-13 both models proposed the right amount and Base address, and a payee rule that was too strict for a Base payee refused them. Nothing was sent, and PR #142 changed the rule after the run (see the S1 record (opens in a new tab) ).",
     );
     expect(t).toContain(
-      "From docs/mainnet-proof.json (opens in a new tab) , updated 2026-11-13 13:10 UTC, as of the page's build. It is not added into the counts below.",
+      "From docs/mainnet-proof.json (opens in a new tab) , updated 2026-11-14 01:27 UTC, as of the page's build. It is not added into the counts below.",
     );
     const links = hrefs(record);
     const blob = "https://github.com/probarion/probarion/blob/main/";

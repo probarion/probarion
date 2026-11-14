@@ -1208,7 +1208,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Mainnet vault",
-      pill: "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
+      pill: "On mainnet: 3 test payments (2 to Base), 3 refused on chain",
       readme: [
         {
           start: "Mainnet vault",
@@ -1216,6 +1216,8 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
             "**Live on NEAR mainnet**",
             "2026-11-11",
             "`PROBARION:NoMandate`",
+            "`PROBARION:OverPerPayment`",
+            "`PROBARION:Frozen`",
             "the POA bridge released 0.9976 USDC on Base",
             "the POA bridge released 0.2476 USDC on Base",
           ],
@@ -1456,7 +1458,7 @@ describe("the status list", () => {
       {
         id: "mainnet-vault",
         row: "Mainnet vault",
-        pill: "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
+        pill: "On mainnet: 3 test payments (2 to Base), 3 refused on chain",
         tone: "live",
       },
     ]);
