@@ -450,7 +450,7 @@ describe("the landing's invoice board, held to the demo vault's record", () => {
     const head = B.confirm.meta.slice(0, at).replace(day, `<span class="${pm.keep}">${day}</span>`);
     expect(B.confirm.meta.slice(at + 2)).toBe(`${e8.at.slice(11, 16)} UTC`);
     expect(sheet).toContain(
-      `<p class="${c.sigMeta}">${head}, <span class="${pm.keep}">${B.confirm.meta.slice(at + 2)}</span></p>`,
+      `<div class="${c.sigMeta}">${head}, <span class="${pm.keep}">${B.confirm.meta.slice(at + 2)}</span></div>`,
     );
     // The rows: a heading and its stamps, the sentence, then its proof.
     const verdicts = board.slice(board.indexOf(`<div class="${c.verdicts}">`));

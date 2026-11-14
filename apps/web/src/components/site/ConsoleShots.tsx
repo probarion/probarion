@@ -69,10 +69,10 @@ function Sheet() {
         </p>
         <div className={c.due}>
           <p className={p.label}>{inv.totalLabel}</p>
-          <p className={c.dueAmount}>
+          <div className={c.dueAmount}>
             <span className={c.dueNum}>{inv.total}</span>{" "}
             <span className={c.dueUnit}>{inv.unit}</span>
-          </p>
+          </div>
         </div>
         <dl className={c.rows}>
           {inv.rows.map((r) => (
@@ -95,12 +95,12 @@ function Sheet() {
             <Mark tone="paid" />
             {B.confirm.label}
           </p>
-          <p className={c.sigWho}>
+          <div className={c.sigWho}>
             <code title={B.confirm.owner}>{B.confirm.short}</code>
-          </p>
-          <p className={c.sigMeta}>
+          </div>
+          <div className={c.sigMeta}>
             <Stamped text={B.confirm.meta} />
-          </p>
+          </div>
         </div>
       </article>
       <p className={c.docNote}>{B.note}</p>
@@ -174,7 +174,7 @@ function Verdicts() {
               <p className={c.vtext}>
                 <KeepRich text={r.text} />
               </p>
-              <p className={c.vlinks}>
+              <div className={c.vlinks}>
                 {r.entry === undefined ? null : (
                   <Link className={`${s.link} ${c.vlink}`} href={r.entry.href}>
                     {r.entry.label}
@@ -185,7 +185,7 @@ function Verdicts() {
                 {(r.txs ?? []).map((t) => (
                   <Away key={t.url} className={`${s.link} ${c.vlink}`} href={t.url} tx={t.label} />
                 ))}
-              </p>
+              </div>
             </div>
             {r.rules === true ? <Rules /> : null}
           </li>
