@@ -1,11 +1,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { LinkPending } from "@/components/pending/LinkPending";
 import { isBuilt } from "@/lib/routes";
 
 /**
  * A link to a page of this site. While the page is still planned (`PLANNED_ROUTES`), the link is not
  * clickable: it shows as plain text marked "coming soon", or is left out with `whenPlanned="hide"` (menus).
- * `route` is the `src/app` pattern, `href` the concrete address (it defaults to `route`).
+ * `route` is the `src/app` pattern, `href` the concrete address (it defaults to `route`). While the page it opens
+ * loads, LinkPending draws the route bar; idle, it adds nothing to the link.
  */
 export function RouteLink({
   route,
@@ -27,6 +29,7 @@ export function RouteLink({
     return (
       <Link href={href} className={className} aria-current={ariaCurrent}>
         {children}
+        <LinkPending />
       </Link>
     );
   }

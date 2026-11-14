@@ -1,0 +1,41 @@
+v0.probarion.near on NEAR mainnet, before the drill of 2026-11-14. View calls at final finality: nothing
+here was signed or sent. The lines are the runbook's status helper: near-cli-rs 0.30.1
+`contract call-function as-read-only ... network-config mainnet now` for each view, and
+`account list-keys v0.probarion.near network-config mainnet now` for the agent key.
+
+  frozen         get_config, its "frozen" field
+  mandate 1      get_mandate {"mandate_id":1}, five of its fields
+  check 50 USDC  check_spend of request A (50 USDC on mandate 1), with signer_pk the agent key
+  check  2 USDC  check_spend of request C (2 USDC on mandate 1), with signer_pk the agent key
+  check  1 USDC  check_spend of request E (1 USDC on mandate 1, checked and not sent), with signer_pk the agent key
+  vault USDC     ft_balance_of v0.probarion.near on the USDC contract, in base units (6 decimals)
+  spends         the number of spends list_spends returns
+  last anchor    the seq of the last anchor list_anchors returns
+  agent key      the nonce and allowance list-keys gives for the agent key, public key `ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd`
+
+The requests are in README.md, under "The three requests".
+
+
+== The owner's read, step 0.3 of the runbook, in the owner's Git Bash ==
+
+utc            2026-11-14T01:04:41Z
+frozen         "frozen":false
+mandate 1      "max_uses":2 "reserved":"0" "spent":"1000000" "status":"active" "uses":1
+check 50 USDC  {"code":"OverPerPayment","ok":false,"would_hold":false}
+check  2 USDC  {"code":"OverPerPayment","ok":false,"would_hold":false}
+check  1 USDC  {"code":null,"ok":true,"would_hold":false}
+vault USDC     "2000000"
+spends         3
+last anchor    "seq":4
+agent key      | nonce 224068463000004 | allowance 0.2462193502381326 NEAR |
+
+
+== Earlier reads by Claude, 2026-11-13, the evening before (from the runbook, kept outside this repository) ==
+
+19:09:45 UTC, with the helper as it was then, whose 1 USDC line was an earlier request C of 1 USDC (request C became
+2 USDC, and request E was added, between 21:45 and 21:56 UTC): frozen false; mandate 1 uses 1 of 2, spent 1000000,
+reserved 0, active; 50 USDC OverPerPayment; 1 USDC ok; vault USDC 2000000; 3 spends; last anchor seq 4; agent key
+nonce 224068463000004, allowance 0.2462193502381326 NEAR.
+
+21:50:54 and 21:50:55 UTC, the revised requests: request C (2 USDC)
+{"code":"OverPerPayment","ok":false,"would_hold":false}, and request E (1 USDC) {"code":null,"ok":true,"would_hold":false}.

@@ -163,7 +163,8 @@ export const CANARY_COPY = {
     killed: "did not finish",
     team: "team",
     notSent: "not sent",
-    empty: "No attempts yet. Be the first.",
+    /** An empty feed shows no zero: it says where attempts appear, and the form above it invites one. */
+    empty: "Attempts appear here as they come in.",
     unavailable: "The latest attempts are not available right now.",
     tableLabel: "Latest attempts",
   },
@@ -298,12 +299,17 @@ export const teamSub = (team: number): string =>
 
 export const refusedSub = (n: number): string => `${thousands(n)} refused on chain`;
 
+/** The call to try it, with no count in it: the line ends with it, or is only it, while no outside visitor has tried. */
+export const TALLY_INVITE = "Your turn: try to get paid.";
+
 /**
  * The one line over the form, and in the scoreboard while no outside visitor has tried: how many attempts there are, from
  * the leaderboard the page already reads (board.ts). Outside visitors come first when there are any, counted as the
  * scoreboard counts them (the smaller of browsers and addresses, "at least"), and the team's own attempts come apart,
- * never in the outside figure. With no outside attempt yet, it asks the reader to be the first visitor. A board that
- * could not be read gets no line at all (Tally.tsx), so no figure is ever guessed.
+ * never in the outside figure. Before the first outside attempt it shows no outside figure at all: the team's attempts
+ * are named as what they are, rehearsals, and the line ends with the call to try it (with none at all, it is only that
+ * call). The board does not say what the contract answered the team, so the line does not either. A board that could
+ * not be read gets no line at all (Tally.tsx), so no figure is ever guessed.
  */
 export function tallyLine(t: {
   visitors: number;
@@ -312,9 +318,9 @@ export function tallyLine(t: {
 }): string {
   const attempts = (n: number) => `${thousands(n)} ${plural(n, "attempt", "attempts")}`;
   if (t.attempts_external === 0) {
-    if (t.attempts_team === 0) return "No attempts yet. Be the first visitor.";
-    const by = t.attempts_team === 1 ? "by the team" : "all by the team";
-    return `${attempts(t.attempts_team)} so far, ${by}. Be the first visitor.`;
+    if (t.attempts_team === 0) return TALLY_INVITE;
+    const rehearsals = `${thousands(t.attempts_team)} rehearsal ${plural(t.attempts_team, "attempt", "attempts")}`;
+    return `The team has run ${rehearsals}. ${TALLY_INVITE}`;
   }
   const team = t.attempts_team > 0 ? `, plus ${thousands(t.attempts_team)} by the team` : "";
   // Every outside attempt has a browser and an address, so this only guards against a damaged count.

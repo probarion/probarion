@@ -122,24 +122,27 @@ describe("the scoreboard before an outside visitor has tried", () => {
       contract_codes: [],
     });
 
-  it("is the one line, and no tile of zeros: 0 visitors, 6 by the team", () => {
+  it("is the one line, and no tile of zeros: the team's 6 rehearsals and a call to try", () => {
     const html = renderBoard(none(6));
     const text = visible(html);
-    expect(text).toContain("6 attempts so far, all by the team. Be the first visitor.");
+    expect(text).toContain("The team has run 6 rehearsal attempts. Your turn: try to get paid.");
     expect(text).toContain("Updated every minute.");
-    expect(text).not.toMatch(/At least|0 visitors|Sent straight to the contract|none yet/);
+    expect(text).not.toMatch(/At least|\b0\b|visitor|Sent straight to the contract|none yet/);
+    expect(text).not.toMatch(/all by the team|Be the first/);
     expect(html).not.toContain("<table");
   });
 
   it("keeps the line and the freshness note 2.5em apart (WCAG 1.4.8): 20px under the line, over .fresh's 12px", () => {
     // 17px text at 1.55 is 26.35px a line; 26.35 + 20 = 46.35px from the line's top to the note's is 2.73em.
     expect(renderBoard(none(6))).toMatch(
-      /<p class="mb-5">6 attempts so far, all by the team\. Be the first visitor\.<\/p><p class="[^"]*">Updated every minute\.<\/p>/,
+      /<p class="mb-5">The team has run 6 rehearsal attempts\. Your turn: try to get paid\.<\/p><p class="[^"]*">Updated every minute\.<\/p>/,
     );
   });
 
-  it("says there are no attempts yet when the team has made none either", () => {
-    expect(visible(renderBoard(none(0)))).toContain("No attempts yet. Be the first visitor.");
+  it("is only the call to try, with no count, when the team has made none either", () => {
+    const text = visible(renderBoard(none(0)));
+    expect(text).toContain("Your turn: try to get paid.");
+    expect(text).not.toMatch(/\b0\b|No attempts|rehearsal/);
   });
 
   it("shows the tiles again from the first outside attempt: 1 visitor, then many", () => {
@@ -157,10 +160,10 @@ describe("the scoreboard before an outside visitor has tried", () => {
     expect(one).toContain("At least 1 visitor ");
     expect(one).toContain("Attempts 1");
     expect(one).toContain("plus 6 by the team, counted apart");
-    expect(one).not.toContain("Be the first");
+    expect(one).not.toContain("Your turn");
     const many = visible(renderBoard(board()));
     expect(many).toContain("At least 4 visitors");
-    expect(many).not.toContain("Be the first");
+    expect(many).not.toContain("Your turn");
   });
 });
 
@@ -247,11 +250,12 @@ describe("the latest attempts", () => {
   });
 
   it("tells an empty feed from one that could not be read", () => {
-    expect(visible(renderFeed([]))).toContain("No attempts yet. Be the first.");
+    expect(visible(renderFeed([]))).toContain("Attempts appear here as they come in.");
+    expect(visible(renderFeed([]))).not.toMatch(/No attempts|Be the first/);
     expect(renderFeed([])).not.toContain("<table");
     const unread = visible(renderFeed(null));
     expect(unread).toContain("The latest attempts are not available right now.");
-    expect(unread).not.toContain("No attempts yet");
+    expect(unread).not.toContain("Attempts appear here");
   });
 
   it("scopes every column header of both tables to its column", () => {

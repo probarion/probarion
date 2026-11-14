@@ -30,6 +30,7 @@ import {
   HERO,
   INTEGRATE,
   LINKS,
+  MAINNET_DRILL_ON,
   MAINNET_TX,
   type ProofMark,
   proofOfParts,
@@ -472,16 +473,30 @@ describe("the status board's rows", () => {
     }
   });
 
-  it("dates the board by the day of JUDGES.md's Not yet list", () => {
+  it("dates the board by the day of JUDGES.md's Not yet list, and names the later mainnet drill its row tells", () => {
     expect(SOURCES.judges).toContain(`## Not yet, as of ${STATUS_AS_OF}`);
-    expect(STATUS_BOARD.eyebrow).toBe(`Status as of ${STATUS_AS_OF}`);
-    expect(visibleText(board())).toContain(`Status as of ${STATUS_AS_OF}`);
-    expect(SOURCES.judges).toContain(
-      "the Canary's board showed 0 visitor attempts and 6 by the team",
+    expect(STATUS_BOARD.eyebrow).toBe(
+      `Status as of ${STATUS_AS_OF}, with the mainnet drill of ${MAINNET_DRILL_ON}`,
     );
-    expect(SOURCES.judges).toContain(
-      "showed 0 external owners, 0 Canary participants and 0 pilots, beside 2 team vaults",
-    );
+    expect(visibleText(board())).toContain(STATUS_BOARD.eyebrow);
+    const mainnet = ITEMS.find((i) => i.id === "mainnet-vault")?.what ?? "";
+    expect(mainnet).toContain(`In a drill the team rehearsed on ${MAINNET_DRILL_ON}`);
+  });
+
+  it("shows no count of outside users while it is zero: not on the board, and not in JUDGES.md's Not yet list", () => {
+    const text = visibleText(board());
+    for (const zero of [
+      /No outside users/,
+      /\b0 (external owners|Canary participants|pilots|visitor attempts?)\b/,
+      /No visitor attempt yet/,
+      /Be the first visitor/,
+    ]) {
+      expect(text).not.toMatch(zero);
+      expect(SOURCES.judges).not.toMatch(zero);
+    }
+    // The audit gap stays: it is about the code, not a count of users.
+    expect(text).toContain("No outside review yet.");
+    expect(SOURCES.judges).toContain("**No audit.** No third party has audited");
   });
 
   it("tells the mainnet vault's three test payments, the 0.25 USDC one on an attested model's proposal", () => {
@@ -575,6 +590,36 @@ describe("the status board's rows", () => {
     const html = board();
     expect(html).toContain(BOARD_LINKS.mainnetVerifyOnline);
     expect(visibleText(html)).toContain("O1 and O2 pass, 3 of 3");
+  });
+
+  it("tells the mainnet drill as the team's own, says both spends were over the cap, and links its four transactions", () => {
+    const row = ITEMS.find((i) => i.id === "mainnet-vault");
+    const what = row?.what ?? "";
+    expect(what).toContain("In a drill the team rehearsed on 2026-11-14");
+    expect(what).toContain("it refused a 2 USDC spend while frozen");
+    // The freeze did not stop a spend that would have paid: the cap refused both spends too.
+    expect(what).toContain(
+      "Both spends were over the cap, so neither could have paid even if the vault had not been frozen. No USDC moved.",
+    );
+    const hrefs = row?.evidence.map((e) => e.href) ?? [];
+    for (const tx of [
+      MAINNET_TX.drillOverCap,
+      MAINNET_TX.drillFreeze,
+      MAINNET_TX.drillFrozenRefused,
+      MAINNET_TX.drillUnfreeze,
+    ]) {
+      expect(hrefs, tx.hash).toContain(tx.url);
+    }
+    expect(hrefs).toContain(BOARD_LINKS.mainnetDrill);
+    const drill = flat(
+      text(ROOT, "docs", "evidence", "mainnet-v0", "drill-2026-11-14", "README.md"),
+    );
+    expect(drill).toContain(
+      "**Rehearsed by the team; a hijacked agent key could send exactly this. No USDC moved.**",
+    );
+    expect(drill).toContain(
+      "Both spends were over mandate 1's cap of 1 USDC a payment, so neither could have paid even if the vault had not been frozen.",
+    );
   });
 
   it("no file says any more that O1 and O2 have not run on the mainnet decisions, and each docs page citing the run links it", () => {

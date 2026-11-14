@@ -589,6 +589,66 @@
       "spend_id": null,
       "what": "Vault v0 deployed from the reproducible build and initialised with the mainnet constants"
     },
+    "v0_drill_freeze": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "6oPDe77z5FmendyMQPTeKMdA5jsgpboks9uyUNGLvX6Z",
+      "kind": "freeze",
+      "network": "mainnet",
+      "receiver_id": "v0.probarion.near",
+      "recorded_at": "2026-11-14T01:26:45.203Z",
+      "signed_by": "owner",
+      "signer_id": "probarion.near",
+      "spend_id": null,
+      "what": "Drill 2026-11-14: the owner froze v0.probarion.near"
+    },
+    "v0_drill_frozen_refused": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": "Frozen",
+      "expect": "failure",
+      "hash": "DwXRPZHWWKaBcNpvp6F1rsaFzvM5wyi6A4Z6sckF8ifg",
+      "kind": "refused_on_chain",
+      "network": "mainnet",
+      "receiver_id": "v0.probarion.near",
+      "recorded_at": "2026-11-14T01:26:55.217Z",
+      "signed_by": "agent_key",
+      "signer_id": "v0.probarion.near",
+      "spend_id": null,
+      "what": "Drill 2026-11-14: spend() of 2 USDC on mandate 1 (cap 1 USDC) while frozen, signed with the agent key, refused on chain"
+    },
+    "v0_drill_over_cap": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": "OverPerPayment",
+      "expect": "failure",
+      "hash": "G6WJcTZA67NBSrLV8zhS7Ay5BQKt6qCSao7dndm1tF1c",
+      "kind": "refused_on_chain",
+      "network": "mainnet",
+      "receiver_id": "v0.probarion.near",
+      "recorded_at": "2026-11-14T01:26:36.051Z",
+      "signed_by": "agent_key",
+      "signer_id": "v0.probarion.near",
+      "spend_id": null,
+      "what": "Drill 2026-11-14: spend() of 50 USDC on mandate 1 (cap 1 USDC), signed with the agent key, refused on chain"
+    },
+    "v0_drill_unfreeze": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "H4qf84TwG1U7k8MRVp6VJHJcwryJFUPzPrRDv3yEAu8T",
+      "kind": "unfreeze",
+      "network": "mainnet",
+      "receiver_id": "v0.probarion.near",
+      "recorded_at": "2026-11-14T01:27:13.350Z",
+      "signed_by": "owner",
+      "signer_id": "probarion.near",
+      "spend_id": null,
+      "what": "Drill 2026-11-14: the owner unfroze v0.probarion.near"
+    },
     "v0_intents_topup": {
       "amount_usdc": "1.50",
       "base_tx": null,
@@ -710,7 +770,7 @@
       "what": "The owner's Meteor wallet, the vault's approver, sent 3 native USDC to the vault (ft_transfer)"
     }
   },
-  "updated_at": "2026-11-13T13:10:23.026Z",
+  "updated_at": "2026-11-14T01:27:13.350Z",
   "v": 1,
   "verify": {},
   "versions": {}

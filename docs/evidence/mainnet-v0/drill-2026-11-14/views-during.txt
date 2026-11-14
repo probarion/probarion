@@ -1,0 +1,22 @@
+v0.probarion.near on NEAR mainnet, while it was frozen during the drill of 2026-11-14 (between freeze B, block time
+01:08:46 UTC, and unfreeze D, 01:13:00 UTC). View calls by Claude with near-cli-rs 0.30.1 at final finality
+(`contract call-function as-read-only ... network-config mainnet now`), the runbook's helpers: nothing here was
+signed or sent. See views-before.txt for what each line reads.
+
+
+== After B, before C: 2026-11-14T01:09:44Z ==
+
+frozen         "frozen":true
+check  2 USDC  {"code":"Frozen","ok":false,"would_hold":false}
+
+The 2 USDC line is check_spend of request C, the spend C then sent. Request E (1 USDC) was not read while the vault was
+frozen: the owner skipped that check of the runbook's step (b), and this record holds no read of it while frozen.
+
+
+== After C, before D: about 2026-11-14T01:12:30Z ==
+
+mandate 1      "reserved":"0" "spent":"1000000" "uses":1
+vault USDC     "2000000"
+frozen         "frozen":true
+
+So the refused spend C reserved nothing, used nothing and moved no USDC, and the vault was still frozen until D.

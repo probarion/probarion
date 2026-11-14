@@ -15,6 +15,69 @@ The software is an unaudited beta.
 
 ### Added
 
+- One loading system for the web console and its public pages. Work that ends within 200 ms shows nothing: no
+  spinner, no grey bars and no dimming. A pressed button keeps its width, and after 200 ms a spinner and a label that
+  says who is working take the old label's place, such as "Reading the chain…", "Checking the chain…" or "Saving…"; a
+  screen reader hears the new label at once. Each tab of a vault in the console, a spend's approval page, `/proof` and
+  `/canary` draw the page's real heading (and the vault's tab bar, with the clicked tab marked) at once, and below it
+  grey cards shaped like the page, with one line for a screen reader such as "Loading the vault from NEAR…". A link
+  whose page was not prefetched draws a thin gold bar across the top of the page while it loads. A console page that
+  fails to load shows the console's own error page, "This page could not load.", with Try again and a link to your
+  vaults, under the "Signed in as" line. The console's forms (settings and Re-sync, the alert email, the Telegram link,
+  a key's Check on-chain status and Keep, and Register existing vault) run one action at a time and keep one status
+  line that a screen reader reads. While a form runs again its last answer stays, dimmed; after 5 s a line such as
+  "Still reading the chain (0:07). The console finishes one request at a time." is added under it. When a call fails
+  on the way the form says what happened instead of opening an error page: a read the console stopped waiting for
+  after 20 s says "The console did not answer in 20 s. It may still finish: reload the page to see, or try again."
+  with Try again (the read runs on and records what it read, so it does not say that nothing changed), and a save that
+  cannot tell says "The console could not tell whether it saved. Reload the page to see." Try again hands the focus
+  back to the form's own button, and the same answer twice is read out twice. Opened directly, a vault page or a proof
+  page that is not found now shows the not-found page (marked noindex) under HTTP 200, as the page streams behind its
+  loading shell, and `/proof` reaches the demo vault by a redirect in that stream. Check on chain again (the Agent
+  tab), Discard, Remove and Save zero retention show their busy labels too, and a second press while one runs does
+  nothing. With reduced motion the spinner, the bars and the gold bar hold still, and with forced colours the gold bar
+  keeps the system's highlight colour. The timings and the words live in `apps/web/src/lib/ui/pending.ts`, the parts
+  in `apps/web/src/components/pending/` and their CSS in
+  `apps/web/src/app/globals.css`. Check: `pnpm --filter @probarion/web exec vitest run src/lib/ui src/components/pending
+  src/components/console src/app/loading-boundaries.test.ts`.
+- How far it is tested, in numbers. The README has a dated table near its top, "Tested, in numbers": as of
+  2026-11-14, the tests of every CI suite in the CI run of `ed41104` (13,450 passed, 0 failed: 13,131 in the
+  TypeScript job, 12,655 of them TypeScript and 476 JavaScript Node script tests, then 301 Rust and 18 sandbox; the
+  Playwright end-to-end tests run locally and are not counted), the vault's property tests and error-code coverage,
+  the CI checks (the reproducible code hashes, the secret scan, and the no-clone verify of the mainnet vault on
+  Node v22.23.4 and on Node v24.22.2), the eval with the model fooled in an offline run and its replay of the answers `Qwen/Qwen3.8-27B` gave on NEAR AI Cloud, the mainnet and testnet
+  records from the committed evidence and read-only view calls, the Canary rehearsals, what the claim checker covers
+  and the live checks, each row with the run, the file or the chain read it was counted at, and a link to check it.
+  The testnet chain read is committed as `docs/evidence/testnet-reads/2026-11-14.txt`: the 10 team vaults' mandates,
+  spends and anchors from view calls, and the 4 spends the contract refused on chain (2026-11-01, 2026-11-09,
+  2026-11-10 and 2026-11-12), from FastNEAR's transaction index, each read back with `tx` from archival RPC. Its rows
+  live in `apps/web/src/lib/site/tested.ts`, which also gives JUDGES.md its short block and `/usage` a card near the
+  top, "How far it is tested"; `apps/web/src/lib/site/tested.test.ts` holds the README's table to it cell by cell,
+  and the figures the repository can derive (the eval, the code hashes, the error codes, the property tests, the
+  threat model, the chain read) to their files. docs/TRACKS.md points to the table. On `/usage`, external owners,
+  Canary participants and pilots, with their columns in the tables, appear as soon as they are counted
+  (`shownSegments` in `apps/web/src/lib/usage/view.ts`); the team's counts and the mainnet record stay, and "How each
+  number is counted" says so, and that the live vault counts cover the vaults registered in the console. On
+  `/canary`, the line over the form and the scoreboard name the team's attempts as rehearsals and invite a try ("The
+  team has run 6 rehearsal attempts. Your turn: try to get paid."), an empty feed reads "Attempts appear here as they
+  come in.", and visitors' attempts get their own tiles and line as soon as one comes in. The Known gaps item on
+  outside users is removed, since `/usage` shows those counts as soon as there are any; the Canary's status row
+  states its limit as the testnet and its private ledger. The audit gap stays.
+- The record of a drill on the mainnet vault, run on 2026-11-14 between 01:06 and 01:13 UTC. Rehearsed by the team;
+  a hijacked agent key could send exactly this. No USDC moved. The agent key sent a spend of 50 USDC on mandate 1,
+  whose cap is 1 USDC a payment, and `v0.probarion.near` refused it on chain with `PROBARION:OverPerPayment`; the
+  owner froze the vault, a spend of 2 USDC sent while it was frozen was refused with `PROBARION:Frozen`, and the owner
+  unfroze it. Both spends were over mandate 1's 1 USDC cap, so neither could have paid even if the vault had not been
+  frozen, and the 15 Tgas of gas each carried was a safety margin with no part in the refusals.
+  `docs/evidence/mainnet-v0/drill-2026-11-14/` holds the four transactions, the vault's views before, during and
+  after, the three requests with their sha256, and the gas of each transaction, and Claude's later archival read of the
+  same views at four block heights around the drill, which gives request E `Frozen` at both frozen blocks (the owner's
+  check of it while frozen was skipped). `docs/mainnet-proof.json` and its copy
+  under `/samples/mainnet/` record the four as `v0_drill_over_cap`, `v0_drill_freeze`, `v0_drill_frozen_refused` and
+  `v0_drill_unfreeze`. The README, `JUDGES.md`, `SECURITY.md`, `docs/TRACKS.md`, the threat model, the status board
+  (whose eyebrow now names the drill beside 2026-11-13), `/usage` (from the proof file, with each drill refusal labelled
+  as the team's) and four docs pages now tell the drill, and where they tell the spend refused while frozen they say it
+  was over the cap too. The agent key's allowance, read again at 01:16 UTC, is 0.2458808163 NEAR at nonce 224068463000006.
 - The eval's model replay, recorded on NEAR AI Cloud. `eval/recorded/` holds the calls to `Qwen/Qwen3.8-27B` of
   2026-11-14, from 01:10:55 to 01:22:24 UTC, for the 19 cases that reach the model step: 17 answers that pass A1 to
   A8 offline, and 2 failed calls, decided rules-only (I-01 timed out after 90000 ms, and again when recorded once
@@ -48,7 +111,8 @@ The software is an unaudited beta.
   and Windows PowerShell 5.1, against local copies and raw.githubusercontent.com
   (`docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt`). `.github/workflows/no-clone-verify.yml` is set to
   run the same block on Node 24, which 0.1.1 declares, and on Node 22 to learn whether 0.1.1 also works there, with
-  no checkout and no secret. It had not run on GitHub when this entry was written.
+  no checkout and no secret. Its first run on GitHub, on commit 3fc5879 at 23:35 UTC on 2026-11-13, printed
+  `RESULT: PASS` on Node 24.22.2 and on Node 22.23.4, where npm warns that 0.1.1 declares Node 24.
 - `/usage` leads with what has happened, from the committed evidence. A "Mainnet (v0.probarion.near)" card, built
   at build time from `docs/mainnet-proof.json` and the S1 and S2 run records, counts 3 payments (2 of them to
   Base), 1 refusal on chain (NoMandate) and 3 attested decisions (1 paid, 2 false refusals, with why and their

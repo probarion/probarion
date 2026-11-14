@@ -3,6 +3,7 @@ import Link from "next/link";
 import { InvoiceUploadForm } from "@/components/console/InvoiceUploadForm";
 import { VaultNav } from "@/components/console/VaultNav";
 import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
+import { SubmitButton } from "@/components/pending/SubmitButton";
 import { Badge, Card, linePillClass, Notice } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import { serviceDb } from "@/lib/db/clients";
@@ -82,9 +83,11 @@ export default async function PayablesPage({ params }: { params: Promise<{ vault
               Zero-retention: the invoice file and text are not stored; the model&apos;s answer,
               which may quote details, is part of the signed ledger
             </label>
-            <button className={linePillClass} type="submit">
-              Save
-            </button>
+            <SubmitButton
+              label="Save"
+              busy="Saving…"
+              className={`${linePillClass} has-[[data-busy]]:cursor-progress`}
+            />
           </form>
         ) : (
           <p className={`mt-2 text-xs ${muted}`}>Only the owner can change this.</p>

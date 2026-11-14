@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LinkPending } from "@/components/pending/LinkPending";
 import { RouteLink } from "@/components/RouteLink";
 import { ExternalLink } from "@/components/ui";
 import { SITE_NAV } from "@/lib/routes";
@@ -13,6 +14,8 @@ import s from "./site.module.css";
 // every menu until it is built, and then it shows up here by itself. On /login the console is left out: it would lead
 // to /console and straight back, and the bar's pill would outweigh the page's own sign-in button.
 // A SITE_NAV item that is a landing section (the mainnet payouts) shows once, among the section links, in the page's order.
+// Every link of this site in the bar and the menu draws the route bar while its page loads (LinkPending, in RouteLink
+// for the page links).
 const PILLS = [CONSOLE_ROUTE, PROOF_ROUTE];
 const otherPages = SITE_NAV.filter(
   ({ route }) => !PILLS.includes(route) && !HEADER_ANCHORS.some((a) => a.href === route),
@@ -22,6 +25,7 @@ function SectionLinks() {
   return HEADER_ANCHORS.map(({ href, label }) => (
     <Link key={href} href={href}>
       {label}
+      <LinkPending />
     </Link>
   ));
 }
@@ -42,6 +46,7 @@ export function SiteHeader() {
           <Link className={s.brand} href="/" aria-label="Probarion home">
             <BrandMark />
             probarion
+            <LinkPending />
           </Link>
           <div className={s.navLinks}>
             <SectionLinks />
