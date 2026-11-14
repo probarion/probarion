@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildUsageTable, perDecision, USAGE_METRICS } from "./view";
+import { buildUsageTable, perDecision, shownSegments, USAGE_METRICS } from "./view";
 
 const totals = [
   { segment: "team", metric: "spends_paid", value: 4 },
@@ -138,5 +138,43 @@ describe("usage view", () => {
     expect(perDecision(t, "team", null).tokensPerDecision).toBe(200);
     expect(perDecision(t, "canary", null).tokensPerDecision).toBe(200);
     expect(perDecision(t, "external", null).tokensPerDecision).toBeNull();
+  });
+});
+
+describe("the segments the page shows", () => {
+  const none = { external_owners: 0, canary_participants: 0, totals: [], recent: [] };
+
+  it("is the team's alone before anyone outside has come, and with the Canary vault and its mandate set up", () => {
+    expect(shownSegments(none)).toEqual(["team"]);
+    expect(
+      shownSegments({
+        ...none,
+        totals: [
+          { segment: "team", metric: "canary_attempts", value: 6 },
+          { segment: "external", metric: "spends_paid", value: 0 },
+          { segment: "canary", metric: "vaults", value: 1 },
+          { segment: "canary", metric: "mandates", value: "1" },
+        ],
+      }),
+    ).toEqual(["team"]);
+  });
+
+  it("adds an outside segment from its first figure, all time or in the last 7 days, in the table's order", () => {
+    expect(shownSegments({ ...none, external_owners: 1 })).toEqual(["team", "external"]);
+    expect(shownSegments({ ...none, canary_participants: 1 })).toEqual(["team", "canary"]);
+    expect(
+      shownSegments({ ...none, totals: [{ segment: "external", metric: "vaults", value: "1" }] }),
+    ).toEqual(["team", "external"]);
+    expect(
+      shownSegments({
+        ...none,
+        recent: [{ segment: "canary", metric: "refused_by_code", value: 2 }],
+      }),
+    ).toEqual(["team", "canary"]);
+    expect(shownSegments({ ...none, canary_participants: 3, external_owners: 2 })).toEqual([
+      "team",
+      "external",
+      "canary",
+    ]);
   });
 });

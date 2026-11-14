@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import { StatusBoard } from "@/components/site/StatusBoard";
+import b from "@/components/site/status.module.css";
 import { REHEARSAL } from "@/lib/canary/rehearsal";
 import { explorerTxUrl } from "@/lib/config";
 import { PAGES, pageFile } from "@/lib/docs/registry";
@@ -22,7 +23,6 @@ import {
   type BoardItem,
   type BoardPart,
   boardEntries,
-  COMPARE,
   CONSOLE_ROUTE,
   DEMO_PROOF,
   EVIDENCE_KINDS,
@@ -73,7 +73,10 @@ const SOURCES = {
 } as const;
 type Quote = readonly [keyof typeof SOURCES, string];
 
-const board = () => renderToStaticMarkup(createElement(StatusBoard));
+/** The board as the landing draws it: compact, a block of #verify. */
+const board = () => renderToStaticMarkup(createElement(StatusBoard, { compact: true }));
+/** The full board, a section of its own. */
+const fullBoard = () => renderToStaticMarkup(createElement(StatusBoard));
 const landing = () => renderToStaticMarkup(createElement(Home));
 /** The text a visitor reads: inline tags join their words, block tags part them. */
 const visibleText = (html: string) =>
@@ -408,8 +411,48 @@ describe("the status board's rows", () => {
     for (const u of left) expect(names, u.area).toContain(u.area);
   });
 
-  it("folds the console's tried parts under a line that names them, and always shows what is left to try", () => {
+  it("folds each row's record under its own summary on the landing, and keeps every id on a line that shows", () => {
     const html = board();
+    // Every row and every part is one closed native details, its summary the line that shows: its name and marks.
+    const folds = [
+      ...html.matchAll(
+        /<li class="[^"]*" id="([^"]+)" data-row="\1"[^>]*><details class="[^"]*"><summary class="[^"]*">([\s\S]*?)<\/summary>/g,
+      ),
+    ];
+    expect(folds.map((m) => m[1])).toEqual(ENTRIES.map((e) => e.id));
+    for (const [, id = "", summary = ""] of folds) {
+      const e = ENTRIES.find((x) => x.id === id);
+      const word = STATUS_KEY.proof.marks.find((m) => m.id === e?.proof)?.word;
+      expect(visibleText(summary), id).toContain(`${e?.name} ${STATUS_KEY.proof.label}: ${word}`);
+      // A summary holds phrasing content and its one heading: no list, no link, no paragraph.
+      expect(summary, id).not.toMatch(/<(?:ul|ol|li|a|p|div)\b/);
+    }
+    expect(html).not.toMatch(/<details[^>]*\sopen/);
+    // With every fold closed, each row's and part's id, the key's and the gaps' ids are still on what shows.
+    const shown = html.replace(/<\/summary>[\s\S]*?<\/details>/g, "</summary></details>");
+    const ids = [
+      "status",
+      "status-key-proof",
+      "status-key-use",
+      STATUS.gaps.id,
+      ...STATUS.gaps.lists.map((l) => l.id),
+      ...ENTRIES.map((e) => e.id),
+    ];
+    for (const id of ids) expect(shown, id).toContain(` id="${id}"`);
+    // Not proven yet stays open; the other two lists fold, each saying how many items it holds.
+    for (const l of STATUS.gaps.lists) {
+      const open = l.id === "gaps-proof";
+      for (const g of l.items) expect(shown.includes(g.lead), l.id).toBe(open);
+      if (!open) expect(visibleText(shown)).toContain(`${l.title} ${l.items.length} items`);
+    }
+    // What is left to try in the console is said in full, in its part's record.
+    for (const u of PARTS.flatMap((p) => p.untried ?? [])) {
+      expect(visibleText(html), u.area).toContain(`${u.area}: ${u.what.replace(/`/g, "")}`);
+    }
+  });
+
+  it("folds the full board's tried console parts under a line that names them, and always shows what is left", () => {
+    const html = fullBoard();
     const parts = ITEMS.find((i) => i.id === "web-console")?.parts ?? [];
     const tried = parts.filter((p) => p.untried === undefined);
     const left = parts.filter((p) => p.untried !== undefined);
@@ -438,12 +481,22 @@ describe("the status board's rows", () => {
     expect(visibleText(board())).toContain(STATUS_BOARD.eyebrow);
     const mainnet = ITEMS.find((i) => i.id === "mainnet-vault")?.what ?? "";
     expect(mainnet).toContain(`In a drill the team rehearsed on ${MAINNET_DRILL_ON}`);
-    expect(SOURCES.judges).toContain(
-      "the Canary's board showed 0 visitor attempts and 6 by the team",
-    );
-    expect(SOURCES.judges).toContain(
-      "showed 0 external owners, 0 Canary participants and 0 pilots, beside 2 team vaults",
-    );
+  });
+
+  it("shows no count of outside users while it is zero: not on the board, and not in JUDGES.md's Not yet list", () => {
+    const text = visibleText(board());
+    for (const zero of [
+      /No outside users/,
+      /\b0 (external owners|Canary participants|pilots|visitor attempts?)\b/,
+      /No visitor attempt yet/,
+      /Be the first visitor/,
+    ]) {
+      expect(text).not.toMatch(zero);
+      expect(SOURCES.judges).not.toMatch(zero);
+    }
+    // The audit gap stays: it is about the code, not a count of users.
+    expect(text).toContain("No outside review yet.");
+    expect(SOURCES.judges).toContain("**No audit.** No third party has audited");
   });
 
   it("tells the mainnet vault's three test payments, the 0.25 USDC one on an attested model's proposal", () => {
@@ -1060,24 +1113,35 @@ describe("the status board's evidence", () => {
 });
 
 describe("the status board's page structure and copy", () => {
-  it("nests its headings without a skip: the section's h2, a group's h3, a row's h4, a part's h5", () => {
+  it("nests its headings without a skip: the block's h3 under #verify's h2, a row's h4, a part's h5", () => {
     const html = board();
     const levels = [...html.matchAll(/<h([1-6])\b/g)].map((m) => Number(m[1]));
-    expect(levels[0]).toBe(2);
+    expect(levels[0]).toBe(3);
     for (let i = 1; i < levels.length; i++) {
       expect((levels[i] ?? 0) - (levels[i - 1] ?? 0), `heading ${i}`).toBeLessThanOrEqual(1);
     }
-    // The groups, then the closing note's own heading, so it does not read as a part of the last group, then the gaps.
-    expect(levels.filter((l) => l === 3)).toHaveLength(BOARD_GROUPS.length + 2);
+    // The board's own h3, then the gaps'. The groups are labels, so every row is an h4 under the board.
     const h3 = [...html.matchAll(/<h3\b[^>]*>([^<]*)</g)].map((m) => m[1]);
-    expect(h3.slice(-2)).toEqual([STATUS_BOARD.notesTitle, STATUS.gaps.title]);
+    expect(h3).toEqual([STATUS.title, STATUS.gaps.title]);
+    // Each row, the closing note's own heading, and the three gap lists.
+    expect(levels.filter((l) => l === 4)).toHaveLength(ITEMS.length + 1 + STATUS.gaps.lists.length);
     expect(levels.filter((l) => l === 5)).toHaveLength(PARTS.length);
+    // On the landing the board is a block of #verify: the h2 before its h3 is the section's.
+    const page = landing();
+    const before = page.slice(0, page.indexOf('id="status-title"'));
+    expect(before.slice(before.lastIndexOf("<h2"))).toContain('id="verify-title"');
+    // The full board keeps its own section: its h2, a group's h3, a row's h4, a part's h5.
+    const full = [...fullBoard().matchAll(/<h([1-6])\b/g)].map((m) => Number(m[1]));
+    expect(full[0]).toBe(2);
+    expect(full.filter((l) => l === 3)).toHaveLength(BOARD_GROUPS.length + 2);
   });
 
   it("says each mark in words, to a screen reader too, and keeps the glyphs out of the reading", () => {
     const html = board();
     expect(html.match(/<svg[^>]*aria-hidden="true"/g)?.length).toBe(html.match(/<svg/g)?.length);
-    expect(html.match(/<ul[^>]*aria-label="Status"/g)).toHaveLength(ENTRIES.length);
+    // A summary holds no list: each row's marks are spans, each read after its label.
+    expect(html.match(new RegExp(`<span class="${b.cMarks}">`, "g"))).toHaveLength(ENTRIES.length);
+    expect(fullBoard().match(/<ul[^>]*aria-label="Status"/g)).toHaveLength(ENTRIES.length);
     const out = visibleText(board());
     expect(out).toContain("Proof: Verified");
     expect(out).toContain("Use: Released");
@@ -1110,7 +1174,8 @@ describe("the status board's page structure and copy", () => {
 
   it("links each status pill elsewhere on the page to its row here, so one key explains them all", () => {
     const page = landing();
-    for (const id of ["compare", "integrate"]) {
+    // The use cases' ways in are the pills left on the page: the comparison's rows are the docs' now.
+    for (const id of ["integrate"]) {
       const at = page.indexOf(`id="${id}"`);
       const section = page.slice(at, page.indexOf("</section>", at));
       const pills = anchors(section).filter((a) => a.includes(STATUS_BOARD.pillSuffix));
@@ -1124,14 +1189,9 @@ describe("the status board's page structure and copy", () => {
         expect(a, href).toContain(row?.pill ?? "no row");
       }
     }
-    const rows = [
-      ...COMPARE.rows.map((r) => r.status),
-      ...INTEGRATE.cards.map((c) => c.status),
-      ...INTEGRATE.who.flatMap((w) => w.runs.map((r) => r.status)),
-    ];
-    for (const r of rows) expect(page).toContain(`href="#${statusOf(r).id}"`);
-    // The comparison and the integrate cards draw no pill of their own any more.
-    for (const file of ["Compare.tsx", "Integrate.tsx"]) {
+    for (const c of INTEGRATE.cards) expect(page).toContain(`href="#${statusOf(c.status).id}"`);
+    // The integrate cards draw no pill of their own any more.
+    for (const file of ["Integrate.tsx"]) {
       const tsx = text(WEB, "src", "components", "site", file);
       expect(tsx, file).not.toContain("s.pill");
       expect(tsx, file).toContain("<StatusPill row=");

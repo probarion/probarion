@@ -14,6 +14,7 @@ import { LedgerTest, TamperPanel } from "@/components/site/TamperPanel";
 import { TamperVerdict } from "@/components/site/TamperTest";
 import {
   CHECK_LIST,
+  DEMO_PROOF,
   FIXTURE_PATH,
   LINKS,
   RECORDED_RESULT,
@@ -28,6 +29,7 @@ import {
   ledgerRows,
   TAMPER_EDITS,
   type TamperEditId,
+  type TamperResult,
   verifyTamper,
 } from "@/lib/site/tamper";
 import {
@@ -569,12 +571,100 @@ describe("the verdict panel after a run", () => {
     expect(elementsOf(Home(), LedgerTest)).toHaveLength(1);
     const panels = elementsOf(LedgerTest(), TamperPanel);
     expect(panels.map((p) => (p.props as { next?: boolean }).next)).toEqual([true]);
+    // The landing folds the checks; /proof keeps them open.
+    expect(panels.map((p) => (p.props as { foldChecks?: boolean }).foldChecks)).toEqual([true]);
   });
 
   it("links the landing page's next step to /proof, after the word Caught", () => {
     const html = renderToStaticMarkup(createElement(NextStep, { step: NEXT_STEP.tamper }));
     expect(html).toMatch(
       /^<p[^>]*>Caught\. <a[^>]*href="\/proof"[^>]*>A vault&#x27;s public proof page runs these same checks <span aria-hidden="true">→<\/span><\/a><\/p>$/,
+    );
+  });
+});
+
+describe("the checks a to i, folded on the landing", () => {
+  const verdict = (result: TamperResult, live: boolean, foldChecks = true) =>
+    renderToStaticMarkup(
+      createElement(TamperVerdict, {
+        result,
+        checks: CHECK_LIST,
+        live,
+        copy: TAMPER_COPY,
+        foldChecks,
+      }),
+    );
+  /** The block a screen reader hears whole, the verdict. */
+  const atomic = (html: string) => {
+    const at = html.indexOf('aria-atomic="true"');
+    return html.slice(at, html.indexOf("</div>", at));
+  };
+  const failingList = `aria-label="${TAMPER_COPY.failingLabel}"`;
+
+  it("fold under one closed summary that names them, with every check's line still in the page", () => {
+    expect(TAMPER_COPY.checksFold).toBe(`The ${CHECK_LIST.length} checks, a to i`);
+    const html = verdict(RECORDED_RESULT, false);
+    expect(html).toMatch(
+      new RegExp(
+        `<details class="[^"]*"><summary class="[^"]*">${TAMPER_COPY.checksFold}</summary><ul`,
+      ),
+    );
+    expect(html).not.toMatch(/<details[^>]*\sopen/);
+    for (const c of CHECK_LIST) {
+      expect(visible(html), c.id).toContain(`${c.id} ${c.label} pass ${c.hint}`);
+    }
+    // At rest every check passes, so none is named beside the verdict.
+    expect(html).not.toContain(failingList);
+  });
+
+  it("name the checks a run did not pass under the verdict, outside the block read whole, before the fold", async () => {
+    for (const { id } of TAMPER_EDITS) {
+      const result = await verifyTamper(SNAPSHOT, id);
+      const html = verdict(result, true);
+      const views = CHECK_LIST.map((c) => ({
+        ...c,
+        ...checkView(result.checks.find((x) => x.id === c.id)),
+      })).filter((v) => v.bad);
+      expect(views.length, id).toBeGreaterThan(0);
+      const at = html.indexOf(failingList);
+      expect(at, id).toBeGreaterThan(html.indexOf('aria-atomic="true"'));
+      expect(at, id).toBeLessThan(html.indexOf("<details"));
+      const list = html.slice(at, html.indexOf("</ul>", at));
+      const items = [...list.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) =>
+        visible(m[1] ?? "").trim(),
+      );
+      expect(items, id).toEqual(views.map((v) => `${v.id} ${v.label} ${v.word}`));
+      expect(atomic(html), id).not.toContain(TAMPER_COPY.failingLabel);
+      // The fold stays closed: the run does not open it.
+      expect(html, id).not.toMatch(/<details[^>]*\sopen/);
+    }
+  });
+
+  it("stay open on /proof, where no list repeats them beside the verdict", async () => {
+    const html = verdict(await verifyTamper(SNAPSHOT, "amount"), true, false);
+    expect(html).not.toContain(failingList);
+    expect(html).not.toContain(TAMPER_COPY.checksFold);
+    // The one disclosure is the verifier's own words.
+    expect(html.match(/<details/g)).toHaveLength(1);
+  });
+
+  it("are followed on the landing by the line to the demo vault's proof page, which runs them on real data", () => {
+    const html = renderToStaticMarkup(createElement(LedgerTest));
+    const said = TAMPER_COPY.realData.map((x) => (typeof x === "string" ? x : x.label)).join("");
+    expect(said).toBe(
+      "On real data: the testnet demo vault's proof page runs the same checks on its own ledger and chain data.",
+    );
+    expect(visible(html).replace(/ ([.:])/g, "$1")).toContain(said);
+    expect(html).toContain(`href="${DEMO_PROOF}"`);
+    // After the panel's readout: the line closes the ledger test.
+    expect(html.indexOf(`href="${DEMO_PROOF}"`)).toBeGreaterThan(
+      html.indexOf(TAMPER_COPY.checksFold),
+    );
+    // A 48px summary, and no motion under reduced motion.
+    const css = read("components", "site", "tamper.module.css");
+    expect(css).toMatch(/\.checksSummary {[^}]*min-height: 48px;/);
+    expect(css).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) {\s*\.checksSummary::after {\s*transition: none;/,
     );
   });
 });

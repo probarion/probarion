@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { CopyButton } from "@/components/docs/CopyButton";
 import { explorerAccountUrl } from "@/lib/config";
 import { LIVE_CHECK, MAINNET_ASK, MAINNET_VERIFY } from "@/lib/site/facts";
@@ -9,16 +10,33 @@ import { Away } from "./parts";
 import { Rich } from "./Rich";
 
 /**
- * The no-clone verify of the vault: the Bash block, then the PowerShell one, each with a copy button (hidden until the
+ * A fold of the #mainnet section: a native details that starts closed and opens with no script, its summary one line
+ * with a gold ring whose arrow turns when it opens. What it holds stays in the markup, so a screen reader in browse mode
+ * and a page reader with no script still read it.
+ */
+export function Drawer({ summary, children }: { summary: string; children: ReactNode }) {
+  return (
+    <details className={m.drawer}>
+      <summary className={m.drawerSummary}>
+        <span className={m.drawerLabel}>{summary}</span>
+        <span className={m.drawerArrow} aria-hidden="true">
+          ↓
+        </span>
+      </summary>
+      <div className={m.drawerBody}>{children}</div>
+    </details>
+  );
+}
+
+/**
+ * The no-clone verify's commands: the Bash block, then the PowerShell one, each with a copy button (hidden until the
  * script runs) that copies the whole block. The lines wrap, so no block scrolls sideways; the copy keeps them as they are.
  * Then, in one paragraph, what the run prints, what it does not check and where its recorded runs are.
  */
 export function MainnetVerifyBlock() {
   const V = MAINNET_VERIFY;
   return (
-    <div className={m.askVerify}>
-      <h4 className={m.askVerifyTitle}>{V.title}</h4>
-      <p className={m.askNote}>{V.intro}</p>
+    <div className={m.askBlocks}>
       {V.blocks.map((b) => {
         const code = b.lines.join("\n");
         return (
@@ -47,9 +65,27 @@ export function MainnetVerifyBlock() {
 }
 
 /**
+ * The no-clone verify of the mainnet vault, beside the question: its title and what it does stay in the open, and its
+ * commands fold under them.
+ */
+export function MainnetVerify() {
+  const V = MAINNET_VERIFY;
+  return (
+    <section className={m.askVerify} aria-labelledby="mainnet-verify-title">
+      <h3 className={m.sideTitle} id="mainnet-verify-title">
+        {V.title}
+      </h3>
+      <p className={m.askLede}>{V.intro}</p>
+      <Drawer summary={V.fold}>
+        <MainnetVerifyBlock />
+      </Drawer>
+    </section>
+  );
+}
+
+/**
  * The visitor's own question to the mainnet vault: two amounts, one `check_spend` view a click, the contract's answer.
- * With no JavaScript a line says why there is no answer, and the vault's explorer page stays one link away. The no-clone
- * verify of the same vault follows.
+ * With no JavaScript a line says why there is no answer, and the vault's explorer page stays one link away.
  */
 export function MainnetAsk() {
   return (
@@ -69,7 +105,6 @@ export function MainnetAsk() {
         </p>
       </div>
       <MainnetAskClient copy={MAINNET_ASK} codes={LIVE_CHECK.codes} host={new URL(ASK_RPC).host} />
-      <MainnetVerifyBlock />
     </section>
   );
 }

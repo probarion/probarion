@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { RouteLink } from "@/components/RouteLink";
-import { HERO, NUMBERS, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
+import { HERO, PROBLEM, STORY, type TxFact } from "@/lib/site/facts";
 import { type HeroMainnetView, heroMainnet } from "@/lib/site/hero-mainnet";
-import { KeepLast, KeepRich, LIST, Outcome, type OutcomeTone } from "./bits";
+import { KeepLast, KeepRich, Outcome, type OutcomeTone } from "./bits";
 import h from "./hero.module.css";
+import { InkBand } from "./InkBand";
 import { Away, Parts } from "./parts";
-import p from "./parts.module.css";
 import { ReadChainLink } from "./ReadChainLink";
 import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
@@ -40,49 +40,16 @@ function CardState({ tone, children }: { tone: OutcomeTone; children: string }) 
   );
 }
 
-/**
- * The mainnet record: what runs where, then one ruled row per transaction (its outcome, what happened, then the
- * transaction under it), then a line that points to the vault's later payouts. The list is named without "Testnet today".
- */
-function MainnetRecord() {
-  const m = HERO.mainnet;
-  return (
-    <div className={h.evidence}>
-      <p className={h.evLead}>
-        <strong>{m.lead}</strong>
-        <KeepRich text={m.intro} />
-      </p>
-      <ul className={h.evRows} aria-label={m.listLabel} {...LIST}>
-        {m.rows.map((r) => (
-          <li key={r.tx.hash} className={h.evRow}>
-            <Outcome tone={r.tone} className={h.evOut}>
-              {r.state}
-            </Outcome>
-            <span className={h.evWhat}>
-              <KeepRich text={r.what} />
-            </span>
-            <span className={h.evTx}>
-              <span className={p.label}>{m.txLabel}</span>{" "}
-              <Away className={`${s.link} ${h.evHash}`} href={r.tx.url} tx={r.tx.label} />
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className={h.evAfter}>
-        <Parts parts={m.after} />
-      </p>
-    </div>
-  );
-}
-
 /*
- * Each card has four parts, in this order: its label and state, the amount, the rows, the link. From 621px the two
- * cards share those four rows of the pair's grid, so that their labels, amounts, rows and links line up.
+ * Each card has four parts, in this order: its label and state, the amount, the rows, the link. The mainnet card adds a
+ * fifth, its foot line. From 621px the two cards share those rows of the pair's grid, so that their labels, amounts,
+ * rows and links line up.
  */
 
 /**
  * The mainnet payout an attested model proposed (HERO.s2), from the recorded payouts. Its link scrolls to #mainnet and,
- * with JavaScript, reads that payout's chain there.
+ * with JavaScript, reads that payout's chain there. Its foot is the online check of the model's TEE evidence, and its
+ * limit.
  */
 function MainnetCard({ c }: { c: HeroMainnetView }) {
   const R = HERO.s2.rows;
@@ -119,23 +86,10 @@ function MainnetCard({ c }: { c: HeroMainnetView }) {
       >
         {c.read.label} <span aria-hidden="true">→</span>
       </ReadChainLink>
-    </article>
-  );
-}
-
-/** Under the mainnet card: how the payout was decided and paid, then the online check of the model's TEE evidence. */
-function MainnetSteps({ c }: { c: HeroMainnetView }) {
-  return (
-    <div className={h.s2Steps}>
-      <ol className={h.steps} aria-label={c.stepsLabel} {...LIST}>
-        {c.steps.map((step) => (
-          <li key={step}>{step}</li>
-        ))}
-      </ol>
-      <p className={h.tee}>
+      <p className={h.cardFoot}>
         <Parts parts={c.tee} />
       </p>
-    </div>
+    </article>
   );
 }
 
@@ -186,9 +140,8 @@ export function Hero() {
           <span>{HERO.line1}</span> <span className={s.gold}>{HERO.line2}</span>
         </h1>
         {/*
-         * Three parts: the lede and its links, the cards, then the mainnet record and the audience line. The record is
-         * last in the source, so that a phone reaches the mainnet card right after the buttons; from 961px it sits under
-         * the lede, beside the cards (hero.module.css).
+         * Two parts: the lede, its two buttons and the quiet line under them, then the cards. On one column (1100px and
+         * below) a phone reaches the mainnet card right after the quiet line; from 1101px the cards sit beside the lede.
          */}
         <div className={h.heroGrid}>
           <div className={h.leadCol}>
@@ -200,34 +153,23 @@ export function Hero() {
               <RouteLink route={HERO.docs.route} className={`${s.btn} ${s.big}`}>
                 {HERO.docs.label}
               </RouteLink>
-              <Link className={`${s.link} ${s.ctaLink}`} href={STORY.proof.href}>
+            </div>
+            <p className={h.quiet}>
+              <Link className={`${s.link} ${h.quietLink}`} href={STORY.proof.href}>
                 {HERO.verify} <span aria-hidden="true">→</span>
               </Link>
-            </div>
-            <p className={h.demo}>
-              <Away href={HERO.demo.href} label={HERO.demo.label} />
+              <Away
+                className={`${s.link} ${h.quietLink}`}
+                href={HERO.demo.href}
+                label={HERO.demo.label}
+              />
             </p>
           </div>
-          {/* The caption is first in the source and above both cards at every width; each card's steps sit under it. */}
+          {/* The caption is first in the source and above both cards at every width. */}
           <div className={h.duel}>
-            <p className={h.cap}>
-              <span className={h.capLead}>{HERO.both.lead}</span>
-              {HERO.both.rest}
-            </p>
+            <p className={h.cap}>{HERO.both.lead}</p>
             {s2 === null ? null : <MainnetCard c={s2} />}
-            {s2 === null ? null : <MainnetSteps c={s2} />}
             <RefusedCard />
-            <ol className={h.steps} aria-label={HERO.canarySteps.label} {...LIST}>
-              {HERO.canarySteps.items.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-          </div>
-          <div className={h.recordCol}>
-            <MainnetRecord />
-            <p className={s.fineprint}>
-              <Parts parts={HERO.fineprint} />
-            </p>
           </div>
         </div>
       </div>
@@ -235,6 +177,10 @@ export function Hero() {
   );
 }
 
+/**
+ * The problem: an agent with its own key beside one with a mandate, the line that says why a cap is not enough (its
+ * docs page carries the comparison table), then the payee panel (#payee), the one place the payee is told at length.
+ */
 export function Problem() {
   return (
     <LandingSection
@@ -273,17 +219,13 @@ export function Problem() {
           </ul>
         </div>
       </div>
-      <div className={s.numbers}>
-        {NUMBERS.map(({ name, value, rest }) => (
-          <div key={name}>
-            <b>{value}</b>
-            <p>
-              <strong>{name}</strong>
-              <KeepRich text={rest} />
-            </p>
-          </div>
-        ))}
+      <div className={s.pull}>
+        <p className={s.pullLine}>{PROBLEM.pull.text}</p>
+        <Link className={`${s.link} ${s.pullLink}`} href={PROBLEM.pull.link.href}>
+          {PROBLEM.pull.link.label} <span aria-hidden="true">→</span>
+        </Link>
       </div>
+      <InkBand />
     </LandingSection>
   );
 }

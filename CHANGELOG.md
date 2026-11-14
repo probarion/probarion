@@ -110,6 +110,54 @@ The software is an unaudited beta.
   one failed), each with exit 0. The CLI
   reference and architecture pages of the docs, `packages/cli/README.md` and `docs/RUNBOOK.md` (five packages,
   `@probarion/near` published before `@probarion/core`) name them.
+- One loading system for the web console and its public pages. Work that ends within 200 ms shows nothing: no
+  spinner, no grey bars and no dimming. A pressed button keeps its width, and after 200 ms a spinner and a label that
+  says who is working take the old label's place, such as "Reading the chain…", "Checking the chain…" or "Saving…"; a
+  screen reader hears the new label at once. Each tab of a vault in the console, a spend's approval page, `/proof` and
+  `/canary` draw the page's real heading (and the vault's tab bar, with the clicked tab marked) at once, and below it
+  grey cards shaped like the page, with one line for a screen reader such as "Loading the vault from NEAR…". A link
+  whose page was not prefetched draws a thin gold bar across the top of the page while it loads. A console page that
+  fails to load shows the console's own error page, "This page could not load.", with Try again and a link to your
+  vaults, under the "Signed in as" line. The console's forms (settings and Re-sync, the alert email, the Telegram link,
+  a key's Check on-chain status and Keep, and Register existing vault) run one action at a time and keep one status
+  line that a screen reader reads. While a form runs again its last answer stays, dimmed; after 5 s a line such as
+  "Still reading the chain (0:07). The console finishes one request at a time." is added under it. When a call fails
+  on the way the form says what happened instead of opening an error page: a read the console stopped waiting for
+  after 20 s says "The console did not answer in 20 s. It may still finish: reload the page to see, or try again."
+  with Try again (the read runs on and records what it read, so it does not say that nothing changed), and a save that
+  cannot tell says "The console could not tell whether it saved. Reload the page to see." Try again hands the focus
+  back to the form's own button, and the same answer twice is read out twice. Opened directly, a vault page or a proof
+  page that is not found now shows the not-found page (marked noindex) under HTTP 200, as the page streams behind its
+  loading shell, and `/proof` reaches the demo vault by a redirect in that stream. Check on chain again (the Agent
+  tab), Discard, Remove and Save zero retention show their busy labels too, and a second press while one runs does
+  nothing. With reduced motion the spinner, the bars and the gold bar hold still, and with forced colours the gold bar
+  keeps the system's highlight colour. The timings and the words live in `apps/web/src/lib/ui/pending.ts`, the parts
+  in `apps/web/src/components/pending/` and their CSS in
+  `apps/web/src/app/globals.css`. Check: `pnpm --filter @probarion/web exec vitest run src/lib/ui src/components/pending
+  src/components/console src/app/loading-boundaries.test.ts`.
+- How far it is tested, in numbers. The README has a dated table near its top, "Tested, in numbers": as of
+  2026-11-14, the tests of every CI suite in the CI run of `ed41104` (13,450 passed, 0 failed: 13,131 in the
+  TypeScript job, 12,655 of them TypeScript and 476 JavaScript Node script tests, then 301 Rust and 18 sandbox; the
+  Playwright end-to-end tests run locally and are not counted), the vault's property tests and error-code coverage,
+  the CI checks (the reproducible code hashes, the secret scan, and the no-clone verify of the mainnet vault on
+  Node v22.23.4 and on Node v24.22.2), the eval with the model fooled in an offline run and its replay of the answers `Qwen/Qwen3.8-27B` gave on NEAR AI Cloud, the mainnet and testnet
+  records from the committed evidence and read-only view calls, the Canary rehearsals, what the claim checker covers
+  and the live checks, each row with the run, the file or the chain read it was counted at, and a link to check it.
+  The testnet chain read is committed as `docs/evidence/testnet-reads/2026-11-14.txt`: the 10 team vaults' mandates,
+  spends and anchors from view calls, and the 4 spends the contract refused on chain (2026-11-01, 2026-11-09,
+  2026-11-10 and 2026-11-12), from FastNEAR's transaction index, each read back with `tx` from archival RPC. Its rows
+  live in `apps/web/src/lib/site/tested.ts`, which also gives JUDGES.md its short block and `/usage` a card near the
+  top, "How far it is tested"; `apps/web/src/lib/site/tested.test.ts` holds the README's table to it cell by cell,
+  and the figures the repository can derive (the eval, the code hashes, the error codes, the property tests, the
+  threat model, the chain read) to their files. docs/TRACKS.md points to the table. On `/usage`, external owners,
+  Canary participants and pilots, with their columns in the tables, appear as soon as they are counted
+  (`shownSegments` in `apps/web/src/lib/usage/view.ts`); the team's counts and the mainnet record stay, and "How each
+  number is counted" says so, and that the live vault counts cover the vaults registered in the console. On
+  `/canary`, the line over the form and the scoreboard name the team's attempts as rehearsals and invite a try ("The
+  team has run 6 rehearsal attempts. Your turn: try to get paid."), an empty feed reads "Attempts appear here as they
+  come in.", and visitors' attempts get their own tiles and line as soon as one comes in. The Known gaps item on
+  outside users is removed, since `/usage` shows those counts as soon as there are any; the Canary's status row
+  states its limit as the testnet and its private ledger. The audit gap stays.
 - The record of a drill on the mainnet vault, run on 2026-11-14 between 01:06 and 01:13 UTC. Rehearsed by the team;
   a hijacked agent key could send exactly this. No USDC moved. The agent key sent a spend of 50 USDC on mandate 1,
   whose cap is 1 USDC a payment, and `v0.probarion.near` refused it on chain with `PROBARION:OverPerPayment`; the
@@ -1373,6 +1421,77 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing page goes from 14 sections to 7, in the order of one story: the hero; the problem, which ends with the
+  payee panel (`/#payee`); how a payment works (`/#payment`), with the live check (`/#try`) under its four steps; the
+  use cases (`/#integrate`); real money on mainnet (`/#mainnet`); the record (`/#verify`), with what it rests on
+  (`/#built-on`), the status board (`/#status`) and the known gaps (`/#known-gaps`); and the close.
+  - The hero keeps its headline, its two cards and the TEE line, and drops its step lists, the 2026-11-11 record and
+    the fine print. Under "Try the demo" and "Explore the docs", a quiet line links the demo vault's proof page and
+    the demo video.
+  - The problem drops its numbers band. After its two columns, the line "A cap stops big payments. It does not stop
+    the wrong ones." links the docs, and the payee panel shows the `spend` request's fields with `recipient` struck
+    out, beside three numbers.
+  - How a payment works gives four steps, each with what it runs on, and links "Every step, with its fields and
+    code". The live check under them keeps its scenarios, the mandate select, the amount, the key toggle and the
+    mandate as the chain has it in view, and folds the request it sent.
+  - The use cases are three cards, each with its network, what the mandate controls, its outcome and one link to
+    its record, then one console screenshot at its own 856px, the four ways in and one install line. The code box,
+    the addresses and the groups of doc links are in the docs.
+  - On mainnet, spend 3 stays open with "Read the chain now" and folds its decision trail and verdict; spend 2 stays
+    folded with its own button. "Ask the mainnet contract" and "Verify the vault yourself" sit side by side from
+    961px, the verify commands in a fold under their title, and the transactions of 2026-11-11 are one line.
+  - The record keeps the ledger test. On the landing its checks a to i fold, with any failing check named beside
+    the result, and `/proof` keeps the list open. "What it rests on" gives four rows of text with an account or a
+    command to check each, and no logos. The status board gives each row one line that keeps its id in view and
+    opens to its record. Known gaps keeps "Not proven yet" open and folds the other two lists.
+  - The close offers "Evaluate in 5 minutes", "Try the demo" and "GitHub", the docs, the spec and the demo video as
+    quiet links, "Where to get Probarion" as text links, the trademark notice in one line, and the way into the
+    console last.
+- What left the landing is in the docs, in the same change: the comparison with a limit contract you write in What
+  is Probarion ("Why not a spending-limit contract"), the demo vault's four invoices in How one payment works, the
+  table of attested decisions in Verifier checks ("Attested decisions on record"), the console's held and paid
+  screenshots in Holds and approvals ("A hold in the console"), and the known gaps in What works today too. The smoke
+  run's transactions stay in How one payment works ("See it on testnet"), and Install links the official MCP
+  Registry. `apps/web/test/docs-pages.test.ts` and `apps/web/test/invoice-story.test.ts` hold the moved material to
+  the same constants and records the landing used.
+- Copy fixes on the landing: the hero's lede says the agent pays the payee you named, within the limits you signed;
+  the agent's key can call one method, `spend`; the hijacked prompt's answer says the money does not go to the
+  address in the prompt; a key the owner did not add gets nothing. The header's anchors follow the page's order (How a
+  payment works, Try it, Mainnet, Verify), and the footer's motto is now "The contract protects the money. The ledger
+  records every decision."
+- Every anchor that the README, JUDGES.md, `docs/TRACKS.md`, the docs and the site's other pages link stays on a
+  visible element, each status row's id included, and every live part works as before: the live check, "Read the
+  chain now", "Ask the mainnet contract", the no-clone verify blocks and the ledger test. Each fold is a native
+  `details`, so folded text stays in the page's HTML, and the page works without JavaScript. On `/`, the a11y
+  spec's 12px floor and its 1.4.8 line and paragraph checks pass at 1440px: the use cases' outcome, the console
+  shot's title (now an h3), the mainnet section's last two lines, the ledger test's verdict and the board's parts
+  keep 2.5em from line to line. `Compare.tsx` and `ShipLogos.tsx` and the CSS of the comparison and the smoke run's
+  list are removed. Check: `pnpm --filter @probarion/web exec vitest run`, then
+  `pnpm --filter @probarion/web exec playwright test e2e/landing.spec.ts e2e/a11y.spec.ts`.
+- The console's wallet buttons say who they wait on. A transaction button reads Preparing… while the console builds
+  the transaction, Check your wallet… while the wallet is open, Confirming on NEAR… once the wallet has sent it,
+  Finishing… while the page does its own step after the result (a page can give that step its own words) and
+  Updating the page… while the page reads its data again. While the console, the wallet or NEAR works, the line under
+  it says the step in a sentence, with the elapsed time from 5 s. After 20 s in the wallet it adds "Still waiting for
+  your wallet (0:20). If you closed its window, check your wallet's activity before you sign again.", and after 15 s
+  on NEAR "NEAR is slow to confirm (0:15). Do not sign again: this button is still checking the same transaction."
+  From then on the hint's clock is the one that runs. Screen readers hear those lines, each hint once and the result,
+  not the clock; a lock read back after a reload is shown but not read out again. While it works the button keeps
+  the keyboard focus and ignores another click, also while the page refreshes, and a refresh that fails leaves the
+  result on screen. It is disabled when it cannot act: the wallet still loading (its label with a spinner, described
+  as "Loading your wallet…"), the wrong account, or a result the chain could not confirm, and when such a result
+  locks the focused button, the focus moves to its unlock control. Its width stays the same through every step. What
+  is sent, how many times, and the lock after an unclear result are unchanged, and the wallet step has no timeout.
+  The "You sign" line names the contract after a comma, in place of a dash.
+  `apps/web/src/lib/near/send.ts` tells the button "confirm" between the wallet's transaction hash and the chain read,
+  in a try/catch, so it cannot change the result.
+- Sign-in's button says each step: Loading wallets…, Check your wallet…, Checking your signature…, then Opening your
+  console… while the console loads. Once the wallet is asked to sign, the line under the button reads "Approve the
+  sign-in message in your wallet. It is not a transaction and costs nothing." and the same 20 s wallet hint follows;
+  the wait for the server's challenge before that does not count as the wallet's. The challenge and verify requests
+  stop waiting after 15 s and say "The server did not answer in 15 s. You are not signed in. Try again." A closed
+  wallet or wallet list reads "You closed the wallet before signing. You are not signed in." in place of "User
+  rejected". The button keeps the focus while it works, and its messages go to one status region.
 - The README, JUDGES.md, `docs/TRACKS.md` and the docs follow the other changes of 2026-11-13. They now say what
   the payee check is: `probarion payee check` and the `/check` page give allow, warn or block with reasons,
   read-only, in this repository and not in npm 0.1.1, and `/check` is live from the deploy that ships it. On

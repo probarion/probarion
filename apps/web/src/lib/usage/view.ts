@@ -52,6 +52,35 @@ const counts = (totals: readonly UsageTotal[], metric: string): SegmentCounts =>
   canary: sum(totals, "canary", metric),
 });
 
+/** What decides which segments the page shows: the two outside head counts, and the database's counts. */
+export interface SegmentFigures {
+  external_owners: number;
+  canary_participants: number;
+  totals: readonly UsageTotal[];
+  recent: readonly UsageTotal[];
+}
+
+/** The Canary column's own setup, the team's: the Canary vault and its mandate. They do not show the column alone. */
+const CANARY_SETUP: ReadonlySet<string> = new Set(["vaults", "mandates"]);
+
+/**
+ * The segments the page shows, in the order of SEGMENTS. The team's is always shown. An outside one is shown once it has
+ * a figure above zero, and is left out until then, so that the page draws no column of zeros for people who have not
+ * come yet; it appears on its own from the first count. External: an external owner, or any external count. The Canary:
+ * a participant, or any Canary count other than the Canary vault and its mandate, which the team set up.
+ */
+export function shownSegments(f: SegmentFigures): Segment[] {
+  const counted = (segment: Segment, skip: ReadonlySet<string> = new Set()) =>
+    [...f.totals, ...f.recent].some(
+      (t) => t.segment === segment && !skip.has(t.metric) && Number(t.value) > 0,
+    );
+  return SEGMENTS.filter((segment) => {
+    if (segment === "external") return f.external_owners > 0 || counted("external");
+    if (segment === "canary") return f.canary_participants > 0 || counted("canary", CANARY_SETUP);
+    return true;
+  });
+}
+
 /** Every metric in three separate columns, zero-filled, each with its last 7 days (`recent`, zero when not given). */
 export function buildUsageTable(
   totals: readonly UsageTotal[],

@@ -24,8 +24,10 @@ import type { NearAiPrice } from "@/lib/usage/pricing";
 import {
   buildUsageTable,
   perDecision,
+  SEGMENTS,
   type Segment,
   type SegmentCounts,
+  shownSegments,
   type UsageTotal,
 } from "@/lib/usage/view";
 
@@ -50,6 +52,10 @@ const COLUMNS: readonly { segment: Segment; heading: string }[] = [
   { segment: "external", heading: M.external },
   { segment: "canary", heading: M.canary },
 ];
+
+/** The columns of the segments shown (shownSegments), in the tables' order. */
+const columnsOf = (segments: readonly Segment[]) =>
+  COLUMNS.filter(({ segment }) => segments.includes(segment));
 
 export function UsageHeader({ network }: { network: Network }) {
   return (
@@ -82,18 +88,24 @@ export function Tile({ label, value, sub }: { label: string; value: number; sub:
 }
 
 /**
- * The three people-and-vault counts. Canary participants are "at least": the page cannot tell one person with two
- * browsers and two addresses from two people, so it shows the smaller of the two counts and says so.
+ * The people-and-vault counts. Canary participants are "at least": the page cannot tell one person with two browsers and
+ * two addresses from two people, so it shows the smaller of the two counts and says so. The two outside counts are
+ * shown once they are above zero and left out until then: a count of people who have not come yet is not drawn as a
+ * zero. The team's vaults are always shown, counted apart.
  */
 export function UsageTiles({ usage }: { usage: UsageMetrics }) {
   return (
     <div className={`${c.tiles} ${u.tiles}`}>
-      <Tile label={T.owners.label} value={usage.external_owners} sub={T.owners.sub} />
-      <Tile
-        label={T.participants.label}
-        value={usage.canary_participants}
-        sub={T.participants.sub}
-      />
+      {usage.external_owners > 0 ? (
+        <Tile label={T.owners.label} value={usage.external_owners} sub={T.owners.sub} />
+      ) : null}
+      {usage.canary_participants > 0 ? (
+        <Tile
+          label={T.participants.label}
+          value={usage.canary_participants}
+          sub={T.participants.sub}
+        />
+      ) : null}
       <Tile label={T.team.label} value={usage.team_vaults} sub={T.team.sub} />
     </div>
   );
@@ -114,8 +126,10 @@ function Cell({ total, week }: { total: number; week: number }) {
   );
 }
 
+/** The counts by segment: the team's column, and an outside one only once it has a count (shownSegments). */
 export function UsageTable({ usage }: { usage: UsageMetrics }) {
   const rows = buildUsageTable(usage.totals, usage.recent);
+  const columns = columnsOf(shownSegments(usage));
   return (
     <section className={brandCardClass}>
       <h2 className={c.cardTitle}>{M.title}</h2>
@@ -124,7 +138,7 @@ export function UsageTable({ usage }: { usage: UsageMetrics }) {
           <thead>
             <tr>
               <th scope="col">{M.metric}</th>
-              {COLUMNS.map(({ segment, heading }) => (
+              {columns.map(({ segment, heading }) => (
                 <th key={segment} scope="col" className={c.num}>
                   {heading}
                 </th>
@@ -137,7 +151,7 @@ export function UsageTable({ usage }: { usage: UsageMetrics }) {
                 <th scope="row">
                   {row.indent ? <span className={u.indent}>{row.label}</span> : row.label}
                 </th>
-                {COLUMNS.map(({ segment }) => (
+                {columns.map(({ segment }) => (
                   <Cell key={segment} total={row[segment]} week={row.week[segment]} />
                 ))}
               </tr>
@@ -153,16 +167,20 @@ export function UsageTable({ usage }: { usage: UsageMetrics }) {
 /**
  * What a decision costs, from what was measured. A price in dollars appears only when `price` is set (lib/usage/pricing.ts),
  * and the hosting row says that it is not published yet instead of showing a guess. The gas row points at What it costs
- * (MainnetSections.tsx), where the gas each mainnet spend burned is shown with its reading.
+ * (MainnetSections.tsx), where the gas each mainnet spend burned is shown with its reading. Its columns are the segments
+ * the table shows (`segments`, every one when not given), so an outside segment has no column of empty cells here either.
  */
 export function UnitCostsCard({
   totals,
   price,
+  segments = SEGMENTS,
 }: {
   totals: readonly UsageTotal[];
   price: NearAiPrice | null;
+  segments?: readonly Segment[];
 }) {
-  const per = COLUMNS.map(({ segment }) => perDecision(totals, segment, price));
+  const columns = columnsOf(segments);
+  const per = columns.map(({ segment }) => perDecision(totals, segment, price));
   return (
     <section className={brandCardClass}>
       <h2 className={c.cardTitle}>{C.title}</h2>
@@ -171,7 +189,7 @@ export function UnitCostsCard({
           <thead>
             <tr>
               <th scope="col">{C.unit}</th>
-              {COLUMNS.map(({ segment, heading }) => (
+              {columns.map(({ segment, heading }) => (
                 <th key={segment} scope="col" className={c.num}>
                   {heading}
                 </th>
@@ -181,7 +199,7 @@ export function UnitCostsCard({
           <tbody>
             <tr>
               <th scope="row">{C.tokens}</th>
-              {COLUMNS.map(({ segment }, i) => (
+              {columns.map(({ segment }, i) => (
                 <td key={segment} className={c.num}>
                   {tokensCell(per[i]?.tokensPerDecision ?? null)}
                 </td>
@@ -190,11 +208,11 @@ export function UnitCostsCard({
             <tr>
               <th scope="row">{C.usd}</th>
               {price === null ? (
-                <td colSpan={COLUMNS.length} className={`${c.num} ${c.quiet}`}>
+                <td colSpan={columns.length} className={`${c.num} ${c.quiet}`}>
                   {C.usdUnset}
                 </td>
               ) : (
-                COLUMNS.map(({ segment }, i) => {
+                columns.map(({ segment }, i) => {
                   const usd = per[i]?.usdPerDecision ?? null;
                   return (
                     <td key={segment} className={c.num}>
@@ -206,7 +224,7 @@ export function UnitCostsCard({
             </tr>
             <tr>
               <th scope="row">{C.gas}</th>
-              <td colSpan={COLUMNS.length} className={c.num}>
+              <td colSpan={columns.length} className={c.num}>
                 <a className={c.link} href="#costs">
                   {POINTERS.gasMeasured}
                 </a>
@@ -214,7 +232,7 @@ export function UnitCostsCard({
             </tr>
             <tr>
               <th scope="row">{C.hosting}</th>
-              <td colSpan={COLUMNS.length} className={`${c.num} ${c.quiet}`}>
+              <td colSpan={columns.length} className={`${c.num} ${c.quiet}`}>
                 {C.hostingUnset}
               </td>
             </tr>
@@ -227,12 +245,18 @@ export function UnitCostsCard({
   );
 }
 
-/** The pilots of each cohort, and the names of those who agreed in writing to be named (and only those). */
+/**
+ * The pilots of each cohort that has one, and the names of those who agreed in writing to be named (and only those). A
+ * cohort with no pilot is left out, and with none at all the card has no count line: it offers the pilot form.
+ */
 export function PilotsCard({ pilots, names }: { pilots: SegmentCounts; names: readonly string[] }) {
+  const line = pilotsLine(pilots);
   return (
     <section className={brandCardClass}>
-      <h2 className={c.cardTitle}>{USAGE_COPY.pilots.title}</h2>
-      <p className={u.counts}>{pilotsLine(pilots)}</p>
+      <h2 className={c.cardTitle}>
+        {line === null ? USAGE_COPY.pilots.titleNone : USAGE_COPY.pilots.title}
+      </h2>
+      {line === null ? null : <p className={u.counts}>{line}</p>}
       {names.length > 0 ? (
         <p className={u.names}>
           {USAGE_COPY.pilots.named} {names.join(", ")}

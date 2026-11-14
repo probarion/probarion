@@ -1,0 +1,72 @@
+The team's testnet vaults, read from the chain (2026-11-14, UTC)
+
+What this records
+-----------------
+The figures of two rows of "Tested, in numbers" in the README (and of the card "How far it is tested" on /usage):
+"Testnet team vaults, read from the chain" and the testnet refusals on chain in "Testnet runs with a person and a
+model" and "Canary rehearsals". The vaults are the 9 that the factory vaults.probarion.testnet lists and
+v0.probarion.testnet, all of them the team's.
+
+How it was read
+---------------
+Read-only requests, with no key: nothing was signed or sent.
+
+1. View calls on https://rpc.testnet.fastnear.com with finality final: list_vaults on vaults.probarion.testnet,
+   then list_mandates, list_spends and list_anchors on each vault, 100 at a time from index 0. A vault's signed
+   ledger entries are the count of its last anchor, which covers every entry up to it.
+2. FastNEAR's transaction index, POST https://tx.test.fastnear.com/v0/account with
+   {"account_id": "<vault>", "is_success": false}, for each of the 10 vaults.
+3. Each transaction the index listed, read back with the JSON-RPC method tx on
+   https://archival-rpc.testnet.fastnear.com: its signer, its method and the error the contract panicked with.
+
+A spend the contract refuses fails its transaction and creates no spend, so list_spends does not show it; step 2
+and step 3 find it.
+
+Result
+------
+views read at 2026-11-14T02:31:31.612Z, finality final, list_vaults at block 277596055
+
+  vault                                     mandates  spends  paid  burned  rejected  anchors  entries
+  smoke-embedded.vaults.probarion.testnet   0         0       0     0       0         0        0
+  trial.vaults.probarion.testnet            2         4       3     0       1         4        8
+  demo.vaults.probarion.testnet             2         5       5     0       0         12       17
+  percall.vaults.probarion.testnet          2         21      21    0       0         23       44
+  canary.vaults.probarion.testnet           1         0       0     0       0         8        10
+  s1-rehearsal-1.vaults.probarion.testnet   1         1       0     1       0         1        2
+  s1-rehearsal-2.vaults.probarion.testnet   1         1       0     1       0         1        2
+  s2-rehearsal-1.vaults.probarion.testnet   1         0       0     0       0         2        2
+  s2-rehearsal-2.vaults.probarion.testnet   1         1       0     1       0         2        3
+  v0.probarion.testnet                      2         2       1     1       0         0        0
+  total, 10 vaults                          13        35      30    4       1         53       88
+  other spend statuses: 0
+
+index read at 2026-11-14T02:31:41.472Z: 4 failed transactions across the 10 vaults
+
+  2026-11-01T07:10:31.130Z  block 275715766  v0.probarion.testnet
+    tx AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY
+    signer v0.probarion.testnet, method spend, failed with PROBARION:NoMandate
+  2026-11-09T03:57:32.573Z  block 276868909  v0.probarion.testnet
+    tx 4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1
+    signer v0.probarion.testnet, method spend, failed with PROBARION:OverPerPayment
+  2026-11-10T12:23:18.719Z  block 277066916  canary.vaults.probarion.testnet
+    tx 6XuxN42dDWaboaqaiCuRGKCoA1UrypcDfvat48v6z8DH
+    signer canary.vaults.probarion.testnet, method spend, failed with PROBARION:OverPerPayment
+  2026-11-12T01:18:32.909Z  block 277293936  canary.vaults.probarion.testnet
+    tx Cb2Z3MPStVAHrk84YqYPW1mDS8hsBKsfNRvS6vzxBnz9
+    signer canary.vaults.probarion.testnet, method spend, failed with PROBARION:OverPerPayment
+
+What each one is
+----------------
+- AkjyVPmb: the smoke run's spend on mandate 999, which does not exist (contracts/deployments/testnet.json,
+  smoke.no_mandate_tx).
+- 4715d4nb: the agent key's spend of 6 test USDC on a mandate capped at 5 a payment
+  (contracts/deployments/testnet.json, direct_refusal).
+- 6XuxN42d: the Canary rehearsal of 2026-11-10, 50 test USDC sent straight to the contract
+  (docs/evidence/canary-vault/README.md).
+- Cb2Z3MPS: a team attempt on the Canary of 2026-11-12, 01:17 UTC in the live attempts feed on
+  https://probarion.xyz/canary, sent straight to the contract with raw mode.
+
+Each paid spend went to probarion-payee.testnet on NEAR. Each burned spend is a payout to a Base address, asset
+base-usdc.probarion.testnet, through intents-stub.probarion.testnet, the testnet stand-in for NEAR Intents. The
+trial vault's rejected spend was held for an approver and rejected, with nothing paid. The live counts on /usage cover the vaults registered in the console and
+the events the watcher records for them, so they leave out the team vaults not registered there.

@@ -27,6 +27,7 @@ import {
   replayRows,
   rulesCopy,
   runsOn,
+  TALLY_INVITE,
   tallyLine,
   teamSub,
   tokenNoun,
@@ -72,15 +73,16 @@ const rawCases: Parameters<typeof describeRaw>[0][] = [
 const TALLIES: [Parameters<typeof tallyLine>[0], string][] = [
   [
     { visitors: 0, attempts_external: 0, attempts_team: 6 },
-    "6 attempts so far, all by the team. Be the first visitor.",
+    "The team has run 6 rehearsal attempts. Your turn: try to get paid.",
   ],
   [
     { visitors: 0, attempts_external: 0, attempts_team: 1 },
-    "1 attempt so far, by the team. Be the first visitor.",
+    "The team has run 1 rehearsal attempt. Your turn: try to get paid.",
   ],
+  [{ visitors: 0, attempts_external: 0, attempts_team: 0 }, "Your turn: try to get paid."],
   [
-    { visitors: 0, attempts_external: 0, attempts_team: 0 },
-    "No attempts yet. Be the first visitor.",
+    { visitors: 0, attempts_external: 0, attempts_team: 1200 },
+    "The team has run 1,200 rehearsal attempts. Your turn: try to get paid.",
   ],
   [
     { visitors: 1, attempts_external: 1, attempts_team: 6 },
@@ -379,10 +381,26 @@ describe("the tally line over the form", () => {
     for (const [t, line] of TALLIES) expect(tallyLine(t), JSON.stringify(t)).toBe(line);
   });
 
-  it("asks the reader to be the first visitor only while no outside visitor has tried", () => {
+  it("invites a try, with no count in the call, only while no outside visitor has tried", () => {
+    expect(TALLY_INVITE).not.toMatch(/\d/);
     for (const [t, line] of TALLIES) {
-      expect(line.includes("Be the first"), JSON.stringify(t)).toBe(t.attempts_external === 0);
+      expect(line.endsWith(TALLY_INVITE), JSON.stringify(t)).toBe(t.attempts_external === 0);
     }
+  });
+
+  it("names the team's attempts as rehearsals before the first outside attempt, with no outside figure and no confession", () => {
+    for (const [t, line] of TALLIES.filter(([x]) => x.attempts_external === 0)) {
+      expect(line, JSON.stringify(t)).not.toMatch(/visitor|so far|all by the team|Be the first/i);
+      if (t.attempts_team > 0)
+        expect(line).toMatch(/^The team has run [0-9,]+ rehearsal attempts?\. /);
+      else expect(line).toBe(TALLY_INVITE);
+    }
+    // The board does not carry what the contract answered the team, so the line claims nothing about it.
+    const lead = tallyLine({ visitors: 0, attempts_external: 0, attempts_team: 6 }).replace(
+      TALLY_INVITE,
+      "",
+    );
+    expect(lead).not.toMatch(/refused|contract|paid/i);
   });
 
   it("puts the visitors first once there are any, and never shows a zero count of them", () => {
