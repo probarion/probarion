@@ -86,6 +86,26 @@ Live means it works in this deployment; where a Live part runs on a chain, it ru
 
 [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) covers each role and key in full, and [mandates](/docs/concepts/mandates) covers every mandate field.
 
+## Why not a spending-limit contract
+
+A cap stops big payments. It does not stop the wrong ones. You can write a contract with a limit in an afternoon. These are the parts that take longer, and where Probarion stands on each. Each status is the pill of its row on [What works today](/docs/start/what-works-today), and links that row.
+
+| When the agent pays | A limit contract you write | Probarion | Status |
+| --- | --- | --- | --- |
+| Who picks the payee? | Usually the caller, so the agent. | The mandate. `spend` has no recipient argument. | [On testnet](/docs/start/what-works-today#vault-contract) |
+| What can the agent's key do? | Often a full-access key, or a key that can call anything. | A function-call key that can call `spend` and nothing else. Every owner method refuses any caller but the owner's account. | [On testnet](/docs/start/what-works-today#vault-contract) |
+| A cross-chain payee? | The agent passes an address to a bridge. | The vault builds the Intents withdrawal memo from the mandate. | [On testnet](/docs/start/what-works-today#vault-contract) |
+| Big payments? | Refused, or allowed. | Held above a limit you set until a person approves. | [On testnet](/docs/start/what-works-today#vault-contract) |
+
+| When someone checks | A limit contract you write | Probarion | Status |
+| --- | --- | --- | --- |
+| A record of what was refused? | Failed transactions, if anyone looks. | Each decision is signed into a hash-chained ledger before money moves, refusals too. | [0.1.1 on npm](/docs/start/what-works-today#sdk-and-cli) |
+| Can someone check it without trusting you? | They have to read your code. | An open verifier runs 9 checks, on a snapshot or against the chain. | [Shipped, on npm](/docs/start/what-works-today#offline-verifier) |
+| Is the deployed code the code they read? | Hard to tell. | Reproducible builds, with code hashes recorded in the repository. | [Shipped](/docs/start/what-works-today#reproducible-builds) |
+| Is the model's advice tied to this payment? | No model, or one nobody can check. | A NEAR AI Cloud TEE attestation bound by a nonce to one ledger position. | [Checked online on testnet and mainnet, image not pinned](/docs/start/what-works-today#attested-model-run) |
+
+[How it compares with NEAR Agent API, x402 and AP2](https://github.com/probarion/probarion/blob/main/docs/comparison-2026-11.md) is in the repository, with its sources read 2026-11-11. It also lists what Probarion lacks.
+
 ## Where to go next
 
 - **You own the money.** The [owner quickstart](/docs/start/owner-quickstart) sets up a testnet vault in the web console, with test USDC, an agent key, a ledger key and one signed mandate.

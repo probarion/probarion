@@ -4,7 +4,8 @@
  * clamps scale. Every colour is a token from app/globals.css.
  *
  * The rhythm: a section owns G (--space-section) of paper below itself and none above, so that the gap between any
- * two sections is G whichever sections they are. The hero and the ink band own G below themselves too (site.module.css).
+ * two sections is G whichever sections they are. The hero owns G below itself too (hero.module.css); the payee panel
+ * is inset at the end of the problem, which owns the G below it.
  */
 
 .section {
@@ -27,4 +28,33 @@
 }
 .head .lede {
   margin-top: clamp(16px, 1.8vw, 24px);
+}
+
+/*
+ * A block inside a section (SectionHead.tsx SubHead): a hairline and --space-block of paper above it, then its head one
+ * level down, an h3. Weight 300 only from 24px up (test/typography-aaa.test.ts).
+ */
+.block {
+  margin-top: var(--space-block);
+  border-top: 1px solid var(--color-line);
+  padding-top: clamp(20px, 2vw, 28px);
+}
+.subHead {
+  margin-bottom: clamp(24px, 3vw, 40px);
+}
+.subTitle {
+  margin-top: clamp(10px, 1.2vw, 14px);
+  font-size: clamp(26px, 3vw, 40px);
+  font-weight: 300;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  max-width: 20em;
+  text-wrap: balance;
+}
+/* With no eyebrow above it, the heading sits right under the hairline's padding. */
+.subHead > .subTitle {
+  margin-top: 0;
+}
+.subLede {
+  margin-top: clamp(12px, 1.4vw, 18px);
 }

@@ -1,8 +1,7 @@
-// The landing's console screenshots (audit P1-23): real testnet captures of the demo vault, right after the ink band,
-// as three numbered rows. What the three share (testnet, the day they were taken, the vault) is said once, in the
-// section's head; each capture links to its file, and the held and the paid one to their testnet transactions. The
-// files' sizes are read from their headers, so the page never stretches an image it does not have. Nothing in the
-// section scrolls sideways.
+// The console's screenshots: real testnet captures of the demo vault, taken while INV-2004 went through it. The landing
+// shows one, the invoice's page, in the use cases (#integrate), at its own 856px and never larger; the held and the
+// paid shot are in the docs. What they share (testnet, the day they were taken, the vault) is one record. The files'
+// sizes are read from their headers, so the page never stretches an image it does not have. Nothing scrolls sideways.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,8 +10,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import c from "@/components/site/console.module.css";
-import h from "@/components/site/head.module.css";
-import p from "@/components/site/parts.module.css";
+import site from "@/components/site/site.module.css";
 import { explorerTxUrl } from "@/lib/config";
 import { CONSOLE_ROUTE, CONSOLE_SHOTS } from "@/lib/site/facts";
 
@@ -44,23 +42,18 @@ const shot = (id: string) => {
 };
 const recorded = (term: string) => CONSOLE_SHOTS.record.find((r) => r.term === term)?.value;
 
-/** The console section of the rendered landing, from its <section> to the ledger test's. */
+const HTML = renderToStaticMarkup(createElement(Home));
+
+/** The use cases of the rendered landing, from their <section> to the mainnet section's. */
 function section() {
-  const html = renderToStaticMarkup(createElement(Home));
-  const band = html.indexOf('id="payee"');
-  const mainnet = html.indexOf('id="mainnet"');
-  const start = html.indexOf('id="console"');
-  const verify = html.indexOf('id="verify"');
-  expect(band).toBeGreaterThan(0);
-  // The mainnet payouts sit higher, under the live check; the screenshots follow the ink band.
-  expect(mainnet).toBeGreaterThan(0);
-  expect(mainnet).toBeLessThan(band);
-  expect(start).toBeGreaterThan(band);
-  expect(verify).toBeGreaterThan(start);
-  return html.slice(start, verify);
+  const start = HTML.indexOf('id="integrate"');
+  const end = HTML.indexOf('id="mainnet"');
+  expect(start).toBeGreaterThan(0);
+  expect(end).toBeGreaterThan(start);
+  return HTML.slice(start, end);
 }
 
-describe("the console screenshots on the landing (audit P1-23)", () => {
+describe("the console screenshots", () => {
   it("says once, in the record, that every shot is of the testnet demo vault on 2026-11-09", () => {
     expect(CONSOLE_SHOTS.shots.map((s) => s.id)).toEqual(["held", "invoice", "paid"]);
     expect(CONSOLE_SHOTS.record).toEqual([
@@ -81,6 +74,12 @@ describe("the console screenshots on the landing (audit P1-23)", () => {
       expect(size).toEqual({ width: s.width, height: s.height });
       expect(s.alt.length).toBeGreaterThan(40);
     }
+    // The landing's shot is the 856px capture: the frame and `sizes` below hold the page to it.
+    expect(shot(CONSOLE_SHOTS.landing.shot)).toMatchObject({
+      src: "/shots/console-invoice.webp",
+      width: 856,
+      height: 430,
+    });
   });
 
   it("links the held spend and its approval to their testnet transactions, and gives the invoice's page none", () => {
@@ -110,70 +109,54 @@ describe("the console screenshots on the landing (audit P1-23)", () => {
     expect(demo.approvers).toEqual(["probarion-approver.testnet"]);
   });
 
-  it("sits right after the ink band: the head with its record, three numbered shots, and the proof and console links", () => {
+  it("shows one shot on the landing, the invoice's page, in the use cases after the uses and before the ways in", () => {
     const part = section();
-    const words = text(part);
-    // The label is the eyebrow, over the heading that says what the screenshots show.
-    expect(CONSOLE_SHOTS.eyebrow).toBe("The console");
-    expect(words).toContain(`${CONSOLE_SHOTS.eyebrow} ${CONSOLE_SHOTS.title}`);
-    // The lede as one run of text: its identifiers are kept whole in spans of their own (bits.tsx KeepRich).
-    expect(decode(part.replace(/<[^>]+>/g, ""))).toContain(CONSOLE_SHOTS.intro.replace(/`/g, ""));
-    // The record is in the head, under the lede: the page's one record of terms (parts.tsx TermRecord).
-    const head = part.slice(part.indexOf(`<header class="${h.head}">`), part.indexOf("</header>"));
-    expect(head).toContain(`<dl class="${p.record}">`);
-    expect(head.indexOf(`class="${p.record}"`)).toBeGreaterThan(head.indexOf(`class="${h.lede}"`));
-    expect(text(head)).toContain(`Network Testnet Captured 2026-11-09 Vault ${demo.account}`);
-    expect(head).toContain(`<code>${demo.account}</code>`);
-    // Three steps in one list, each a figure that opens with its caption; the numbers are the journey's (parts.module.css).
-    expect(part).toContain(`<ol class="${c.steps}" role="list">`);
-    expect(part.split(`<li class="${c.step}">`).length - 1).toBe(3);
-    for (const [i, s] of CONSOLE_SHOTS.shots.entries()) {
-      expect(part).toContain(
-        `<figure class="${c.row}"><figcaption class="${c.cap}"><div class="${p.stepN}" aria-hidden="true">${i + 1}</div>`,
-      );
-      expect(words).toContain(`Step ${i + 1}: ${s.title}`);
-      expect(decode(part)).toContain(`alt="${s.alt}"`);
-      expect(part).toContain(encodeURIComponent(s.src));
-      expect(part).toContain(`width="${s.width}"`);
-      expect(part).toContain(`href="${s.src}"`);
-      if (s.link !== undefined) expect(decode(part)).toContain(`href="${s.link.url}"`);
+    const s = shot(CONSOLE_SHOTS.landing.shot);
+    expect(CONSOLE_SHOTS.landing).toEqual({ shot: "invoice", eyebrow: "In the console" });
+    // One figure, inside #integrate: the console no longer has a section of its own.
+    expect(HTML.split(`<figure class="${c.figure}">`).length - 1).toBe(1);
+    expect(part.split(`<figure class="${c.figure}">`).length - 1).toBe(1);
+    expect(HTML).not.toContain('id="console"');
+    for (const other of CONSOLE_SHOTS.shots.filter((x) => x.id !== s.id)) {
+      expect(HTML, other.id).not.toContain(encodeURIComponent(other.src));
+      expect(HTML, other.id).not.toContain(`href="${other.src}"`);
     }
-    // The 856px file is what a wide screen gets, and the section is too far down the page to load it first.
-    expect(part).toContain('sizes="(max-width: 1099px) 100vw, 856px"');
-    expect(part).not.toMatch(/fetchPriority|rel="preload"/i);
-    // Each transaction, in its step's caption under the sentence: the page's one label, the verb, the short hash in
-    // mono glued to the shared arrow, and the new-tab words.
-    expect(CONSOLE_SHOTS.txLabel).toBe("Testnet transaction");
-    const slot = `<p class="${c.tx}"><span class="${p.label}">${CONSOLE_SHOTS.txLabel}</span>`;
-    expect(part.split(slot).length - 1).toBe(2);
-    for (const s of CONSOLE_SHOTS.shots) {
-      if (s.link === undefined) continue;
-      const [verb, hash] = s.link.label.split(" ");
-      // The link sits in its own step's caption, after the step's title.
-      const at = part.indexOf(`href="${s.link.url}"`);
-      const own = part.slice(part.lastIndexOf(`<figcaption class="${c.cap}">`, at), at);
-      expect(own, s.id).toContain(s.title);
-      expect(own, s.id).not.toContain("</figcaption>");
-      expect(part).toContain(
-        `>${verb} <span class="${p.glue}"><span class="${p.hash}">${hash}</span><span class="${p.ext}" aria-hidden="true">↗</span></span><span class="sr-only"> (opens in a new tab)</span></a>`,
-      );
-    }
-    // Below 924px each capture's own link names the step it opens, so three links never share one name (2.4.9).
-    for (const s of CONSOLE_SHOTS.shots) {
-      expect(decode(part)).toContain(
-        `${CONSOLE_SHOTS.fullSize}<span class="sr-only">: ${s.title}</span></a>`,
-      );
-    }
-    // Nothing joins a link to a line of metadata.
-    expect(words).not.toContain("·");
-    // The close: the proof page as the journey's button, the console as this section's solid one.
-    expect(part).toContain(`href="${CONSOLE_SHOTS.proof.href}"`);
-    expect(CONSOLE_SHOTS.proof.href).toBe(`/proof/${demo.account}`);
-    expect(words).toContain(`${CONSOLE_SHOTS.proof.text} ${CONSOLE_SHOTS.proof.label} →`);
-    expect(part).toContain(`href="${CONSOLE_ROUTE}"`);
+    expect(part.indexOf('id="integrate-uses"')).toBeLessThan(part.indexOf("<figure"));
+    expect(part.indexOf("</figure>")).toBeLessThan(part.indexOf(">Four ways in</h3>"));
+    // The capture in its frame, named by its alt text, at its own size.
+    const figure = part.slice(part.indexOf("<figure"), part.indexOf("</figure>"));
+    expect(figure).toContain(`<div class="${c.frame}"><img alt="${s.alt.replace(/'/g, "&#x27;")}"`);
+    expect(decode(figure)).toContain(`alt="${s.alt}"`);
+    expect(figure).toContain(`width="${s.width}"`);
+    expect(figure).toContain(`height="${s.height}"`);
+    expect(figure).toContain(encodeURIComponent(s.src));
+    // `sizes` asks for the 856px file wherever the frame has room for it, not the ~420px variant; the section is too
+    // far down the page to load it first.
+    expect(figure).toContain('sizes="(min-width: 900px) 856px, 100vw"');
+    expect(figure).toContain('loading="lazy"');
+    expect(figure).not.toMatch(/fetchPriority|rel="preload"/i);
+    // The caption: the label, what the shot shows, the record it was taken under, the file and the console.
+    const cap = figure.slice(figure.indexOf(`<figcaption class="${c.cap}">`));
+    expect(cap).toContain(`<p class="${site.eyebrow}">${CONSOLE_SHOTS.landing.eyebrow}</p>`);
+    expect(text(cap)).toContain(`${s.title} ${s.body}`);
+    expect(cap).toContain(`<dl class="${c.record}">`);
+    expect(text(cap)).toContain(`Network Testnet Captured 2026-11-09 Vault ${demo.account}`);
+    expect(cap).toContain(`<dd><code>${demo.account}</code></dd>`);
+    expect(cap).toContain(
+      `href="${s.src}">${CONSOLE_SHOTS.fullSize}<span class="sr-only">: ${s.title.replace(/'/g, "&#x27;")}</span></a>`,
+    );
+    expect(cap).toMatch(
+      new RegExp(
+        `<a class="${site.link} ${c.link}" href="${CONSOLE_ROUTE}">${CONSOLE_SHOTS.open.label} <span aria-hidden="true">→</span></a>`,
+      ),
+    );
+    expect(CONSOLE_SHOTS.open).toEqual({ label: "Open console", href: CONSOLE_ROUTE });
+    // Nothing joins a link to a line of metadata, and the file opens in this tab.
+    expect(text(figure)).not.toContain("·");
+    expect(figure).not.toContain('target="_blank"');
   });
 
-  it("scrolls nothing sideways, and keeps a transaction link and an account name each on one line", () => {
+  it("frames the capture at no more than its file's width, and scrolls nothing sideways", () => {
     const css = readFileSync(join(WEB, "src/components/site/console.module.css"), "utf8").replace(
       /\/\*[\s\S]*?\*\//g,
       "",
@@ -181,16 +164,17 @@ describe("the console screenshots on the landing (audit P1-23)", () => {
     expect(css).not.toMatch(/overflow(-x)?:\s*(auto|scroll)/);
     expect(css).not.toMatch(/scroll-snap/);
     expect(css).not.toMatch(/cursor:\s*zoom-in/);
-    // A transaction's hash and its arrow never break apart: the shared glue (parts.module.css), through Away's tx.
-    const parts = readFileSync(join(WEB, "src/components/site/parts.module.css"), "utf8");
-    expect(parts).toMatch(/\.glue,\s*\.keep \{[^}]*white-space: nowrap;/);
-    expect(readFileSync(join(WEB, "src/components/site/ConsoleShots.tsx"), "utf8")).toContain(
-      "<Away href={shot.link.url} tx={shot.link.label} />",
+    // 856px of capture plus 10px of padding and a 1px hairline each side; the image fills it and keeps its ratio.
+    expect(css).toMatch(
+      /\.frame \{[^}]*max-width: 878px;[^}]*padding: 10px;[^}]*border: 1px solid var\(--color-line\);[^}]*border-radius: 24px;/,
     );
-    expect(css).toMatch(/\.cap p code \{[^}]*white-space: nowrap;/);
-    // A capture is never drawn wider than its file: 856px plus its 1px border each side.
-    expect(css).toMatch(/\.shot \{[^}]*max-width: 858px;/);
+    expect(css).toMatch(/\.frame img \{[^}]*width: 100%;[^}]*height: auto;/);
+    // Beside the caption from 1100px, the column is the frame's own width at most.
+    expect(css).toMatch(/grid-template-columns: minmax\(0, 878px\) minmax\(17rem, 1fr\);/);
+    // The vault in the record reads at the page's 13px floor for mono.
+    expect(css).toMatch(/\.record dd code \{[^}]*font-size: 13px;/);
     const tsx = readFileSync(join(WEB, "src/components/site/ConsoleShots.tsx"), "utf8");
     expect(tsx).not.toContain("ScrollRegion");
+    expect(tsx).toContain('sizes="(min-width: 900px) 856px, 100vw"');
   });
 });

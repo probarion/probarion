@@ -45,6 +45,62 @@ export function SectionHead({
 }
 
 /**
+ * A block inside a landing section, with a head one level down: a hairline and `--space-block` of paper above it, then
+ * the optional eyebrow, an h3 and the optional lede, so that the page keeps h2 > h3 > h4. The div carries `id`, the
+ * block's anchor (#try, #built-on, #status), and the h3 carries `id` plus "-title", which names the block.
+ */
+export function SubHead({
+  id,
+  eyebrow,
+  title,
+  lede,
+  className,
+  children,
+}: {
+  id: string;
+  eyebrow?: string;
+  title: ReactNode;
+  /** Backticks are code, as in SectionHead's lede. */
+  lede?: string;
+  /** Added to the block's class: what the block sets for itself there. */
+  className?: string;
+  children?: ReactNode;
+}) {
+  const titleId = `${id}-title`;
+  const heading = (
+    <h3 className={h.subTitle} id={titleId}>
+      {title}
+    </h3>
+  );
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a named block of a section, not a form, so no fieldset.
+    <div
+      className={className === undefined ? h.block : `${h.block} ${className}`}
+      id={id}
+      role="group"
+      aria-labelledby={titleId}
+    >
+      <header className={h.subHead}>
+        {eyebrow === undefined ? (
+          heading
+        ) : (
+          <hgroup>
+            <p className={s.eyebrow}>{eyebrow}</p>
+            {heading}
+          </hgroup>
+        )}
+        {lede === undefined ? null : (
+          <p className={`${h.lede} ${h.subLede}`}>
+            <KeepRich text={lede} />
+          </p>
+        )}
+      </header>
+      {children}
+    </div>
+  );
+}
+
+/**
  * A landing section with the shared head: G of paper below it and none above, so that the gap between any two
  * sections is one `--space-section`. The heading's id is the section's id plus "-title", and the section is named by it.
  */

@@ -101,8 +101,9 @@
 .readout {
   margin-top: clamp(32px, 4vw, 48px);
 }
+/* 24px between the rows: the sentence's last line and the counts' line under the verdict are 2.5em apart (1.4.8). */
 .verdict {
-  row-gap: 6px;
+  row-gap: 24px;
   align-items: baseline;
   margin-top: 10px;
 }
@@ -216,6 +217,82 @@
   color: var(--color-bad);
 }
 
+/*
+ * On the landing the checks fold (TamperTest foldChecks): a 48px summary under a rule, its chevron drawn in borders,
+ * turning when it opens. A run that fails names its checks under the verdict, in the column of the sentence, so the
+ * fold can stay closed.
+ */
+.checksFold {
+  margin-top: 28px;
+  border-top: 1px solid var(--color-line);
+}
+.checksSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  list-style: none;
+  cursor: pointer;
+}
+.checksSummary::-webkit-details-marker {
+  display: none;
+}
+.checksSummary::after {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 0.2s ease;
+}
+.checksFold[open] > .checksSummary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+.checksFold > .checks {
+  margin-top: 4px;
+}
+.failing {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  padding: 0;
+  list-style: none;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.failingCheck {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  min-width: 0;
+}
+.failingCheck .checkId,
+.failingCheck .checkLabel {
+  color: var(--color-bad);
+}
+.failing .failingWord {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+/* Under the panel on the landing: the same checks on the demo vault's own data. */
+.realData {
+  margin-top: clamp(24px, 3vw, 32px);
+  max-width: var(--container-measure);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+
 /* The verifier's own words, closed until asked for: the plain verdict above says what they mean. */
 .detail {
   padding-top: 16px;
@@ -306,12 +383,19 @@
   .counts,
   .note,
   .next,
-  .runError {
+  .runError,
+  .failing {
     grid-column: 1 / -1;
   }
   /* The label over its link; 8px between the two pairs. */
   .foot {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checksSummary::after {
+    transition: none;
   }
 }

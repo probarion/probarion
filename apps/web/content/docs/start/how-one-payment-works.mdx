@@ -1,7 +1,7 @@
 <Flow>
 
 1. **The owner signs a mandate** One payee, the limits, and the one agent key that may use them.
-2. **A private model may advise** Optional. It cannot widen the mandate.
+2. **An attested model may advise** Optional. It cannot widen the mandate.
 3. **Code decides and signs** The decision goes into a signed ledger before anything is sent.
 4. **The contract decides last** It runs 14 checks, then pays, holds or refuses.
 5. **Anyone checks the record** The verifier ties each spend on chain to exactly one decision.
@@ -22,7 +22,7 @@ The agent key may call only `spend`, and the ledger key only `anchor`.
 
 A mandate names one payee: a NEAR account, or a Base or Solana address paid through NEAR Intents. It sets `max_per_payment`, `max_total`, `max_uses`, `expires_at_ns` and `approval_above`, the one agent key that may spend under it, and `purpose_hash`, the hash of its purchase order. The payee never changes.
 
-The landing page's example pays only `probarion-payee.testnet`: 5 USDC a payment, 20 USDC in total, 5 uses, approval above 5 USDC. Its approval threshold equals its per-payment cap, so the contract never holds a spend under it: a payment above 5 USDC is refused with [`OverPerPayment`](/docs/build/errors#OverPerPayment) before the hold test. Every field is on [Mandates](/docs/concepts/mandates).
+The example mandate pays `probarion-payee.testnet`: 5 USDC a payment, 20 USDC in total, 5 uses, approval above 5 USDC. Its approval threshold equals its per-payment cap, so the contract holds no spend under it: a payment above 5 USDC is refused with [`OverPerPayment`](/docs/build/errors#OverPerPayment) before the hold test. Every field is on [Mandates](/docs/concepts/mandates).
 
 <Callout kind="owner-signs">
 
@@ -30,7 +30,7 @@ The landing page's example pays only `probarion-payee.testnet`: 5 USDC a payment
 
 </Callout>
 
-## A private model may advise
+## An attested model may advise
 
 Optional: the model runs on NEAR AI Cloud inside a TEE, a trusted execution environment: isolated hardware that returns a signed report, an [attestation](/docs/resources/glossary#attestation), with each answer. The SDK puts a [nonce](/docs/resources/glossary#nonce) in each request, so that report fits only the next entry of this vault's ledger, for this invoice and this mandate. Without a model, or when its attestation checks fail, code decides alone and the decision entry says `rules-only`.
 
@@ -122,6 +122,19 @@ On 2026-11-01 a smoke run sent test-token spends to `v0.probarion.testnet` with 
 | Refused mandate 999, which does not exist | [`AkjyVPmb…dzgY`](https://testnet.nearblocks.io/txns/AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY) | `PROBARION:NoMandate`, nothing paid |
 
 With no ledger, the vault has no ledger key or anchors yet. So `verify --vault v0.probarion.testnet` prints `RESULT: FAIL` today: check d finds spends with no decision in the ledger, and check h cannot find the burn of spend 2, because no ledger entry records the hash of the transaction that made it. On the testnet demo vault, `demo.vaults.probarion.testnet`, the console's Payables agent signed each decision into the ledger before its spend, and a live `verify` of it prints `RESULT: PASS` with 9 checks passed. To try the free checks with no wallet, see [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes).
+
+### The demo vault's four invoices
+
+On 2026-11-09 we sent four invoices to our own demo vault, `demo.vaults.probarion.testnet`, on NEAR testnet. Its mandate pays `probarion-payee.testnet`, at most 5 test USDC a payment, and holds anything above 3 for an approver. Whatever an invoice says, the money goes to that payee and to no other account. No model read these invoices: the code read each amount, and nothing was sent until the owner confirmed it in their wallet.
+
+| Invoice | What it asked | What happened | Evidence |
+| --- | --- | --- | --- |
+| INV-2001 | 2 test USDC to the mandate's payee | **Paid.** The owner confirmed the amount. The agent's key sent spend 1, and the vault paid `probarion-payee.testnet`. | Invoice: [`invoice-INV-2001.txt`](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/invoice-INV-2001.txt). Transaction: [`HFyW61UZ…dQp1`](https://testnet.nearblocks.io/txns/HFyW61UZXfwpqhgqWq9bXnRXaYiEnpk4WPUHDAEydQp1). Ledger: [Entries 0 to 2](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/ledger-2026-11-09.jsonl#L1-L3). |
+| INV-2001, sent again | The same file a second time | **Refused on upload.** The console answered "This invoice was already processed." Nothing was decided or sent, so the ledger has no entry for it. | Invoice: Same file as above. Transaction: None, nothing was sent. Ledger: No entry. |
+| INV-2002 | "We changed banks": 2 test USDC to `new-account.testnet` | **Refused by code.** Rule `mandate.payee_mismatch`: the mandate pays another account, so nothing was sent. The refusal is signed into the ledger as entry 3. | Invoice: [`invoice-INV-2002.txt`](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/invoice-INV-2002.txt). Transaction: None, nothing was sent. Ledger: [Entry 3](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/ledger-2026-11-09.jsonl#L4). |
+| INV-2003 | 4 test USDC, above the 3 USDC approval limit | **Held, then paid.** The owner confirmed it, and the vault held spend 2. The approver approved it from their own key, and the vault paid. | Invoice: [`invoice-INV-2003.txt`](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/invoice-INV-2003.txt). Transaction: Held [`6oDNZEUB…y2Tb`](https://testnet.nearblocks.io/txns/6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb), Approved [`47VCARhw…NCJf`](https://testnet.nearblocks.io/txns/47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf). Ledger: [Entries 4 to 6](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/ledger-2026-11-09.jsonl#L5-L7). |
+
+The demo vault's [proof page](/proof/demo.vaults.probarion.testnet) runs checks a to i on its ledger and the chain, and [its record](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/README.md#the-four-invoices) lists the files and transactions. Later invoices went through the same vault: [a hold in the console](/docs/concepts/holds-and-approvals#a-hold-in-the-console) follows a fifth, INV-2004, and [attested decisions on record](/docs/trust/verifier-checks#attested-decisions-on-record) lists the five decisions an attested model advised on, on 2026-11-11 and 2026-11-12.
 
 ## Where to go next
 

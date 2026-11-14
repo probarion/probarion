@@ -124,6 +124,24 @@ near contract call-function as-transaction acme.vaults.probarion.testnet expire_
   sign-as <your-account-id> network-config testnet sign-with-keychain send
 ```
 
+## A hold in the console
+
+Three screenshots from the testnet demo vault, `demo.vaults.probarion.testnet`, captured on probarion.xyz on 2026-11-09 while a fifth invoice went through it, after [its four invoices](/docs/start/how-one-payment-works#the-demo-vaults-four-invoices): INV-2004, 4 test USDC, above its mandate's 3 USDC approval limit.
+
+**Held for an approver.** The owner confirmed the amount in their wallet. Above 3 USDC, the vault holds the spend until an approver signs, and it pays `probarion-payee.testnet`, the mandate's payee. Testnet transaction: Held [`9qUtxTgu…699d`](https://testnet.nearblocks.io/txns/9qUtxTguj17dp8KX61GW7YTVBQyJGZBt1ZWiQoM2699d).
+
+![The vault overview in the console: Held for approval (1), spend 3, 4 USDC to probarion-payee.testnet under mandate 1. The vault's approvers alone can approve or reject the held spend.](/shots/console-held.webp)
+
+**The invoice's page.** The owner's signed confirm, every code rule the invoice passed, and what the contract did with it, side by side.
+
+![The invoice page in Payables: the owner's NEP-413 confirm, then three columns. Model wanted: no model, the rules decided. Code allowed: each rule passed. Contract did: held for approval, spend 3.](/shots/console-invoice.webp)
+
+**Paid after approval.** The approver approved spend 3 from their own key, and the vault paid. Each spend went to the mandate's payee. Testnet transaction: Approved [`EYPyrd9h…r972`](https://testnet.nearblocks.io/txns/EYPyrd9hapyZthjMwysShUnkDSVkMQHtPYHitidbr972).
+
+![The vault overview after the approval: nothing held, and three paid spends of 4, 4 and 2 USDC, all to probarion-payee.testnet.](/shots/console-paid.webp)
+
+The demo vault's [proof page](/proof/demo.vaults.probarion.testnet) lists its spends and runs checks a to i on its ledger and the chain.
+
 ## What approve checks, and what it does not
 
 `approve` checks, in this order, and the first failure is the answer:

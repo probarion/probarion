@@ -28,9 +28,7 @@ const MODULES: Readonly<Record<string, string>> = {
   integrate: "src/components/site/integrate.module.css",
   console: "src/components/site/console.module.css",
   hero: "src/components/site/hero.module.css",
-  compare: "src/components/site/compare.module.css",
   tamper: "src/components/site/tamper.module.css",
-  chain: "src/components/site/chain.module.css",
   live: "src/components/site/live.module.css",
   footer: "src/components/site/footer.module.css",
   parts: "src/components/site/parts.module.css",
@@ -449,10 +447,9 @@ describe("text contrast at WCAG AAA (1.4.6), from the tokens and the CSS modules
 // --- Visual presentation (1.4.8), sizes and weights ------------------------------------------------------------------
 
 /**
- * Selectors that set a tight line for one line of text, not a block: the logo, a button's label, a one-glyph mark, and
- * `.boName`, the Built on section's `h3` ("NEAR AI Cloud"), set as tall as NEAR's logo beside it.
+ * Selectors that set a tight line for one line of text, not a block: the logo, a button's label and a one-glyph mark.
  */
-const TIGHT_LINE_OK = new Set([".brand", ".scenario", ".pick", ".tipMark", ".boName"]);
+const TIGHT_LINE_OK = new Set([".brand", ".scenario", ".pick", ".tipMark"]);
 const HEADING = /(?:^|[\s>+~])h[1-6]\b|title|Title|\.h[12]\b/;
 
 describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
@@ -514,10 +511,10 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["status", ".limit", "margin-top", 15, "site", ".site"],
       ["status", ".where", "margin-top", 15, "site", ".site"],
       ["status", ".note + .note", "margin-top", 15, "site", ".site"],
-      // The Built on footer's blocks, where they stack (a tablet's lead over its notices, a phone).
-      ["ships", ".legal", "row-gap", 13, "ships", ".legal"],
-      // The two entries of the stack note, where they stack (below 1101px).
-      ["ships", ".stackList", "row-gap", 15, "site", ".site"],
+      // What it rests on: a row's link to the docs under its sentences.
+      ["ships", ".stackLink", "margin-top", 16, "ships", ".stackLink"],
+      // The compact status board: a row's Where line under its Not yet line.
+      ["status", ".cWhere", "margin-top", 15, "site", ".site"],
       ["canary", ".column p + p", "margin-top", 17, "site", ".site"],
       ["canary", ".line", "margin-top", 17, "site", ".site"],
       ["canary", ".steps", "gap", 16, "site", ".site"],
@@ -534,18 +531,12 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["journey", ".resultLine + .resultLine", "margin-top", 15, "journey", ".matrix"],
       ["journey", ".invRow", "row-gap", 15, "site", ".site"],
       ["journey", ".attFoot", "gap", 15, "journey", ".attFoot"],
-      // Integrate: a use's control over its runs when the columns stack, and a run's outcome over its evidence.
-      ["integrate", ".use", "row-gap", 15, "site", ".site"],
-      ["integrate", ".run", "row-gap", 15, "site", ".site"],
-      // The console: a step's transaction under its sentence.
-      ["console", ".tx", "margin-top", 15, "site", ".site"],
-      // The chain: a row's call, what the chain shows and its transaction stacked, and the foot's two lines.
-      ["chain", ".row", "row-gap", 15, "site", ".site"],
-      ["chain", ".foot", "gap", 15, "site", ".site"],
+      // The use cases: the blocks of a use's card.
+      ["integrate", ".use", "gap", 15, "site", ".site"],
+      // The console's shot: its record under the caption's sentence.
+      ["console", ".record", "margin-top", 15, "site", ".site"],
       // The live check: the lines of a hijack's invoice text under its quote.
       ["live", ".injLine", "margin-top", 15, "live", ".inj"],
-      // The hero: one step of the Canary's rehearsal under the next.
-      ["hero", ".steps li + li", "margin-top", 14, "hero", ".steps"],
       // The site footer, outside .site: its base row's note over the legal links, once the row stacks at 960px and below.
       ["footer", ".base", "row-gap", 14, "footer", ".footer"],
     ];
@@ -589,27 +580,26 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["status", ".gaps"],
       ["site", ".closeNote"],
       ["integrate", ".useBody"],
-      ["console", ".actionsText"],
+      ["integrate", ".waysSub"],
+      ["console", ".body"],
       ["hero", ".cap"],
-      ["hero", ".steps"],
+      // The payee panel's body, on the ink panel at the end of the problem.
+      ["site", ".payeeBody"],
       // The ledger test: the verdict's sentence, the run note and a press that did not finish.
       ["tamper", ".plain"],
       ["tamper", ".note"],
       ["tamper", ".runError"],
       ["site", ".proofIntro"],
-      ["compare", ".moreLink"],
-      ["compare", ".moreNote"],
-      ["chain", ".body"],
-      ["chain", ".foot"],
       ["live", ".hint"],
       ["live", ".inj"],
       ["live", ".why"],
       ["live", ".noScript"],
       ["head", ".lede"],
       ["ships", ".stackBody"],
-      ["ships", ".shipBody"],
-      ["ships", ".legalLead"],
-      ["ships", ".legalNotices"],
+      ["ships", ".stackLink"],
+      ["ships", ".tokensNote"],
+      ["ships", ".legal"],
+      ["tamper", ".realData"],
       ["docs", ".prose > :is(p, ul, ol, blockquote)"],
       ["docs", ".prose li > :is(p, ul, ol)"],
       ["docs", ".check > p"],
@@ -731,7 +721,7 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     expect(search.outline).toBe("2px solid var(--color-gold-small)");
     expect(search["box-shadow"]).toBeUndefined();
     // Rings that a clipping box would cut are drawn inside it.
-    for (const s of [".codeBody:focus-visible", ".scroll:focus-visible"]) {
+    for (const s of [".scroll:focus-visible"]) {
       expect(decl("site", s, "outline-offset"), s).toBe("-3px");
     }
     // The console's captures sit in no scroller, so their links keep the ring 3px outside, as every other link does.
@@ -819,9 +809,6 @@ describe("one small label (parts.module.css .label)", () => {
       color: "var(--color-mute)",
     });
     for (const [file, selector] of [
-      ["compare", ".table .head th"],
-      ["compare", ".table .group th"],
-      ["compare", ".runIn"],
       ["site", ".table th"],
       ["parts", ".partLabel"],
     ] as const) {
@@ -832,16 +819,7 @@ describe("one small label (parts.module.css .label)", () => {
       }
     }
     // No uppercase label is left in the sections that use it.
-    for (const file of [
-      "compare",
-      "integrate",
-      "journey",
-      "console",
-      "chain",
-      "hero",
-      "tamper",
-      "parts",
-    ])
+    for (const file of ["integrate", "journey", "console", "hero", "tamper", "parts"])
       expect(
         MODULE_RULES.filter(
           (r) => r.file === file && r.decls["text-transform"] === "uppercase",
