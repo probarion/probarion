@@ -1955,7 +1955,8 @@ export const BOARD_LINKS = {
    */
   mainnetVerifyOnline: LINKS.mainnetVerifyOnline,
   teeCheck: blob("docs/evidence/tee-check/live-2026-11-12.json"),
-  eval: blob("eval/results/adversary.md"),
+  /** The eval's three runs, the model replay's run history included. */
+  eval: blob("eval/README.md#results-today"),
   readmeStatus: `${REPO_URL}#status`,
   factoryAccount: explorerAccountUrl("testnet", "vaults.probarion.testnet"),
   mainnetAccount: explorerAccountUrl("mainnet", "v0.probarion.near"),
@@ -2603,7 +2604,7 @@ export const STATUS_BOARD = {
     { label: "README Status table", href: BOARD_LINKS.readmeStatus },
     " says: the ",
     { label: "eval", href: BOARD_LINKS.eval },
-    ", run offline with no model asked (its model replay is not recorded yet), one deployment for both networks, `/usage`, the watcher, health checks and `/status`, error reports to Sentry and the Docs Center. The docs page ",
+    ", run offline, its model replay on answers recorded from NEAR AI Cloud included (17/19 attested by A1 to A8 offline, 2/19 failed calls, money moved wrongly 0/20), one deployment for both networks, `/usage`, the watcher, health checks and `/status`, error reports to Sentry and the Docs Center. The docs page ",
     { label: "What works today", href: "/docs/start/what-works-today" },
     " gives each status row, and the parts this board leaves out, one word: Live, Preview or Planned.",
   ] satisfies readonly CopyPart[],
