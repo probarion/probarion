@@ -4,6 +4,7 @@ import {
   type AccessKeyAudit,
   auditAccessKeys,
   type KeyPolicy,
+  type KeyRule,
   parseAccessKey,
   parseAccessKeyList,
 } from "../src/access-keys.js";
@@ -174,10 +175,11 @@ describe("parseAccessKeyList on the recorded mainnet vault", () => {
 
 describe("parsing each permission variant", () => {
   // Gas keys (NEP-611) have no on-chain fixture here: these shapes are from near-api-js 7.4.0 types
-  // (AccessKeyPermissionView in lib/types.gen-*.d.cts), as packages/sdk/test/rpc.test.ts models them.
+  // (AccessKeyPermissionView in lib/types.gen-*.d.cts), as packages/sdk/test/rpc.test.ts models them. NEP-611 allows
+  // a gas key no allowance (nearcore: GasKeyFunctionCallAllowanceNotAllowed), so the chain's shape has it null.
   const gasKeyFunctionCall = {
     GasKeyFunctionCall: {
-      allowance: "1000",
+      allowance: null,
       balance: "5000000000000000000000000",
       method_names: ["spend"],
       num_nonces: 4,
@@ -204,9 +206,10 @@ describe("parsing each permission variant", () => {
       ["gas_key_full_access", true],
     ]);
     expect(keys[1]).toMatchObject({ methods: "any", allowance: "unlimited", receiverId: V0 });
+    // A gas key spends no allowance of the account's: it pays for gas from its own balance.
     expect(keys[2]).toMatchObject({
       methods: ["spend"],
-      allowance: 1000n,
+      allowance: null,
       gasKey: { balance: 5000000000000000000000000n, numNonces: 4 },
     });
     expect(keys[3]).toMatchObject({
@@ -248,6 +251,10 @@ describe("parsing each permission variant", () => {
         { GasKeyFunctionCall: { ...gasKeyFunctionCall.GasKeyFunctionCall, num_nonces: undefined } },
       ],
       ["gas key without its scope", { GasKeyFunctionCall: { balance: "5", num_nonces: 1 } }],
+      [
+        "gas key with an allowance, which NEP-611 refuses",
+        { GasKeyFunctionCall: { ...gasKeyFunctionCall.GasKeyFunctionCall, allowance: "1000" } },
+      ],
     ];
     for (const [label, permission] of shapes) {
       const [key] = parseAccessKeyList({ keys: [entry(AGENT_PK, permission)] }).keys;
@@ -371,7 +378,7 @@ describe("auditAccessKeys", () => {
         mutate: (keys) =>
           setPermission(keys, AGENT_PK, {
             GasKeyFunctionCall: {
-              allowance: "1000",
+              allowance: null,
               balance: "1000000000000000000000000",
               method_names: ["spend"],
               num_nonces: 2,
@@ -405,32 +412,153 @@ describe("auditAccessKeys", () => {
     }
   });
 
-  it("accepts the gas-key spend key when its rule allows gas keys, and an unlimited one when allowed", () => {
-    const list = recordedList();
-    setPermission(list.keys, AGENT_PK, {
-      GasKeyFunctionCall: {
-        allowance: null,
-        balance: "1000000000000000000000000",
-        method_names: ["spend"],
-        num_nonces: 2,
-        receiver_id: V0,
-      },
-    });
-    const refused = auditAccessKeys(V0, list, VAULT_POLICY);
-    expect(refused.policyOk).toBe(false);
-    const allowed = auditAccessKeys(V0, list, {
+  describe("a NEP-611 function-call gas key (allowance null, gas from its own balance)", () => {
+    /** The recorded list with the spend key as a gas key holding `balance` yoctoNEAR (shape from near-api-js 7.4.0). */
+    const withGasKey = (balance = "1000000000000000000000000") => {
+      const list = recordedList();
+      setPermission(list.keys, AGENT_PK, {
+        GasKeyFunctionCall: {
+          allowance: null,
+          balance,
+          method_names: ["spend"],
+          num_nonces: 2,
+          receiver_id: V0,
+        },
+      });
+      return list;
+    };
+    const spendRule = (terms: Omit<KeyRule, "receiverId" | "methods"> = {}): KeyPolicy => ({
       rules: [
-        { receiverId: V0, methods: ["spend"], allowGasKey: true, allowUnlimitedAllowance: true },
+        { receiverId: V0, methods: ["spend"], ...terms },
         { receiverId: V0, methods: ["anchor"], publicKeys: [LEDGER_PK] },
       ],
     });
-    expect(allowed.policyOk).toBe(true);
-    expect(codes(allowed)).toEqual([
-      "info:self_receiver",
-      "info:self_receiver",
-      "info:unlimited_allowance",
-      "info:gas_key",
+    const GAS_TEXT = `${AGENT_PK} is a NEP-611 gas key: it pays for its gas from its own balance of 1 NEAR, not from the account's, and has 2 nonces.`;
+
+    it("without a policy, reads it as no allowance of the account's and an info finding with its balance", () => {
+      const audit = auditAccessKeys(V0, withGasKey());
+      expect(audit.keys[1]).toMatchObject({
+        kind: "gas_key_function_call",
+        allowance: null,
+        gasKey: { balance: 1000000000000000000000000n, numNonces: 2 },
+      });
+      expect(audit.findings.map((f) => [f.severity, f.code, f.text])).toEqual([
+        [
+          "info",
+          "self_receiver",
+          `${LEDGER_PK} calls the account's own contract, so what it can do is what that code lets the account itself do.`,
+        ],
+        [
+          "info",
+          "self_receiver",
+          `${AGENT_PK} calls the account's own contract, so what it can do is what that code lets the account itself do.`,
+        ],
+        ["info", "gas_key", GAS_TEXT],
+      ]);
+      expect(audit.locked).toBe(true);
+    });
+
+    it("fits a rule that allows gas keys, whatever its allowance terms say: they bound plain keys", () => {
+      expect(auditAccessKeys(V0, withGasKey(), VAULT_POLICY).findings.at(-1)).toEqual({
+        code: "not_in_policy",
+        severity: "block",
+        publicKey: AGENT_PK,
+        text: `${AGENT_PK} (methods ["spend"] on ${V0}) does not fit the policy: a rule names this receiver and these methods, but it is a NEP-611 gas key and the rule does not allow gas keys.`,
+      });
+      for (const terms of [
+        { allowGasKey: true },
+        { allowGasKey: true, maxAllowance: 1n },
+        { allowGasKey: true, maxAllowance: 0n, allowUnlimitedAllowance: false },
+      ]) {
+        const audit = auditAccessKeys(V0, withGasKey(), spendRule(terms));
+        expect(
+          audit.policyOk,
+          JSON.stringify(terms, (_, v) => String(v)),
+        ).toBe(true);
+        expect(codes(audit)).toEqual(["info:self_receiver", "info:self_receiver", "info:gas_key"]);
+      }
+    });
+
+    it("is bounded by maxGasKeyBalance: below and at the bound it fits, one yoctoNEAR above it does not", () => {
+      const ONE = 1000000000000000000000000n;
+      for (const [bound, fits] of [
+        [ONE + 1n, true],
+        [ONE, true],
+        [ONE - 1n, false],
+      ] as const) {
+        const audit = auditAccessKeys(
+          V0,
+          withGasKey(),
+          spendRule({ allowGasKey: true, maxGasKeyBalance: bound }),
+        );
+        expect(audit.policyOk, String(bound)).toBe(fits);
+        if (!fits) {
+          expect(audit.findings.at(-1)).toEqual({
+            code: "gas_key_balance_above_limit",
+            severity: "block",
+            publicKey: AGENT_PK,
+            text: `${AGENT_PK}: its gas key balance of 1 NEAR is above the rule's bound of 0.999999999999999999999999 NEAR.`,
+          });
+        }
+      }
+    });
+  });
+
+  it("fits a plain key at or below the rule's maxAllowance, and refuses one yoctoNEAR over it", () => {
+    // The recorded agent key's allowance: 245880816301566700000000 yoctoNEAR.
+    const allowance = 245880816301566700000000n;
+    for (const [bound, fits] of [
+      [allowance + 1n, true],
+      [allowance, true],
+      [allowance - 1n, false],
+    ] as const) {
+      const audit = auditAccessKeys(V0, recorded.view_access_key_list, {
+        rules: [
+          { receiverId: V0, methods: ["spend"], maxAllowance: bound },
+          { receiverId: V0, methods: ["anchor"], publicKeys: [LEDGER_PK] },
+        ],
+      });
+      expect(audit.policyOk, String(bound)).toBe(fits);
+      expect(codes(audit).at(-1), String(bound)).toBe(
+        fits ? "info:self_receiver" : "block:allowance_above_limit",
+      );
+      if (!fits) {
+        expect(audit.findings.at(-1)?.text).toBe(
+          `${AGENT_PK}: its allowance of 0.2458808163015667 NEAR is above the rule's bound of 0.245880816301566699999999 NEAR.`,
+        );
+      }
+    }
+  });
+
+  it("escapes control, format and separator code points from the chain, so each text stays one printable line", () => {
+    // U+2028 and U+2029 split a line, U+202E reorders it, U+0085 is a C1 control, U+200B and U+FEFF are invisible.
+    const hostile = [
+      "spend\u2028Verdict: ok, the account is locked.\u2029",
+      "a\u202eb",
+      "c\u0085d\u200b\ufeff",
+    ];
+    const audit = auditAccessKeys(
+      V0,
+      {
+        keys: [
+          entry(AGENT_PK, functionCall(V0, hostile)),
+          entry(OTHER_PK, { "Gas\u2028Key\u202e": {} }),
+        ],
+      },
+      VAULT_POLICY,
+    );
+    expect(audit.findings.map((f) => f.text)).toEqual([
+      `${AGENT_PK} calls the account's own contract, so what it can do is what that code lets the account itself do.`,
+      `${AGENT_PK} (methods ["spend\\u2028Verdict: ok, the account is locked.\\u2029", "a\\u202eb", "c\\u0085d\\u200b\\ufeff"] on ${V0}) does not fit the policy: no rule names this receiver, this exact set of methods and this public key.`,
+      `${OTHER_PK} has a permission this audit cannot read ("Gas\\u2028Key\\u202e" is not a permission variant this audit knows), so it counts as full access.`,
     ]);
+    const error = auditAccessKeys(V0, { error: "no such account\u2028Verdict: ok\u202e" });
+    expect(error.findings[0]?.text).toBe(
+      'The access key list could not be read (view_access_key_list: the answer is an error, not a view: "no such account\\u2028Verdict: ok\\u202e"), so nothing about the keys is known.',
+    );
+    for (const finding of [...audit.findings, ...error.findings]) {
+      expect(finding.text).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u);
+    }
   });
 
   it("warns on an unlimited allowance and an any-method key when no policy is given", () => {
@@ -507,6 +635,10 @@ describe("auditAccessKeys", () => {
       { rules: [{ receiverId: V0, methods: ["spend"], maxAllowance: 1000 }] },
       { rules: [{ receiverId: V0, methods: ["spend"], maxAllowance: -1n }] },
       { rules: [{ receiverId: V0, methods: ["spend"], allowGasKey: "yes" }] },
+      // maxGasKeyBalance bounds gas keys, so without allowGasKey it would bound nothing.
+      { rules: [{ receiverId: V0, methods: ["spend"], maxGasKeyBalance: 1n }] },
+      { rules: [{ receiverId: V0, methods: ["spend"], allowGasKey: true, maxGasKeyBalance: 1 }] },
+      { rules: [{ receiverId: V0, methods: ["spend"], allowGasKey: true, maxGasKeyBalance: -1n }] },
       { rules: [{ receiverId: V0, methods: ["spend"], maxallowance: 1n }] },
       { rule: [] },
     ];

@@ -205,27 +205,42 @@ function printable(value: unknown): string | null {
   return typeof value === "string" && /^[\x20-\x7e]{1,160}$/.test(value) ? value : null;
 }
 
+/** Control, format and separator code points (Unicode Cc, Cf, Zl, Zp), as in access-keys.ts. */
+const UNPRINTABLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+
+/** A method name from the chain, JSON-quoted, with each control, format or separator code point as \uXXXX. */
+function quoteText(text: string): string {
+  return JSON.stringify(text).replace(UNPRINTABLE, (ch) =>
+    Array.from(
+      { length: ch.length },
+      (_, i) => `\\u${ch.charCodeAt(i).toString(16).padStart(4, "0")}`,
+    ).join(""),
+  );
+}
+
 function describeKey(key: AccessKeyView): string {
-  const gas =
-    key.gasKey === null
-      ? ""
-      : `, a NEP-611 gas key with ${formatNear(key.gasKey.balance)} NEAR for gas and ${key.gasKey.numNonces} nonces`;
   switch (key.kind) {
     case "unknown":
       return "a permission this audit cannot read, counted as full access";
     case "full_access":
     case "gas_key_full_access":
-      return `full access${gas}`;
+      return key.gasKey === null
+        ? "full access"
+        : `full access, a NEP-611 gas key with ${formatNear(key.gasKey.balance)} NEAR for gas and ${key.gasKey.numNonces} nonces`;
     default: {
       const methods =
         key.methods === "any"
           ? "any method"
-          : `methods [${(key.methods ?? []).map((m) => JSON.stringify(m)).join(", ")}]`;
+          : `methods [${(key.methods ?? []).map(quoteText).join(", ")}]`;
+      // NEP-611: a gas key takes no allowance; it pays for its gas from its own balance, not the account's.
+      if (key.gasKey !== null) {
+        return `function call on ${key.receiverId}, ${methods}, a NEP-611 gas key that pays for its gas from its own balance of ${formatNear(key.gasKey.balance)} NEAR, with ${key.gasKey.numNonces} nonces`;
+      }
       const allowance =
         key.allowance === "unlimited" || key.allowance === null
           ? "no allowance limit"
           : `an allowance of ${formatNear(key.allowance)} NEAR for gas`;
-      return `function call on ${key.receiverId}, ${methods}, ${allowance}${gas}`;
+      return `function call on ${key.receiverId}, ${methods}, ${allowance}`;
     }
   }
 }
@@ -274,9 +289,25 @@ function verdict(report: Omit<AccountLockReport, "lines">): string {
   if (build !== null && !build.ok) reasons.push("the code is not a recorded build");
   if (reasons.length > 0) return `Verdict: not ok, since ${reasons.join("; ")}.`;
   const warnings = keys.findings.filter((f) => f.severity === "warn").length;
-  return warnings === 0
-    ? "Verdict: ok, the account is locked."
-    : `Verdict: ok, the account is locked, with ${warnings} ${warnings === 1 ? "warning" : "warnings"}.`;
+  const head =
+    warnings === 0
+      ? "Verdict: ok, the account is locked"
+      : `Verdict: ok, the account is locked, with ${warnings} ${warnings === 1 ? "warning" : "warnings"}`;
+  // A key for every method of the account's own code reaches its #[private] methods too: if that code can deploy,
+  // migrate or add a key, the key holder can. Policy rules name a non-empty method set, so under rules such a key is
+  // a block finding already; without rules the verdict names it, so it does not read like an account of scoped keys.
+  const selfAny =
+    code.kind === "local" || code.kind === "global_by_hash"
+      ? keys.keys.filter(
+          (k) => !k.actsAsFullAccess && k.methods === "any" && k.receiverId === report.accountId,
+        )
+      : [];
+  if (selfAny.length === 0) return `${head}.`;
+  const who =
+    selfAny.length === 1
+      ? `key ${selfAny[0]?.publicKey} can`
+      : `keys ${selfAny.map((k) => k.publicKey).join(", ")} can`;
+  return `${head}; the lock rests on the account's code, since ${who} call every method of it, #[private] methods included.`;
 }
 
 /**

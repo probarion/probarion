@@ -3,8 +3,9 @@
 // reads the raw `view_access_key_list` shape. Each case starts from one raw list, folds it with the SDK for check f,
 // and passes it unfolded to the audit, so both judge the same keys.
 //
-// Known gap, pinned below: the SDK folds a scoped NEP-611 gas key into a plain function-call key, so check f accepts
-// a gas key with the right scope; the audit keeps the variant and refuses it unless a rule sets allowGasKey.
+// Known gaps, pinned below: the SDK folds a scoped NEP-611 gas key into a plain function-call key, so check f accepts
+// a gas key with the right scope; the audit keeps the variant and refuses it unless a rule sets allowGasKey. A gas key
+// that sets an allowance (NEP-611 refuses one) also passes check f; the audit counts it as full access.
 //
 // Needs the built packages: pnpm --filter @probarion/core build, --filter @probarion/sdk build and
 // --filter @probarion/near build.
@@ -248,7 +249,30 @@ describe("near lock audit agrees with check f on the recorded snapshots", () => 
   });
 
   it("documents the gas-key gap: check f accepts a scoped gas key (the SDK folds it), the audit refuses it by default", () => {
-    // Shape from near-api-js 7.4.0 types (GasKeyFunctionCall); no gas key is on chain in the recorded evidence.
+    // Shape from near-api-js 7.4.0 types (GasKeyFunctionCall), with the allowance null that NEP-611 requires; no gas
+    // key is on chain in the recorded evidence.
+    for (const { name, snapshot } of snapshots) {
+      const raw = snapshot.chain.access_keys.map(rawKey);
+      const spend = keyWith(raw, "spend");
+      if (spend === undefined) continue;
+      spend.access_key.permission = {
+        GasKeyFunctionCall: {
+          allowance: null,
+          balance: "1000000000000000000000000",
+          method_names: ["spend"],
+          num_nonces: 2,
+          receiver_id: snapshot.vault,
+        },
+      };
+      expect(verdicts(snapshot, raw), name).toEqual({ checkF: true, audit: false });
+      expect(verdicts(snapshot, raw, { allowGasKey: true }), name).toEqual({
+        checkF: true,
+        audit: true,
+      });
+    }
+  });
+
+  it("documents the second gas-key gap: a gas key with an allowance, which NEP-611 refuses, passes check f and fails the audit closed", () => {
     for (const { name, snapshot } of snapshots) {
       const raw = snapshot.chain.access_keys.map(rawKey);
       const spend = keyWith(raw, "spend");
@@ -262,10 +286,10 @@ describe("near lock audit agrees with check f on the recorded snapshots", () => 
           receiver_id: snapshot.vault,
         },
       };
-      expect(verdicts(snapshot, raw), name).toEqual({ checkF: true, audit: false });
+      // The audit reads the key as a permission it cannot read, so it counts as full access, gas keys allowed or not.
       expect(verdicts(snapshot, raw, { allowGasKey: true }), name).toEqual({
         checkF: true,
-        audit: true,
+        audit: false,
       });
     }
   });

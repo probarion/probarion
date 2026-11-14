@@ -50,12 +50,15 @@ The software is an unaudited beta.
     `dip4` events is Planned.
   - **Account lock audit** (`src/access-keys.ts`, `src/code-identity.ts`, `src/account-rpc.ts`). Built, and run
     by the CLI. What each access key can do if it leaks (full access, receiver and exact methods, gas allowance,
-    NEP-611 gas keys; a permission it cannot read counts as full access), checked against a policy of exact method
-    sets, pinned public keys and allowance bounds, and the account's code identity, NEP-591 global contracts
-    included, matched against a code-hashes record; both views are read at one block. Tested on
-    `v0.probarion.near` and a testnet factory vault recorded from public RPC and on the drill's
-    `view_access_key` answers: 45 tests. `packages/cli/test/near-lock-agreement.test.ts` checks that it agrees with
-    the verifier's check f on the 13 recorded verifier snapshots: 15 tests. A NEP-330 source metadata check is
+    NEP-611 gas keys, which take no allowance and pay for gas from their own balance; a permission it cannot read,
+    or a gas key that sets an allowance, counts as full access), checked against a policy of exact method sets,
+    pinned public keys, allowance bounds and gas key balance bounds, and the account's code identity, NEP-591
+    global contracts included, matched against a code-hashes record; both views are read at one block. A key for
+    every method of the account's own code is named in the verdict. Text from the chain is escaped, so each line
+    stays one line. Tested on `v0.probarion.near` and a testnet factory vault recorded from public RPC and on the
+    drill's `view_access_key` answers: 53 tests. Gas keys are tested on the near-api-js 7.4.0 shape, as no gas key
+    is in the recorded evidence. `packages/cli/test/near-lock-agreement.test.ts` checks that it agrees with the
+    verifier's check f on the 13 recorded verifier snapshots: 16 tests. A NEP-330 source metadata check is
     Planned.
   - **NEAR Intents POA withdrawal check** (`src/poa.ts`, `src/poa-rpc.ts`). Built; the bridge status reader
     `readPoaWithdrawalStatus` is Experimental (statuses other than `COMPLETED` are not documented in what was

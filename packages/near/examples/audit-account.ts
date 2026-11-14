@@ -1,7 +1,8 @@
 // Example: audit a Probarion vault's lock with the N3 primitives. `auditVault` reads view_account and
 // view_access_key_list at one block over any NearRpc, checks the keys against the vault's key shapes (agent keys may
-// call `spend` on the vault, ledger keys `anchor`) and the code against a code-hashes record file, and returns the
-// report's lines. It reads public state and signs nothing.
+// call `spend` on the vault, ledger keys `anchor`) and the code against the vault builds of a code-hashes record
+// file (its `probarion-vault` entries: a factory build is recorded too, and is no vault), and returns the report's
+// lines. It reads public state and signs nothing.
 //
 //   pnpm --filter @probarion/near exec tsx examples/audit-account.ts v0.probarion.near
 //
@@ -12,7 +13,7 @@ import { readAccountLock } from "../src/account-rpc.js";
 import type { RecordedBuild } from "../src/code-identity.js";
 import { httpJsonRpc, type NearRpc } from "../src/rpc.js";
 
-/** The lines of the account lock report for `accountId` under the vault's key policy and the recorded builds. */
+/** The lines of the account lock report for `accountId` under the vault's key policy and the recorded vault builds. */
 export async function auditVault(
   rpc: NearRpc,
   accountId: string,
@@ -25,7 +26,7 @@ export async function auditVault(
         { receiverId: accountId, methods: ["anchor"] },
       ],
     },
-    builds: codeHashesJson,
+    builds: codeHashesJson.entries.filter((build) => build.crate === "probarion-vault"),
   });
   return report.lines;
 }

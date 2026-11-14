@@ -105,4 +105,19 @@ describe("examples/audit-account.ts", () => {
     );
     expect(lines.at(-1)).toBe("Verdict: ok, the account is locked.");
   });
+
+  it("holds the code to the vault builds of the record file: a recorded factory build is no vault", async () => {
+    const factory = codeHashes.entries.find((e) => e.crate === "probarion-factory")?.code_hash;
+    expect(factory).toBeDefined();
+    const vaults = codeHashes.entries.filter((e) => e.crate === "probarion-vault").length;
+    const lines = await auditVault(
+      recordedRpc({ account: { ...fixture.view_account, code_hash: factory } }),
+      V0,
+      codeHashes,
+    );
+    expect(lines).toContain(
+      `Build: Code hash ${factory} is not among the ${vaults} recorded builds.`,
+    );
+    expect(lines.at(-1)).toBe("Verdict: not ok, since the code is not a recorded build.");
+  });
 });

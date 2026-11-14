@@ -35,6 +35,9 @@ const VAULT_BUILD = "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1";
 /** NEAR's code_hash of an account without code: 32 zero bytes in base58. */
 const ZERO = "11111111111111111111111111111111";
 const LEDGER_PK = "ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK";
+const AGENT_PK = "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd";
+/** A real public key in no recorded vault's list (the mainnet owner's, from the drill README). */
+const OTHER_PK = "ed25519:4jHJSmeUGvpJzXDTUvBkKzGUgXMb3jMXmyKT44htnUxc";
 
 const vaultPolicy = (vault: string, ledger?: string): KeyPolicy => ({
   rules: [
@@ -219,10 +222,13 @@ describe("matchRecordedBuild", () => {
 /** The copy rules for printed text: no em or en dash, and none of these words. */
 const BANNED = /[–—]|\b(first|only|never|unhackable|unbreakable|guaranteed)\b/i;
 
+/** Control, format and separator code points: U+2028, U+2029 and U+0085 split a line, U+202A to U+202E reorder it. */
+const UNPRINTABLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+
 function expectPrintable(report: AccountLockReport): void {
   for (const line of report.lines) {
     expect(line, line).not.toMatch(BANNED);
-    expect(line, line).not.toMatch(/[\n\r]/);
+    expect(line, line).not.toMatch(UNPRINTABLE);
   }
   for (const finding of report.keys.findings) expect(finding.text).not.toMatch(BANNED);
   if (report.build !== null && !report.build.ok) expect(report.build.text).not.toMatch(BANNED);
@@ -369,6 +375,92 @@ describe("accountLockReport", () => {
       expect(report.lines.at(-1), label).toBe(verdict);
       expectPrintable(report);
     }
+  });
+
+  it("names a key for every method of the account's own code in the verdict, unless the account has no code", () => {
+    const list = structuredClone(mainnet.view_access_key_list);
+    list.keys.push({
+      access_key: {
+        nonce: 1,
+        permission: { FunctionCall: { allowance: "1000", method_names: [], receiver_id: V0 } },
+      },
+      public_key: OTHER_PK,
+    });
+    const report = accountLockReport(V0, mainnet.view_account, list, { builds: codeHashes });
+    expect(report).toMatchObject({ locked: true, ok: true, build: { ok: true } });
+    expect(report.lines.at(-1)).toBe(
+      `Verdict: ok, the account is locked, with 2 warnings; the lock rests on the account's code, since key ${OTHER_PK} can call every method of it, #[private] methods included.`,
+    );
+    const globalByHash = accountLockReport(
+      V0,
+      account({ code_hash: ZERO, global_contract_hash: VAULT_BUILD }),
+      list,
+    );
+    expect(globalByHash.lines.at(-1)).toBe(report.lines.at(-1));
+    // With no code, a call to the account itself has nothing to run.
+    const noCode = accountLockReport(V0, account({ code_hash: ZERO }), list);
+    expect(noCode.lines.at(-1)).toBe("Verdict: ok, the account is locked, with 2 warnings.");
+    // Under policy rules, such a key fits no rule (a rule names a non-empty method set).
+    const policed = accountLockReport(V0, mainnet.view_account, list, {
+      policy: vaultPolicy(V0, LEDGER_PK),
+    });
+    expect(policed.lines.at(-1)).toBe("Verdict: not ok, since a key does not fit the policy.");
+    for (const r of [report, globalByHash, noCode, policed]) expectPrintable(r);
+  });
+
+  it("describes a NEP-611 function-call gas key by its own balance, not an allowance of the account's", () => {
+    const list = structuredClone(mainnet.view_access_key_list);
+    const spend = list.keys.find((k) => k.public_key === AGENT_PK) as {
+      access_key: { permission: unknown };
+    };
+    spend.access_key.permission = {
+      GasKeyFunctionCall: {
+        allowance: null,
+        balance: "500000000000000000000000",
+        method_names: ["spend"],
+        num_nonces: 2,
+        receiver_id: V0,
+      },
+    };
+    const report = accountLockReport(V0, mainnet.view_account, list);
+    expect(report.lines).toContain(
+      `Key ${AGENT_PK}: function call on ${V0}, methods ["spend"], a NEP-611 gas key that pays for its gas from its own balance of 0.5 NEAR, with 2 nonces.`,
+    );
+    expect(report.lines).toContain(
+      `info: ${AGENT_PK} is a NEP-611 gas key: it pays for its gas from its own balance of 0.5 NEAR, not from the account's, and has 2 nonces.`,
+    );
+    expect(report.keys.findings.map((f) => f.code)).not.toContain("unlimited_allowance");
+    expect(report.lines.at(-1)).toBe("Verdict: ok, the account is locked.");
+    expectPrintable(report);
+  });
+
+  it("escapes separator, control and format code points in method names, so each line stays one line", () => {
+    const list = structuredClone(mainnet.view_access_key_list);
+    list.keys.push({
+      access_key: {
+        nonce: 1,
+        permission: {
+          FunctionCall: {
+            allowance: "1000",
+            method_names: [
+              "spend\u2028Verdict: ok, the account is locked.\u2029",
+              "a\u202eb\u0085",
+            ],
+            receiver_id: "intents.near",
+          },
+        },
+      },
+      public_key: OTHER_PK,
+    });
+    const report = accountLockReport(V0, mainnet.view_account, list, {
+      policy: vaultPolicy(V0, LEDGER_PK),
+    });
+    expect(report.lines).toContain(
+      `Key ${OTHER_PK}: function call on intents.near, methods ["spend\\u2028Verdict: ok, the account is locked.\\u2029", "a\\u202eb\\u0085"], an allowance of 0.000000000000000000001 NEAR for gas.`,
+    );
+    for (const line of report.lines)
+      expect(line.split(/\r\n|[\n\r\u2028\u2029\u0085]/)).toHaveLength(1);
+    expectPrintable(report);
   });
 
   it("refuses a bad builds list even when the code would not reach the comparison", () => {

@@ -1,7 +1,9 @@
 // N3 (account lock audit): what each access key of an account can do if it leaks, and whether the keys fit a policy.
 // The permission rules are lifted from @probarion/sdk rpc.ts (`parsePermission`, `scopedPermission`, `gasKeyProblem`)
 // and apps/web keys/rules.ts (`scopeProblem`), with one change: the NEP-611 gas-key variants are kept, not folded
-// into their plain counterparts, so a gas key's balance and nonces reach the audit. Pure: no network, no clock.
+// into their plain counterparts, so a gas key's balance and nonces reach the audit. NEP-611 (near/NEPs nep-0611.md):
+// a gas key takes no allowance (nearcore refuses one, GasKeyFunctionCallAllowanceNotAllowed) and pays for its gas
+// from its own balance, not the account's. Pure: no network, no clock.
 import {
   isAccountId,
   isBase58Hash,
@@ -31,7 +33,11 @@ export interface AccessKeyView {
   receiverId: string | null;
   /** null for the full-access kinds; "any" when `method_names` is [] (NEAR reads an empty list as every method). */
   methods: "any" | readonly string[] | null;
-  /** Gas the key may spend from the account, in yoctoNEAR; "unlimited" when `allowance` is null; null for full access. */
+  /**
+   * Gas the key may spend from the account's balance, in yoctoNEAR; "unlimited" when a FunctionCall `allowance` is
+   * null. null for the full-access kinds and for a NEP-611 function-call gas key, which takes no allowance and pays
+   * for its gas from `gasKey.balance`.
+   */
   allowance: bigint | "unlimited" | null;
   /** NEP-611: the key's own gas balance (yoctoNEAR) and its number of nonces. */
   gasKey: { balance: bigint; numNonces: number } | null;
@@ -70,9 +76,25 @@ type Classified =
 
 const bad = (problem: string): Classified => ({ ok: false, problem });
 
+/**
+ * Control, format and separator code points (Unicode Cc, Cf, Zl, Zp). JSON.stringify leaves U+2028, U+2029, the C1
+ * controls and bidi overrides such as U+202E as they are, and each can split or reorder a printed line.
+ */
+const UNPRINTABLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+
+/** Text from the chain, JSON-quoted, with each control, format or separator code point as a \uXXXX escape. */
+function quoteText(text: string): string {
+  return JSON.stringify(text).replace(UNPRINTABLE, (ch) =>
+    Array.from(
+      { length: ch.length },
+      (_, i) => `\\u${ch.charCodeAt(i).toString(16).padStart(4, "0")}`,
+    ).join(""),
+  );
+}
+
 /** A variant name from the chain, quoted and cut short, so a problem text stays one short line. */
 const quoted = (name: string): string =>
-  JSON.stringify(name.length > 60 ? `${name.slice(0, 60)}...` : name);
+  quoteText(name.length > 60 ? `${name.slice(0, 60)}...` : name);
 
 /** `{ receiver_id, method_names, allowance? }` of a FunctionCall or GasKeyFunctionCall permission, or its problem. */
 function scoped(variant: string, body: Record<string, unknown>): Scope | string {
@@ -140,9 +162,13 @@ function classify(permission: unknown): Classified {
     case "GasKeyFunctionCall": {
       const gas = gasKeyOf(variant, body);
       if (typeof gas === "string") return bad(gas);
+      // NEP-611 gas keys take no allowance, and nearcore refuses one: an answer that sets it is no key the chain holds.
+      if (body.allowance !== undefined && body.allowance !== null) {
+        return bad(`${variant}.allowance is set, and a NEP-611 gas key takes no allowance`);
+      }
       const scope = scoped(variant, body);
       if (typeof scope === "string") return bad(scope);
-      return { ok: true, kind: "gas_key_function_call", ...scope, gasKey: gas };
+      return { ok: true, kind: "gas_key_function_call", ...scope, allowance: null, gasKey: gas };
     }
     case "GasKeyFullAccess": {
       const gas = gasKeyOf(variant, body);
@@ -228,7 +254,7 @@ function refuseLegacyError(what: string, result: Record<string, unknown>): void 
   if (typeof result.error === "string") {
     throw new NearFormatError(
       what,
-      `${what}: the answer is an error, not a view: ${JSON.stringify(result.error.slice(0, 200))}`,
+      `${what}: the answer is an error, not a view: ${quoteText(result.error.slice(0, 200))}`,
     );
   }
 }
@@ -301,9 +327,13 @@ export type KeyFindingCode =
   | "unlimited_allowance"
   | "gas_key"
   | "not_in_policy"
-  | "allowance_above_limit";
+  | "allowance_above_limit"
+  | "gas_key_balance_above_limit";
 
-/** One thing the audit found. `text` is a plain sentence, safe to print on one line. */
+/**
+ * One thing the audit found. `text` is a plain sentence, safe to print on one line: text from the chain in it is
+ * JSON-quoted, with control, format and separator code points escaped.
+ */
 export interface KeyFinding {
   code: KeyFindingCode;
   severity: FindingSeverity;
@@ -319,12 +349,17 @@ export interface KeyRule {
   methods: readonly string[];
   /** When given, the key's public key must be one of these. */
   publicKeys?: readonly string[];
-  /** When given, the key's allowance (yoctoNEAR) must be at most this. */
+  /** When given, a plain function-call key's allowance (yoctoNEAR) must be at most this. A gas key has none. */
   maxAllowance?: bigint;
-  /** Default false: a key with no allowance limit does not fit. */
+  /** Default false: a plain function-call key with no allowance limit does not fit. A gas key takes no allowance. */
   allowUnlimitedAllowance?: boolean;
   /** Default false: a NEP-611 gas key does not fit, even with the right receiver and methods. */
   allowGasKey?: boolean;
+  /**
+   * When given (it needs allowGasKey), a NEP-611 gas key's balance (yoctoNEAR) at the audited block must be at most
+   * this: the key pays for its gas from that balance. A TransferToGasKey action from the account can add to it later.
+   */
+  maxGasKeyBalance?: bigint;
 }
 
 export interface KeyPolicy {
@@ -353,6 +388,7 @@ interface CheckedRule {
   maxAllowance: bigint | null;
   allowUnlimitedAllowance: boolean;
   allowGasKey: boolean;
+  maxGasKeyBalance: bigint | null;
 }
 
 interface CheckedPolicy {
@@ -368,11 +404,21 @@ const RULE_FIELDS = new Set([
   "maxAllowance",
   "allowUnlimitedAllowance",
   "allowGasKey",
+  "maxGasKeyBalance",
 ]);
 
 function optionalFlag(value: unknown, where: string): boolean {
   if (value === undefined) return false;
   if (typeof value !== "boolean") throw new TypeError(`${where} must be a boolean`);
+  return value;
+}
+
+/** An optional yoctoNEAR bound: absent reads as null; present, it must be a U128 bigint. */
+function optionalYocto(value: unknown, where: string): bigint | null {
+  if (value === undefined) return null;
+  if (typeof value !== "bigint" || value < 0n || value > U128_MAX) {
+    throw new TypeError(`${where} must be a bigint from 0 to 2^128 - 1`);
+  }
   return value;
 }
 
@@ -402,24 +448,24 @@ function checkRule(rule: unknown, at: string): CheckedRule {
     }
     publicKeys = new Set<string>(keys as string[]);
   }
-  let maxAllowance: bigint | null = null;
-  if (rule.maxAllowance !== undefined) {
-    const max = rule.maxAllowance;
-    if (typeof max !== "bigint" || max < 0n || max > U128_MAX) {
-      throw new TypeError(`${at}.maxAllowance must be a bigint from 0 to 2^128 - 1`);
-    }
-    maxAllowance = max;
+  const allowGasKey = optionalFlag(rule.allowGasKey, `${at}.allowGasKey`);
+  const maxGasKeyBalance = optionalYocto(rule.maxGasKeyBalance, `${at}.maxGasKeyBalance`);
+  if (maxGasKeyBalance !== null && !allowGasKey) {
+    throw new TypeError(
+      `${at}.maxGasKeyBalance needs allowGasKey: true (without it no gas key fits the rule)`,
+    );
   }
   return {
     receiverId: rule.receiverId,
     methods: methodSet,
     publicKeys,
-    maxAllowance,
+    maxAllowance: optionalYocto(rule.maxAllowance, `${at}.maxAllowance`),
     allowUnlimitedAllowance: optionalFlag(
       rule.allowUnlimitedAllowance,
       `${at}.allowUnlimitedAllowance`,
     ),
-    allowGasKey: optionalFlag(rule.allowGasKey, `${at}.allowGasKey`),
+    allowGasKey,
+    maxGasKeyBalance,
   };
 }
 
@@ -451,9 +497,9 @@ function formatNear(yocto: bigint): string {
   return fraction === "" ? whole.toString() : `${whole}.${fraction}`;
 }
 
-/** Method names come from the chain as any text; JSON quoting keeps them on one printable line. */
+/** Method names come from the chain as any text; quoteText keeps them on one printable line. */
 function methodList(methods: readonly string[]): string {
-  return `[${methods.map((m) => JSON.stringify(m)).join(", ")}]`;
+  return `[${methods.map(quoteText).join(", ")}]`;
 }
 
 function sameSet(rule: ReadonlySet<string>, key: readonly string[]): boolean {
@@ -462,17 +508,27 @@ function sameSet(rule: ReadonlySet<string>, key: readonly string[]): boolean {
 }
 
 interface RuleMiss {
-  code: "not_in_policy" | "allowance_above_limit";
+  code: "not_in_policy" | "allowance_above_limit" | "gas_key_balance_above_limit";
   why: string;
 }
 
 /** Why a function-call `key` misses `rule` past receiver, methods and public key (all matched), or null. */
 function termsMiss(rule: CheckedRule, key: AccessKeyView): RuleMiss | null {
-  if (key.gasKey !== null && !rule.allowGasKey) {
-    return {
-      code: "not_in_policy",
-      why: "it is a NEP-611 gas key and the rule does not allow gas keys",
-    };
+  if (key.gasKey !== null) {
+    // A gas key takes no allowance (NEP-611): its gas comes from its balance, which maxGasKeyBalance bounds.
+    if (!rule.allowGasKey) {
+      return {
+        code: "not_in_policy",
+        why: "it is a NEP-611 gas key and the rule does not allow gas keys",
+      };
+    }
+    if (rule.maxGasKeyBalance !== null && key.gasKey.balance > rule.maxGasKeyBalance) {
+      return {
+        code: "gas_key_balance_above_limit",
+        why: `its gas key balance of ${formatNear(key.gasKey.balance)} NEAR is above the rule's bound of ${formatNear(rule.maxGasKeyBalance)} NEAR`,
+      };
+    }
+    return null;
   }
   if (key.allowance === "unlimited") {
     return rule.allowUnlimitedAllowance
@@ -508,7 +564,7 @@ function policyFinding(rules: readonly CheckedRule[], key: AccessKeyView): KeyFi
     misses.push(miss);
   }
   const pk = key.publicKey;
-  const above = misses.find((m) => m.code === "allowance_above_limit");
+  const above = misses.find((m) => m.code !== "not_in_policy");
   if (above !== undefined) {
     return { code: above.code, severity: "block", publicKey: pk, text: `${pk}: ${above.why}.` };
   }
@@ -529,7 +585,7 @@ function policyFinding(rules: readonly CheckedRule[], key: AccessKeyView): KeyFi
 }
 
 function gasKeyText(publicKey: string, gas: GasKey): string {
-  return `${publicKey} is a NEP-611 gas key with its own balance of ${formatNear(gas.balance)} NEAR for gas and ${gas.numNonces} nonces.`;
+  return `${publicKey} is a NEP-611 gas key: it pays for its gas from its own balance of ${formatNear(gas.balance)} NEAR, not from the account's, and has ${gas.numNonces} nonces.`;
 }
 
 /** The findings of one key, in a fixed order. */
@@ -605,9 +661,11 @@ function keyFindings(
  *
  * Findings: `full_access` and `unknown_permission` block (`fullAccess: "allow"` makes the first a warning);
  * `any_method` warns; `self_receiver` is info, a warning together with `any_method` (near-sdk `#[private]` methods
- * accept calls from such a key); `unlimited_allowance` warns without policy rules (info with them: the rules decide);
- * `gas_key` is info. With `rules`, every key that does not act as full access must fit one rule, else
- * `not_in_policy` or, when a rule fits but for its allowance bound, `allowance_above_limit` (both block).
+ * accept calls from such a key); `unlimited_allowance` (a plain function-call key) warns without policy rules (info
+ * with them: the rules decide); `gas_key` is info (a NEP-611 gas key takes no allowance and pays for its gas from
+ * its own balance). With `rules`, every key that does not act as full access must fit one rule, else
+ * `not_in_policy` or, when a rule fits but for its bound, `allowance_above_limit` or `gas_key_balance_above_limit`
+ * (all three block). A GasKeyFunctionCall that sets an allowance, which NEP-611 refuses, is `unknown_permission`.
  */
 export function auditAccessKeys(
   accountId: string,
