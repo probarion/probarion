@@ -75,7 +75,7 @@ export class ApiError extends Error {
 }
 
 export const RECONNECT = "Your connection expired. Reconnect";
-export const OFFLINE = "Couldn't reach Probarion. Retry";
+export const OFFLINE = "Couldn't reach Probarion. Try again.";
 
 /** Characters that hide or reorder text. */
 const hidden = (code: number) =>
@@ -375,7 +375,7 @@ export function api(origin: string, fetchFn: Fetch) {
       const body = await call(fetchFn, at("/api/ext/inbox"), { headers: bearer(token) }, 30_000);
       return readInbox(body, origin);
     },
-    /** Queues the invoice. The server's limit is 60 s; the client waits a little longer before it says "Retry". */
+    /** Queues the invoice. The server's limit is 60 s; the client waits a little longer before it says "Try again". */
     async sendInvoice(
       token: string,
       i: { vault: string; mandate: number; file: Blob; name: string },

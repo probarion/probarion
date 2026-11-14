@@ -45,7 +45,10 @@ main {
   border-bottom: 1px solid var(--line);
 }
 
+/* The brand is the page's h1, drawn like the text around it. */
 .brand {
+  margin: 0;
+  font-size: inherit;
   font-weight: 600;
 }
 
@@ -139,8 +142,11 @@ p {
   border-color: var(--gold);
 }
 
+/* A 64-character implicit NEAR account, or a long payee in a refusal, has no place to break otherwise. */
 .title,
-.detail {
+.detail,
+.ok,
+.bad {
   overflow-wrap: anywhere;
 }
 
@@ -252,6 +258,12 @@ button:disabled {
   border-radius: 8px;
   background: var(--surface);
   overflow-wrap: anywhere;
+}
+
+/* Clear keeps its width and its one line next to a long file name or selection. */
+.item > button {
+  flex: none;
+  overflow-wrap: normal;
 }
 
 .code {

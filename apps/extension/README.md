@@ -50,7 +50,7 @@ hash, pays it.
 | `build:dev` | The same, also trusting `http://localhost:3000` |
 | `zip` | Release build, then `probarion-extension-<version>.zip` for the Chrome Web Store |
 | `render` | Renders the icons and the store images with a local headless Chrome; commit the results |
-| `test` | The unit tests, on a fake `chrome` and a fake `fetch` |
+| `test` | The unit tests, on a fake `chrome` and a fake `fetch`; the popup's run on a small fake DOM |
 | `typecheck` | `tsc` over the source, the tests and the scripts |
 
 ## How it works

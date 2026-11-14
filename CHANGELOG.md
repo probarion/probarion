@@ -2050,6 +2050,20 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The browser extension's popup (`apps/extension`, still version 0.1.0), after a test in a real Chromium. After
+  **Send to Probarion**, focus moves to the result's **Open** and the result line scrolls into view. The Vault and
+  Mandate selects are off during a send and show their whole text on hover, and a mandate names its per-payment amount
+  before its payee. **Clear** stays on one line, a refusal that names a 64-character account wraps, and the brand is
+  the page's h1. A 401 on Send shows the expired screen once, with focus on its heading, and the offline line reads
+  "Couldn't reach Probarion. Try again." A captured invoice counts as seen, and the badge drops its `+`, when the
+  Send section shows it, also in a popup page that was already open. A right-click capture that the popup opens on
+  Connect, an expired connection or the offline line stays unseen, so the badge shows `+` (or `!` when the connection
+  expired). In the tab view the badge takes a fresh count. **Use the PDF in this tab** names the tab when it fails.
+  The content script runs on `/extension` with or without a query, not on paths such as `/extensions`. The tab view
+  follows the new connection after **Reconnect** and keeps focus on the screen. A connection change that comes in
+  while an action runs is read once the action ends. The Chrome Web Store build 0.1.0 does not have these changes
+  until the owner uploads a new one.
+
 - `@probarion/core`: the asset rule of the entry below matched only the bare asset account, and an
   attested model can add a label to it. In the testnet rehearsal of the second mainnet Base payout,
   on 2026-11-13 at 09:17 UTC in vault `s2-rehearsal-1.vaults.probarion.testnet` (test tokens),

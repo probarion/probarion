@@ -32,12 +32,16 @@ describe("the manifest", () => {
   });
 
   it("runs the content script only on the connect page, top frame only", () => {
+    // A match pattern covers the path and the query, so `/extension*` would also match /extensions and /extension/x.
     expect(m.content_scripts).toEqual([
       {
         matches: [
-          "https://probarion.vercel.app/extension*",
-          "https://probarion.xyz/extension*",
-          "https://testnet.probarion.xyz/extension*",
+          "https://probarion.vercel.app/extension",
+          "https://probarion.vercel.app/extension?*",
+          "https://probarion.xyz/extension",
+          "https://probarion.xyz/extension?*",
+          "https://testnet.probarion.xyz/extension",
+          "https://testnet.probarion.xyz/extension?*",
         ],
         js: ["content.js"],
         run_at: "document_idle",
