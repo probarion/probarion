@@ -36,7 +36,8 @@ How evidence is named in this file:
   the factory's deployment (`factory.deploy_tx`), a smoke transaction (`smoke`), the direct refusal
   (`direct_refusal`) or a step of the demo vault's run (`demo_vault`).
 - An eval case is cited by its id in `eval/cases.json`; its results are in `eval/results/latest.md`
-  (offline, rules-only so far: the model replay is not recorded yet).
+  (offline: rules only, the model replay of `Qwen/Qwen3.8-27B` answers recorded from NEAR AI Cloud on 2026-11-14,
+  and the adversary run).
 - A mainnet transaction cited as evidence is one recorded in `docs/mainnet-proof.json` and
   `contracts/deployments/mainnet.json`: the steps and spends of the v0 runs of 2026-11-11 and 2026-11-13.
 

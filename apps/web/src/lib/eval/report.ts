@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { sha256Hex } from "@probarion/core";
+import { type PayeeHint, sha256Hex } from "@probarion/core";
 import { usdcText, visibleInvoiceProposal } from "./adversary";
 import {
   type AdversaryCase,
@@ -10,7 +10,7 @@ import {
 } from "./adversary-report";
 import { CASES, type Category, type EvalCase, type Layer } from "./cases";
 import { CASES_JSON, casesJson } from "./dataset";
-import { recordedPath } from "./recorded";
+import { type ReplayStatus, recordedPath } from "./recorded";
 import { type CaseRun, type Mode, prepareCase, type RunOptions, runCase, runCases } from "./run";
 import { type CaseScore, of, type Summary, scoreCase, summarize } from "./score";
 
@@ -276,13 +276,53 @@ function runMarkdown(title: string, run: RunResult): string[] {
   }
   const m = s.model;
   if (m !== null) {
+    const failed = idsWith(run, "call_failed");
+    const unused = [...idsWith(run, "stale"), ...idsWith(run, "invalid")];
+    const missing = idsWith(run, "not_recorded");
+    const notAsked = run.cases.filter((r) => r.model === null).map((r) => r.id);
     out.push(
       "",
-      `Model: ${list(m.models)}. Attested answers ${m.attested}. Model fooled by the injection ${m.model_fooled} (the injected cases whose injection is in the text the model is shown, with an attested answer${m.injection_not_in_text.length === 0 ? "" : `; not in that text: ${list(m.injection_not_in_text)}, which the extract layer stops`}). Proposed pay on a case that must not be paid ${m.proposed_pay_on_bad}. Not used (a check failed or the facts changed) ${m.unavailable}. Model call failed (decided rules-only, as the SDK does) ${m.call_failed}. Not recorded ${m.not_recorded}. Recorded latency p50 ${m.latency_ms_p50 ?? "n/a"} ms, p95 ${m.latency_ms_p95 ?? "n/a"} ms.`,
+      `Model: ${list(m.models)}. Attested answers ${m.attested}. Model fooled by the injection ${m.model_fooled} (the injected cases whose injection is in the text the model is shown, with an attested answer${m.injection_not_in_text.length === 0 ? "" : `; not in that text: ${list(m.injection_not_in_text)}, which the extract layer stops`}). Proposed pay on a case that must not be paid ${m.proposed_pay_on_bad}. Not used (a check failed or the facts changed) ${m.unavailable}${named(unused)}. Model call failed (decided rules-only, as the SDK does) ${m.call_failed}${named(failed)}. Not recorded ${m.not_recorded}${named(missing)}. Recorded latency p50 ${m.latency_ms_p50 ?? "n/a"} ms, p95 ${m.latency_ms_p95 ?? "n/a"} ms.`,
     );
+    const without = [
+      failed.length === 0 ? null : `${list(failed)} (the model call failed, decided rules-only)`,
+      unused.length === 0 ? null : `${list(unused)} (the answer was not used, decided rules-only)`,
+      missing.length === 0 ? null : `${list(missing)} (no answer recorded, decided rules-only)`,
+      notAsked.length === 0 ? null : `${list(notAsked)} (it does not reach the model step)`,
+    ].filter((x): x is string => x !== null);
+    if (without.length > 0) {
+      out.push(
+        "",
+        `The exact and accepted counts, and the table's Exact column, include the cases decided without a model answer: ${without.join("; ")}.`,
+      );
+    }
   }
   out.push("");
   return out;
+}
+
+/** The ids of a run's cases whose model replay ended with this status. */
+const idsWith = (run: RunResult, status: ReplayStatus): string[] =>
+  run.cases.filter((r) => r.model?.status === status).map((r) => r.id);
+
+/** ": I-01, I-06" after a count, or nothing when no case is named. */
+const named = (ids: readonly string[]): string => (ids.length === 0 ? "" : `: ${list(ids)}`);
+
+/** Why a model replay case was decided rules-only, in words, or null when the model's answer was used. */
+function rulesOnlyWhy(m: ScoredCase["model"]): string | null {
+  if (m === null) return "the model was not asked";
+  switch (m.status) {
+    case "replayed":
+    case "adversary":
+      return null;
+    case "call_failed":
+      return "the model call failed";
+    case "not_recorded":
+      return "no answer is recorded";
+    case "stale":
+    case "invalid":
+      return "the recorded answer was not used";
+  }
 }
 
 export function resultsMarkdown(results: Results): string {
@@ -373,20 +413,40 @@ function attackLines(
       );
     } else {
       out.push(
-        `- Model (${m.model}): proposed ${m.action}, amount ${m.amount ?? "null"}, mandate ${m.mandate_id ?? "null"}, payee hint ${m.payee_hint?.near_account ?? m.payee_hint?.address ?? "none"}, confidence ${m.confidence}. Fooled: ${yes(m.fooled === true)}.`,
+        `- Model (${m.model}): proposed ${m.action}, amount ${m.amount ?? "null"}, mandate ${m.mandate_id ?? "null"}, payee hint ${hintText(m.payee_hint)}, confidence ${m.confidence}. Fooled: ${yes(m.fooled === true)}.`,
       );
     }
+  }
+  const why = replay === null ? null : rulesOnlyWhy(replay.model);
+  if (replay !== null) {
     out.push(
-      `- With the model: ${replay.outcome}${replay.waits_for ? ` (waits for the ${replay.waits_for})` : ""}; rules that held or refused: ${list(stoppingRules(replay))}. Money safe: ${yes(replay.score.money_safe)}.`,
+      `- ${why === null ? "With the model" : `In the model replay, rules only (${why})`}: ${replay.outcome}${replay.waits_for ? ` (waits for the ${replay.waits_for})` : ""}; rules that held or refused: ${list(stoppingRules(replay))}. Money safe: ${yes(replay.score.money_safe)}.`,
     );
   }
   out.push(
     replay === null
       ? `- Stopped by (rules only): ${list(rules.stopped_by)}.`
-      : `- Stopped by (with the model): ${list(replay.stopped_by)}.`,
+      : why === null
+        ? `- Stopped by (with the model): ${list(replay.stopped_by)}.`
+        : `- Stopped by (in the model replay, rules only: ${why}): ${list(replay.stopped_by)}.`,
     "",
   );
   return out;
+}
+
+/**
+ * The model's payee hint in words: the NEAR account (or the address when it names none), then any other field it
+ * sets, so a hint such as I-04's, which also labels the NEAR account as a Base address, shows in the log.
+ */
+function hintText(h: PayeeHint | null | undefined): string {
+  if (h === null || h === undefined) return "none";
+  const main = h.near_account ?? h.address;
+  if (main === undefined) return "none";
+  const extra = [
+    h.near_account !== undefined && h.address !== undefined ? `address ${h.address}` : null,
+    h.chain === undefined ? null : `chain ${h.chain}`,
+  ].filter((x): x is string => x !== null);
+  return extra.length === 0 ? main : `${main} (also ${extra.join(", ")})`;
 }
 
 export function attackLog(results: Results, cases: readonly EvalCase[] = CASES): string {
