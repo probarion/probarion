@@ -2240,16 +2240,17 @@ describe("the problem, the comparison and the integrate section", () => {
       .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<");
 
-  it("keeps its headings in order: an h3 per use, the shot's h3, the ways' h3, an h4 per way", () => {
+  it("keeps its headings in order: an h3 per use, the invoice board's h3 and an h4 per row, the ways' h3, an h4 per way", () => {
     const html = integrateHtml();
     const heads = [...html.matchAll(/<h([2-6])[^>]*>([\s\S]*?)<\/h\1>/g)].map(
       (x) => `${x[1]} ${decoded(x[2] ?? "")}`,
     );
-    const shot = CONSOLE_SHOTS.shots.find((x) => x.id === CONSOLE_SHOTS.landing.shot);
+    const board = CONSOLE_SHOTS.landing;
     expect(heads).toEqual([
       `2 ${INTEGRATE.title}`,
       ...INTEGRATE.who.map((w) => `3 ${w.title}`),
-      `3 ${shot?.title}`,
+      `3 ${board.title}`,
+      ...board.board.rows.map((r) => `4 ${r.label}`),
       `3 ${INTEGRATE.waysTitle}`,
       ...INTEGRATE.cards.map((c) => `4 ${c.title}`),
     ]);
@@ -2261,23 +2262,24 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(read).not.toMatch(/[·–—]/);
     expect(html).not.toMatch(/<div[^>]*aria-label=/);
     // Every link that leaves the site ends in the shared arrow (parts.tsx Away), and no other text carries one: the
-    // 402 run's evidence and the MCP server's README.
+    // 402 run's evidence, the invoice board's two testnet transactions and the MCP server's README.
     const away = [...html.matchAll(/<a [^>]*target="_blank"[^>]*>([\s\S]*?)<\/a>/g)];
     const out = [
       ...INTEGRATE.who.map((w) => w.evidence.href),
+      ...board.board.rows.flatMap((r) => (r.txs ?? []).map((t) => t.url)),
       ...INTEGRATE.cards.map((c) => ("href" in c.link ? c.link.href : "")),
     ].filter((h) => h.startsWith("https://"));
-    expect(out).toHaveLength(2);
+    expect(out).toHaveLength(4);
     expect(away.map((a) => /href="([^"]+)"/.exec(a[0])?.[1])).toEqual(out);
     for (const [a, inner] of away)
       expect(inner, a).toContain(`<span class="${pm.ext}" aria-hidden="true">↗</span></span>`);
     expect(read.split("↗").length - 1).toBe(away.length);
     // A link on this site ends in → glued to its last word, the one to the mainnet section below in ↓: each hidden
-    // from a screen reader, which reads the words alone. The status pills and the file link carry none.
+    // from a screen reader, which reads the words alone. The status pills and the screenshot's link carry none.
     const own = [...html.matchAll(/<a (?![^>]*target=)[^>]*>([\s\S]*?)<\/a>/g)]
       .map((a) => a[1] ?? "")
       .filter((inner) => !inner.includes(`>${INTEGRATE.statusPrefix}</span>`))
-      .filter((inner) => !inner.startsWith(CONSOLE_SHOTS.fullSize));
+      .filter((inner) => !inner.startsWith(CONSOLE_SHOTS.landing.shotLink.label));
     expect(own.length).toBeGreaterThan(4);
     for (const inner of own) expect(inner).toMatch(/ <span aria-hidden="true">[→↓]<\/span>$/);
     expect(read.split("↓").length - 1).toBe(1);
@@ -2328,7 +2330,7 @@ describe("the problem, the comparison and the integrate section", () => {
     ]);
     expect(INTEGRATE.controlsLabel).toBe("The mandate controls");
     const html = integrateHtml();
-    // One list of three cards, the uses' anchor, before the console's shot and the ways in.
+    // One list of three cards, the uses' anchor, before the console's invoice board and the ways in.
     const open = `<ul class="${ig.uses}" id="integrate-uses" role="list">`;
     expect(html.split(open).length - 1).toBe(1);
     expect(html.indexOf(open)).toBeLessThan(html.indexOf("<figure"));

@@ -1531,6 +1531,137 @@ export interface ConsoleShot {
   link?: { label: string; url: string };
 }
 
+/** Spend 3 of the demo vault, INV-2004: the spend that held it, and the approval that paid it. */
+const HELD_TX = demoTx(
+  "Held ",
+  tx("9qUtxTguj17dp8KX61GW7YTVBQyJGZBt1ZWiQoM2699d", "9qUtxTgu…699d"),
+);
+const APPROVED_TX = demoTx(
+  "Approved ",
+  tx("EYPyrd9hapyZthjMwysShUnkDSVkMQHtPYHitidbr972", "EYPyrd9h…r972"),
+);
+
+/** A stamp on the invoice board: the outcome's word in its tone (bits.tsx OutcomeTone). */
+export interface BoardStamp {
+  tone: "paid" | "held" | "none";
+  label: string;
+}
+
+/** One row of the invoice board: what one part did with the invoice, in a sentence, and its proof. */
+export interface BoardRow {
+  /** The console page's column head: Model wanted, Code allowed, Contract did. */
+  label: string;
+  stamps: readonly BoardStamp[];
+  text: string;
+  /** Its decision on the demo vault's proof page, which gives each decision id="seq-N". */
+  entry?: { seq: number; label: string; href: string };
+  /** Its testnet transactions, each a verb and a short hash. */
+  txs?: readonly { label: string; url: string }[];
+  /** True for the row whose code rules fold under it. */
+  rules?: boolean;
+}
+
+/**
+ * INV-2004 in the demo vault's ledger of 2026-11-11 (docs/evidence/demo-vault/ledger-2026-11-11.jsonl): its sha256,
+ * the owner who confirmed it (contracts/deployments/testnet.json demo_vault.owner) and the code's 15 rules in the
+ * order entry 8 records them, each in plain words. test/console-shots.test.ts holds each one to the ledger.
+ */
+const INV_2004 = {
+  hash: "366f44db0ba80b2886a723751383b72077c4f7690773b95b7f5b6b854aa6e918",
+  owner: "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+} as const;
+const INV_2004_RULES = [
+  { id: "vault.frozen", text: "The vault is not frozen." },
+  { id: "mandate.none", text: "The purchase order's hash picked mandate 1." },
+  { id: "mandate.inactive", text: "Mandate 1 is active, not revoked." },
+  { id: "mandate.expired", text: "Mandate 1 runs until 2026-12-09." },
+  { id: "mandate.agent_mismatch", text: "The agent key is the mandate's." },
+  { id: "invoice.po_mismatch", text: "The purpose matches mandate 1." },
+  { id: "mandate.payee_mismatch", text: "The payee is the mandate's, `probarion-payee.testnet`." },
+  { id: "invoice.amount_invalid", text: "The amount, 4 USDC, is valid." },
+  { id: "mandate.over_per_payment", text: "4 USDC is under the 5 USDC cap for one payment." },
+  { id: "mandate.uses_exhausted", text: "2 of its 5 payments were used before this one." },
+  {
+    id: "mandate.over_total",
+    text: "With this one, the mandate's payments come to 10 of its 20 USDC.",
+  },
+  { id: "invoice.duplicate", text: "The invoice and its reference are unused." },
+  {
+    id: "vault.daily_backstop",
+    text: "With this one, the day's payments come to 10 of the vault's 500 USDC.",
+  },
+  { id: "intents.balance_low", text: "The payee is a NEAR account, not an Intents payee." },
+  { id: "custom.owner_confirmed", text: "The owner signed the amount with NEP-413." },
+] as const satisfies readonly { id: string; text: string }[];
+
+/**
+ * The board the landing draws in place of the screenshot of INV-2004's page in Payables (ConsoleShots.tsx
+ * ConsoleShot): the invoice as the console and the ledger record it, then the console page's three columns as rows.
+ * The file `invoice-INV-2004.txt` is not committed, so the sheet shows the recorded fields alone, under the labels the
+ * committed demo invoices use. The ledger's entries 7, 8 and 9 give the times, the rules, the decisions and spend 3;
+ * the upload time is the console page's, which docs/evidence/demo-vault/README.md records with the screenshot.
+ */
+export const INVOICE_BOARD = {
+  sheetLabel: "The invoice",
+  rowsLabel: "What happened to it",
+  note: "As the console and the signed ledger record it.",
+  invoice: {
+    kind: "Invoice",
+    network: "Testnet",
+    number: "INV-2004",
+    file: "invoice-INV-2004.txt",
+    /** The console's name for it, its spend reference (lib/payables/facts.ts refFor). */
+    ref: `inv-${INV_2004.hash.slice(0, 24)}`,
+    totalLabel: "Total due",
+    /** 4000000 base units of the 6-decimal test USDC. */
+    total: "4.00",
+    unit: "test USDC",
+    rows: [
+      { term: "Payee", value: "`probarion-payee.testnet`" },
+      { term: "Purchase order", value: "PO-1001, mandate 1" },
+      { term: "Uploaded", value: "2026-11-09, 17:33 UTC" },
+    ],
+    hash: { term: "sha256", value: INV_2004.hash, short: shortHash(INV_2004.hash) },
+  },
+  confirm: {
+    label: "Confirmed by the owner",
+    owner: INV_2004.owner,
+    short: shortHash(INV_2004.owner),
+    meta: "NEP-413 signature, 2026-11-09, 17:37 UTC",
+  },
+  rows: [
+    {
+      label: "Model wanted",
+      stamps: [{ tone: "none", label: "No model" }],
+      text: "No model read this invoice. Without one, nothing goes out until the owner signs the amount in their wallet.",
+      entry: { seq: 7, label: "Ledger entry 7, on the proof page", href: `${DEMO_PROOF}#seq-7` },
+    },
+    {
+      label: "Code allowed",
+      stamps: [{ tone: "paid", label: "Allowed" }],
+      text: `${INV_2004_RULES.length} rules passed, the owner's signature among them. The code allowed the payment.`,
+      entry: { seq: 8, label: "Ledger entry 8, on the proof page", href: `${DEMO_PROOF}#seq-8` },
+      rules: true,
+    },
+    {
+      label: "Contract did",
+      stamps: [
+        { tone: "held", label: "Held" },
+        { tone: "paid", label: "Paid" },
+      ],
+      text: "4 USDC is above the 3 USDC approval limit, so the vault held it as spend 3. The approver approved it from their own key, and the vault paid 4 test USDC to `probarion-payee.testnet`.",
+      txs: [HELD_TX, APPROVED_TX],
+    },
+  ] satisfies readonly BoardRow[],
+  rules: {
+    show: `Show the ${INV_2004_RULES.length} rules`,
+    hide: `Hide the ${INV_2004_RULES.length} rules`,
+    /** Read by a screen reader after each rule id, before what it checked. */
+    passed: ", passed:",
+    list: INV_2004_RULES,
+  },
+} as const;
+
 export const CONSOLE_SHOTS = {
   eyebrow: "The console",
   title: "An invoice held for an approver, then paid.",
@@ -1544,13 +1675,20 @@ export const CONSOLE_SHOTS = {
   ],
   /** The name over a shot's transaction link. The invoice's page has no transaction, and nothing stands in for one. */
   txLabel: "Testnet transaction",
-  /** Beside the landing's shot: the file itself, which a phone draws smaller than its 856px. */
-  fullSize: "Open full size",
   /**
-   * The one shot the landing shows, in the use cases (ConsoleShots.tsx ConsoleShot), under this label: the invoice's
-   * page. The held and the paid shot are in the docs (concepts/holds-and-approvals).
+   * What the landing shows in the use cases (ConsoleShots.tsx ConsoleShot), under this label: the invoice's page,
+   * redrawn from its record as INVOICE_BOARD, with a link to the screenshot itself. The held and the paid shot are in
+   * the docs (concepts/holds-and-approvals), as the invoice's is.
    */
-  landing: { shot: "invoice", eyebrow: "In the console" },
+  landing: {
+    shot: "invoice",
+    eyebrow: "In the console",
+    title: "What Probarion did with one invoice",
+    body: "INV-2004 went through Payables on testnet. It asked for 4 test USDC, above the mandate's 3 USDC approval limit. Each step links its proof.",
+    /** The screenshot of the page the board redraws, opened in this tab; `after` is read by a screen reader only. */
+    shotLink: { label: "Open the screenshot", after: ": the invoice's page in the console" },
+    board: INVOICE_BOARD,
+  },
   shots: [
     {
       id: "held",
@@ -1560,7 +1698,7 @@ export const CONSOLE_SHOTS = {
       alt: "The vault overview in the console: Held for approval (1), spend 3, 4 USDC to probarion-payee.testnet under mandate 1. Only the vault's approvers can approve or reject it.",
       title: "Held for an approver",
       body: "The owner confirmed the amount in their wallet. Above 3 USDC, the vault holds the spend until an approver signs, and it can only pay `probarion-payee.testnet`.",
-      link: demoTx("Held ", tx("9qUtxTguj17dp8KX61GW7YTVBQyJGZBt1ZWiQoM2699d", "9qUtxTgu…699d")),
+      link: HELD_TX,
     },
     {
       id: "invoice",
@@ -1579,10 +1717,7 @@ export const CONSOLE_SHOTS = {
       alt: "The vault overview after the approval: nothing held, and three paid spends of 4, 4 and 2 USDC, all to probarion-payee.testnet.",
       title: "Paid after approval",
       body: "The approver approved spend 3 from their own key, and the vault paid. Each spend went to the mandate's payee.",
-      link: demoTx(
-        "Approved ",
-        tx("EYPyrd9hapyZthjMwysShUnkDSVkMQHtPYHitidbr972", "EYPyrd9h…r972"),
-      ),
+      link: APPROVED_TX,
     },
   ] satisfies readonly ConsoleShot[],
   proof: {
@@ -3103,7 +3238,7 @@ export const INTEGRATE = {
   lede: "Three jobs an agent can do under a mandate. Each ran on our own vaults, on testnet or mainnet, and links its record.",
   /** How a developer plugs in, under the ways in. */
   sub: "You keep your model and your prompts. The owner creates a vault and a mandate from their own wallet, gives the agent a key that can call one method, `spend`, and the agent pays through the SDK.",
-  /** After the uses and the console's shot, an h3 over the four cards. */
+  /** After the uses and the console's invoice board, an h3 over the four cards. */
   waysTitle: "Four ways in",
   /** Read before every pill of the section, by a screen reader only. */
   statusPrefix: "Status: ",

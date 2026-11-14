@@ -1,5 +1,5 @@
 /*
- * Use cases (Integrate.tsx), under the section's head: the three uses as cards, the console's one screenshot
+ * Use cases (Integrate.tsx), under the section's head: the three uses as cards, one invoice from the console
  * (ConsoleShots.tsx, console.module.css), then the four ways in as one ruled row and the install line. The status
  * pills, the outcome marks and the link style are the page's shared pieces (parts.tsx, bits.tsx, site.module.css);
  * the stamps use the page's tone pairs. Every colour is a token from app/globals.css. Nothing moves on scroll.
@@ -107,6 +107,15 @@
 .stampRefused {
   background: var(--color-bad-bg);
   color: var(--color-bad);
+}
+/* The console board's stamps (ConsoleShots.tsx): wait on its tint for held, plan on its tint for no model. */
+.stampHeld {
+  background: var(--color-wait-bg);
+  color: var(--color-wait);
+}
+.stampNone {
+  background: var(--color-plan-bg);
+  color: var(--color-plan);
 }
 /* 7px more than the grid's gap: the stamps' line and the sentence's first line are 2.5em apart (1.4.8). */
 .outcomeText {
