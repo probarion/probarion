@@ -8,8 +8,9 @@ the repository and is not on npm yet; it reaches npm with the next release. ESM,
 
 The pure functions use no network, no filesystem and no Node built-in, so they run the same in Node and in a
 browser. The online helpers take any JSON-RPC client (an object with `call(method, params)`: `httpJsonRpc(url)`
-is a minimal one, and the `RpcClient` of `@probarion/sdk` fits as is) and sign nothing. Dependencies:
-`@noble/hashes` and `bs58`.
+is a minimal one, and the `RpcClient` of `@probarion/sdk` fits the interface) and sign nothing. Dependencies:
+`@noble/hashes` and `bs58`. `RpcClient` returns an older node's HTTP 200 `result.error` answer as a result,
+where `httpJsonRpc` throws `NearRpcError`; Probarion's CLI wraps it so that such an answer throws too.
 
 Status words: **Built** is implemented and tested in this repository. **Experimental** works on what was
 recorded but rests on behaviour that is not documented. **Planned** is not built yet.

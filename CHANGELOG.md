@@ -20,7 +20,7 @@ The software is an unaudited beta.
   repository and not on npm yet: it reaches npm with the next release, at the version the other packages share,
   and the release publishes it before `@probarion/core` (`PUBLISHED_DIRS` in `scripts/release-check.ts`). Its
   dependencies are `@noble/hashes` and `bs58`; its pure functions use no network and no Node built-in, and its
-  online helpers take any JSON-RPC client (the SDK's `RpcClient` fits as is) and sign nothing. Four primitives,
+  online helpers take any JSON-RPC client (the SDK's `RpcClient` fits the interface) and sign nothing. Four primitives,
   each with an example in `packages/near/examples`:
   - **Outcome proof verifier** (`src/outcome-proof.ts`, `src/proof-rpc.ts`). Built. `verifyOutcomeProof` checks a
     `light_client_proof` answer against a block the caller trusts: it recomputes the outcome's Merkle leaf, the
