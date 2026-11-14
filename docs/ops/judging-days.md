@@ -135,3 +135,6 @@ PASS  the RPC hosts this run read answered
 Four keys sit close to the 0.2 NEAR line: the mainnet spend key (0.2462 NEAR), the mainnet ledger key (0.2491 NEAR)
 and the ledger keys of the demo vault (0.2475 NEAR) and the 402 example (0.2452 NEAR). Each transaction a key signs
 takes from its allowance, so a mainnet spend or anchor during judging brings the mainnet keys nearer the line.
+On 2026-11-14 at 01:16 UTC, after the mainnet drill, the mainnet spend key read 0.2459 NEAR (0.2458808163, nonce
+224068463000006): its two refused spends burned 0.00034 NEAR of it
+([the views](../evidence/mainnet-v0/drill-2026-11-14/views-after.txt)).

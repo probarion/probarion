@@ -316,7 +316,7 @@ describe("the built-on section", () => {
 describe("the built-on facts", () => {
   const prose = README.replace(/\s+/g, " ");
 
-  it("NEAR: the vault and the factory on testnet, one small vault on mainnet with a NEAR payment, two Base payouts and a refusal", () => {
+  it("NEAR: the vault and the factory on testnet, one small vault on mainnet with a NEAR payment, two Base payouts, three refusals and a freeze", () => {
     const [near] = BUILT_ON.rows;
     expect(near.body).toBe(
       "Each vault is a NEAR contract that holds its USDC and checks every payment against the owner's mandate.",
@@ -327,7 +327,7 @@ describe("the built-on facts", () => {
     expect(near.checks).toEqual([
       "The vault and the factory run on NEAR testnet",
       "One small vault on mainnet since 2026-11-11, `v0.probarion.near`",
-      "On mainnet: a NEAR payment, two Base payouts and a refusal, all on chain",
+      "On mainnet: a NEAR payment, two Base payouts, three refusals and a freeze, all on chain",
     ]);
     expect(readmeRow("Vault contract")).toContain("**Shipped on NEAR testnet**");
     expect(readmeRow("Factory contract")).toContain("**Shipped on NEAR testnet**");
@@ -348,7 +348,7 @@ describe("the built-on facts", () => {
     );
     // The same words as the status list's row, which is held to the README in site-facts.test.ts.
     expect(statusOf("Mainnet vault").pill).toBe(
-      "On mainnet: 3 test payments (2 to Base), 1 refused on chain",
+      "On mainnet: 3 test payments (2 to Base), 3 refused on chain",
     );
     const record = JSON.parse(text(ROOT, "contracts", "deployments", "mainnet.json")) as {
       vault_v0: { account_id: string };

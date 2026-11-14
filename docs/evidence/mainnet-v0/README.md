@@ -175,3 +175,20 @@ probarion.xyz did not serve the files yet, so those runs fetched the same bytes 
 Release 0.1.1 has no `--invoice`, so A8 does not run, and without `--online` check e does not verify the TEE quotes.
 The TEE measurement is not pinned. The URLs under https://probarion.xyz/samples/mainnet answer only after the
 promote and the deploy that ship them.
+
+## 2026-11-14: A drill, two refused spends, a freeze and an unfreeze
+
+The sections above stay true for their runs. On 2026-11-14, between 01:06 and 01:13 UTC (block times), the owner ran a
+drill on this vault from their own Git Bash with near-cli-rs 0.30.1. Rehearsed by the team; a hijacked agent key
+could send exactly this. No USDC moved. The agent key sent a `spend` of 50 USDC on mandate 1, whose cap is 1 USDC a
+payment, and the contract refused it with `PROBARION:OverPerPayment`
+([`G6WJcTZA…`](https://nearblocks.io/txns/G6WJcTZA67NBSrLV8zhS7Ay5BQKt6qCSao7dndm1tF1c)). The owner froze the vault
+([`6oPDe77z…`](https://nearblocks.io/txns/6oPDe77z5FmendyMQPTeKMdA5jsgpboks9uyUNGLvX6Z)), the agent key sent a
+`spend` of 2 USDC on mandate 1, refused with `PROBARION:Frozen`
+([`DwXRPZHW…`](https://nearblocks.io/txns/DwXRPZHWWKaBcNpvp6F1rsaFzvM5wyi6A4Z6sckF8ifg)), and the owner unfroze it
+([`H4qf84Tw…`](https://nearblocks.io/txns/H4qf84TwG1U7k8MRVp6VJHJcwryJFUPzPrRDv3yEAu8T)). Both spends were over
+mandate 1's 1 USDC cap, so neither could have paid even if the vault had not been frozen. Read after it, at 01:13 and
+01:16 UTC, the vault was not frozen, mandate 1 still had 1 USDC and 1 payment left, the vault held 2 USDC, with 3
+spends and 4 anchors, and the agent key's allowance was 0.2458808163 NEAR (nonce
+224068463000006), down from 0.2462193502 NEAR by the gas of the two refused spends. The record, the views before,
+during and after, and how to check it: [`drill-2026-11-14/README.md`](drill-2026-11-14/README.md).

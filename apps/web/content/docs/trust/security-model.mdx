@@ -168,7 +168,7 @@ Every new spend and every approve is refused until unfreeze. reject and expire_h
 
 While the vault is frozen:
 
-- `spend` refuses with [`Frozen`](/docs/build/errors#Frozen), and the `check_spend` dry run answers `Frozen`.
+- `spend` refuses with [`Frozen`](/docs/build/errors#Frozen), and the `check_spend` dry run answers `Frozen`. On mainnet, in a drill the team rehearsed on 2026-11-14, the owner froze `v0.probarion.near` and a 2 USDC spend sent while it was frozen was refused with `PROBARION:Frozen`; that spend was also over mandate 1's 1 USDC cap, so it could not have paid either way ([the drill](https://github.com/probarion/probarion/blob/main/docs/evidence/mainnet-v0/drill-2026-11-14/README.md)).
 - `approve` refuses with `Frozen`.
 - Payouts already sent still settle or are released by their callbacks.
 - `reject` and `expire_held` still work.

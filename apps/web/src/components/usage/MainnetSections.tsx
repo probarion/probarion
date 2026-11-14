@@ -30,6 +30,16 @@ const REFUSAL_MEANING: Readonly<Record<string, string>> = {
   Frozen: "the vault was frozen",
 };
 
+/**
+ * What a refusal of the team's drill of 2026-11-14 adds to its row, by its key in docs/mainnet-proof.json: that the team
+ * rehearsed it, and that both spends were over mandate 1's cap (docs/evidence/mainnet-v0/drill-2026-11-14).
+ */
+const DRILL_NOTE: Readonly<Record<string, string>> = {
+  v0_drill_over_cap: "In a drill the team rehearsed: 50 USDC on a mandate of 1 USDC a payment.",
+  v0_drill_frozen_refused:
+    "In a drill the team rehearsed: 2 USDC, also over the 1 USDC cap, so it could not have paid even if the vault had not been frozen.",
+};
+
 export const MAINNET_COPY = {
   tag: "Real USDC · NEAR mainnet",
   title: (vault: string) => `Mainnet (${vault})`,
@@ -145,7 +155,8 @@ function decided(row: MainnetRow): string {
 function what(row: MainnetRow): string {
   if (row.kind === "refused_on_chain") {
     const meaning = row.errorCode ? REFUSAL_MEANING[row.errorCode] : undefined;
-    return `Refused on chain with ${row.errorCode}${meaning ? `: ${meaning}` : ""}. No USDC moved.`;
+    const drill = DRILL_NOTE[row.key];
+    return `Refused on chain with ${row.errorCode}${meaning ? `: ${meaning}` : ""}.${drill ? ` ${drill}` : ""} No USDC moved.`;
   }
   const where =
     row.kind === "base_payout" ? "a payout to Base through NEAR Intents" : "a payment on NEAR";

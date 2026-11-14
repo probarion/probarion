@@ -8,11 +8,14 @@ today.
 NEAR testnet with test tokens. Since 2026-11-11 one mainnet vault, `v0.probarion.near`, holds a small
 amount of real USDC. Its owner signed every transaction that created or configured it and every
 transfer that funded it; on 2026-11-13 1Click settled a swap into the vault's Intents balance with its
-own `intents.near` transaction. The vault has made one NEAR payment and one refusal ([the run](README.md#near-mainnet-2026-11-11)). On
+own `intents.near` transaction. On 2026-11-11 the vault made one NEAR payment and one refusal ([the run](README.md#near-mainnet-2026-11-11)). On
 2026-11-13 it made two Base payouts through NEAR Intents, both tests to the owner's own Base address: 1.00 USDC
 decided by code rules alone ([the run](README.md#near-mainnet-2026-11-13-s1-a-base-payout)), then 0.25 USDC decided
 by an attested model and the code rules ([the run](README.md#near-mainnet-2026-11-13-s2-an-attested-base-payout)).
-Since the 1.00 USDC run its decisions are in a signed ledger anchored on the vault.
+Since the 1.00 USDC run its decisions are in a signed ledger anchored on the vault. On 2026-11-14, in a drill the team
+rehearsed, it refused two more spends on chain, one over mandate 1's 1 USDC cap and one sent while the owner had
+frozen it, also over that cap, so neither could have paid even if the vault had not been frozen; no USDC moved
+([the drill](docs/evidence/mainnet-v0/drill-2026-11-14/README.md)).
 
 ## Supported versions
 

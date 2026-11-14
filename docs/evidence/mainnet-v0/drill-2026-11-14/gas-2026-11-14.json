@@ -1,0 +1,145 @@
+{
+  "what": "Gas burned by the four transactions of the 2026-11-14 drill on v0.probarion.near, NEAR mainnet, summed over the transaction outcome and every receipt outcome",
+  "read_on": "2026-11-14",
+  "rpc": "https://archival-rpc.mainnet.fastnear.com",
+  "method": "tx with the transaction's own signer as sender_account_id and wait_until FINAL, read-only",
+  "units": "gas_burnt in gas units (1 Tgas = 10^12), tokens_burnt in yoctoNEAR (1 NEAR = 10^24)",
+  "txs": [
+    {
+      "tx_hash": "G6WJcTZA67NBSrLV8zhS7Ay5BQKt6qCSao7dndm1tF1c",
+      "what": "(a) spend of 50 USDC on mandate 1 (cap 1 USDC), signed with the agent key: refused with PROBARION:OverPerPayment",
+      "signer_id": "v0.probarion.near",
+      "receiver_id": "v0.probarion.near",
+      "status": "Failure",
+      "outcomes": [
+        {
+          "kind": "transaction",
+          "id": "G6WJcTZA67NBSrLV8zhS7Ay5BQKt6qCSao7dndm1tF1c",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "308602831962",
+          "tokens_burnt": "30860283196200000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "HNpqhACzbmfGHijmfAGdVURcRxMt2zUXy9knczD1P7D3",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "1427128592697",
+          "tokens_burnt": "142712859269700000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "4GbAGxvbz9bzC62P3eQfN4y4BwPf24txP8LQ1N4n7gQw",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "223182562500",
+          "tokens_burnt": "0"
+        }
+      ],
+      "sum_gas_burnt": "1958913987159",
+      "sum_tokens_burnt": "173573142465900000000",
+      "sum_tgas": "1.9589",
+      "sum_near": "0.000174"
+    },
+    {
+      "tx_hash": "6oPDe77z5FmendyMQPTeKMdA5jsgpboks9uyUNGLvX6Z",
+      "what": "(b) freeze, signed by probarion.near: the vault logged the frozen event",
+      "signer_id": "probarion.near",
+      "receiver_id": "v0.probarion.near",
+      "status": "SuccessValue",
+      "outcomes": [
+        {
+          "kind": "transaction",
+          "id": "6oPDe77z5FmendyMQPTeKMdA5jsgpboks9uyUNGLvX6Z",
+          "executor_id": "probarion.near",
+          "gas_burnt": "308440969720",
+          "tokens_burnt": "30844096972000000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "9bvuWic4iMPDkrgPEyFMSTHA1jAXrhztyqa86WNP7K8q",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "1480035586962",
+          "tokens_burnt": "148003558696200000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "gqGhonivzo33gaQGTZ5cpYZjXxj8ceAXoQFANBGiTeB",
+          "executor_id": "probarion.near",
+          "gas_burnt": "223182562500",
+          "tokens_burnt": "0"
+        }
+      ],
+      "sum_gas_burnt": "2011659119182",
+      "sum_tokens_burnt": "178847655668200000000",
+      "sum_tgas": "2.0117",
+      "sum_near": "0.000179"
+    },
+    {
+      "tx_hash": "DwXRPZHWWKaBcNpvp6F1rsaFzvM5wyi6A4Z6sckF8ifg",
+      "what": "(c) spend of 2 USDC on mandate 1 (cap 1 USDC) while frozen, signed with the agent key: refused with PROBARION:Frozen",
+      "signer_id": "v0.probarion.near",
+      "receiver_id": "v0.probarion.near",
+      "status": "Failure",
+      "outcomes": [
+        {
+          "kind": "transaction",
+          "id": "DwXRPZHWWKaBcNpvp6F1rsaFzvM5wyi6A4Z6sckF8ifg",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "308600596028",
+          "tokens_burnt": "30860059602800000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "4Xe2bgkPoEvSjV8wvhRTeCLCdedg2ucyHQyaRTyz2cHA",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "1341007344972",
+          "tokens_burnt": "134100734497200000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "Y9nzbFbpaNrir2Cn72xk1XqV4UZGN2wyeMKVHm5n9F2",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "223182562500",
+          "tokens_burnt": "0"
+        }
+      ],
+      "sum_gas_burnt": "1872790503500",
+      "sum_tokens_burnt": "164960794100000000000",
+      "sum_tgas": "1.8728",
+      "sum_near": "0.000165"
+    },
+    {
+      "tx_hash": "H4qf84TwG1U7k8MRVp6VJHJcwryJFUPzPrRDv3yEAu8T",
+      "what": "(d) unfreeze with 1 yoctoNEAR, signed by probarion.near: the vault logged the unfrozen event",
+      "signer_id": "probarion.near",
+      "receiver_id": "v0.probarion.near",
+      "status": "SuccessValue",
+      "outcomes": [
+        {
+          "kind": "transaction",
+          "id": "H4qf84TwG1U7k8MRVp6VJHJcwryJFUPzPrRDv3yEAu8T",
+          "executor_id": "probarion.near",
+          "gas_burnt": "308536337150",
+          "tokens_burnt": "30853633715000000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "6j5hXUo3HMwbt1ekbN1NcCgEXjijNsKJJGS1gFYB3gCv",
+          "executor_id": "v0.probarion.near",
+          "gas_burnt": "1480776519656",
+          "tokens_burnt": "148077651965600000000"
+        },
+        {
+          "kind": "receipt",
+          "id": "755GR1MD72qbXmc2LWpYMgnUCotf2mj5SC4DvAeaKgJ9",
+          "executor_id": "probarion.near",
+          "gas_burnt": "223182562500",
+          "tokens_burnt": "0"
+        }
+      ],
+      "sum_gas_burnt": "2012495419306",
+      "sum_tokens_burnt": "178931285680600000000",
+      "sum_tgas": "2.0125",
+      "sum_near": "0.000179"
+    }
+  ]
+}

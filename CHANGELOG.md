@@ -15,6 +15,21 @@ The software is an unaudited beta.
 
 ### Added
 
+- The record of a drill on the mainnet vault, run on 2026-11-14 between 01:06 and 01:13 UTC. Rehearsed by the team;
+  a hijacked agent key could send exactly this. No USDC moved. The agent key sent a spend of 50 USDC on mandate 1,
+  whose cap is 1 USDC a payment, and `v0.probarion.near` refused it on chain with `PROBARION:OverPerPayment`; the
+  owner froze the vault, a spend of 2 USDC sent while it was frozen was refused with `PROBARION:Frozen`, and the owner
+  unfroze it. Both spends were over mandate 1's 1 USDC cap, so neither could have paid even if the vault had not been
+  frozen, and the 15 Tgas of gas each carried was a safety margin with no part in the refusals.
+  `docs/evidence/mainnet-v0/drill-2026-11-14/` holds the four transactions, the vault's views before, during and
+  after, the three requests with their sha256, and the gas of each transaction, and Claude's later archival read of the
+  same views at four block heights around the drill, which gives request E `Frozen` at both frozen blocks (the owner's
+  check of it while frozen was skipped). `docs/mainnet-proof.json` and its copy
+  under `/samples/mainnet/` record the four as `v0_drill_over_cap`, `v0_drill_freeze`, `v0_drill_frozen_refused` and
+  `v0_drill_unfreeze`. The README, `JUDGES.md`, `SECURITY.md`, `docs/TRACKS.md`, the threat model, the status board
+  (whose eyebrow now names the drill beside 2026-11-13), `/usage` (from the proof file, with each drill refusal labelled
+  as the team's) and four docs pages now tell the drill, and where they tell the spend refused while frozen they say it
+  was over the cap too. The agent key's allowance, read again at 01:16 UTC, is 0.2458808163 NEAR at nonce 224068463000006.
 - The eval's model replay, recorded on NEAR AI Cloud. `eval/recorded/` holds the calls to `Qwen/Qwen3.8-27B` of
   2026-11-14, from 01:10:55 to 01:22:24 UTC, for the 19 cases that reach the model step: 17 answers that pass A1 to
   A8 offline, and 2 failed calls, decided rules-only (I-01 timed out after 90000 ms, and again when recorded once
@@ -48,7 +63,8 @@ The software is an unaudited beta.
   and Windows PowerShell 5.1, against local copies and raw.githubusercontent.com
   (`docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt`). `.github/workflows/no-clone-verify.yml` is set to
   run the same block on Node 24, which 0.1.1 declares, and on Node 22 to learn whether 0.1.1 also works there, with
-  no checkout and no secret. It had not run on GitHub when this entry was written.
+  no checkout and no secret. Its first run on GitHub, on commit 3fc5879 at 23:35 UTC on 2026-11-13, printed
+  `RESULT: PASS` on Node 24.22.2 and on Node 22.23.4, where npm warns that 0.1.1 declares Node 24.
 - `/usage` leads with what has happened, from the committed evidence. A "Mainnet (v0.probarion.near)" card, built
   at build time from `docs/mainnet-proof.json` and the S1 and S2 run records, counts 3 payments (2 of them to
   Base), 1 refusal on chain (NoMandate) and 3 attested decisions (1 paid, 2 false refusals, with why and their

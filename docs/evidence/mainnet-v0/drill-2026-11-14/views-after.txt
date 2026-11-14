@@ -1,0 +1,39 @@
+v0.probarion.near on NEAR mainnet, after the drill of 2026-11-14. View calls at final finality: nothing here was
+signed or sent. The same helper and the same lines as views-before.txt, which says what each line reads.
+
+
+== The owner's read, step (e) of the runbook, in the owner's Git Bash ==
+
+utc            2026-11-14T01:13:17Z
+frozen         "frozen":false
+mandate 1      "max_uses":2 "reserved":"0" "spent":"1000000" "status":"active" "uses":1
+check 50 USDC  {"code":"OverPerPayment","ok":false,"would_hold":false}
+check  2 USDC  {"code":"OverPerPayment","ok":false,"would_hold":false}
+check  1 USDC  {"code":null,"ok":true,"would_hold":false}
+vault USDC     "2000000"
+spends         3
+last anchor    "seq":4
+agent key      | nonce 224068463000006 | allowance 0.2458808163015667 NEAR |
+
+
+== Claude's own read-only re-read, 2026-11-14 from 01:16:46 to 01:16:53 UTC ==
+
+Run by Claude, after the drill, with the runbook's helper (near-cli-rs 0.30.1 in Git Bash, view calls and list-keys,
+nothing signed). Its output as printed, with the start and end time:
+
+utc            2026-11-14T01:16:46Z
+frozen         "frozen":false
+mandate 1      "max_uses":2 "reserved":"0" "spent":"1000000" "status":"active" "uses":1
+check 50 USDC  {"code":"OverPerPayment","ok":false,"would_hold":false}
+check  2 USDC  {"code":"OverPerPayment","ok":false,"would_hold":false}
+check  1 USDC  {"code":null,"ok":true,"would_hold":false}
+vault USDC     "2000000"
+spends         3
+last anchor    "seq":4
+agent key      | 2 | ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd | 224068463000006 | only do ["spend"] function calls on v0.probarion.near with an allowance of 0.2458808163015667 NEAR  |
+utc end        2026-11-14T01:16:53Z
+
+The agent key's nonce went from 224068463000004 to 224068463000006: A and C, the two transactions it signed. Its
+allowance went from 0.2462193502381326 to 0.2458808163015667 NEAR, down 0.0003385339365659 NEAR, which is the NEAR
+that A and C burned together as the archival node reports it (gas-2026-11-14.json: 0.0001735731424659 and
+0.0001649607941 NEAR).

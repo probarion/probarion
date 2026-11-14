@@ -25,3 +25,6 @@ c471b5c02822d82d429a22759a074ff730480966:apps/web/src/lib/sentry-scrub.test.ts:g
 # Public data, not a secret: the same "ledger key ed25519:..." line of docs/mainnet-proof.json, in the site's byte copy
 # that the no-clone mainnet verify downloads (apps/web/public/samples/mainnet), recorded in d275ff0.
 d275ff0839f9e1493d45834d2437e7eb8d12654a:apps/web/public/samples/mainnet/mainnet-proof.json:generic-api-key:620
+# Public data, not a secret: "the agent key ed25519:..." in the mainnet drill's archival re-read is the public key of
+# v0.probarion.near's spend-only agent key on NEAR mainnet (readable by anyone with view_access_key_list), in 3266ff9.
+3266ff94f5079b82a4add8306ff46ae868cf6f04:docs/evidence/mainnet-v0/drill-2026-11-14/views-archival-2026-11-14.txt:generic-api-key:11
