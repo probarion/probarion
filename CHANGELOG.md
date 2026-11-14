@@ -26,7 +26,8 @@ The software is an unaudited beta.
   and Windows PowerShell 5.1, against local copies and raw.githubusercontent.com
   (`docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt`). `.github/workflows/no-clone-verify.yml` is set to
   run the same block on Node 24, which 0.1.1 declares, and on Node 22 to learn whether 0.1.1 also works there, with
-  no checkout and no secret. It had not run on GitHub when this entry was written.
+  no checkout and no secret. Its first run on GitHub, on commit 3fc5879 at 23:35 UTC on 2026-11-13, printed
+  `RESULT: PASS` on Node 24.22.2 and on Node 22.23.4, where npm warns that 0.1.1 declares Node 24.
 - `/usage` leads with what has happened, from the committed evidence. A "Mainnet (v0.probarion.near)" card, built
   at build time from `docs/mainnet-proof.json` and the S1 and S2 run records, counts 3 payments (2 of them to
   Base), 1 refusal on chain (NoMandate) and 3 attested decisions (1 paid, 2 false refusals, with why and their

@@ -112,7 +112,9 @@ attestation covers its decision.
 | The MCP server in the official MCP Registry | `io.github.probarion/probarion` ([registry](https://registry.modelcontextprotocol.io/?q=io.github.probarion/probarion)) |
 | The browser extension | [Chrome Web Store](https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn) |
 
-Release 0.1.1 is ESM only and declares Node.js 24 or newer.
+Release 0.1.1 is ESM only and declares Node.js 24 or newer. On 2026-11-13 at 23:35 UTC, CI ran the no-clone mainnet
+verify below on Node v24.22.2 and on Node v22.23.4, where npm warns that the engine is unsupported, and both printed
+`RESULT: PASS` ([v22 log](https://github.com/probarion/probarion/actions/runs/43528200026/job/132239070376), [v24 log](https://github.com/probarion/probarion/actions/runs/43528200026/job/132239070722)).
 
 ## Check it with no clone
 
