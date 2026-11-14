@@ -108,7 +108,13 @@ export interface BoundEvent extends Nep297Event {
   /** The log's index among all logs of that outcome, plain ones included. */
   logIndex: number;
   status: ReceiptStatusKind;
-  /** True when read from ProvenOutcome[] (trusts the head), false from an RPC tx answer (trusts that RPC). */
+  /**
+   * The kind of source the event was read from: true for a ProvenOutcome list, false for an RPC tx answer. It names
+   * the input type and is not a check made here: this reader does not verify proofs, and any list in the shape of
+   * ProvenOutcome[] reads as proven. It means "trusts the head" when the list is the result of verifyOutcomeProof
+   * or verifyTransactionOutcomes; verify a list from anywhere else (a saved `tx prove --json`, a client's payload)
+   * before reading it.
+   */
   proven: boolean;
 }
 
@@ -118,8 +124,9 @@ export interface EventProblem {
   /** -1 when the problem is the outcome itself, not one of its logs. */
   logIndex: number;
   /**
-   * A stable code, a colon, then the detail. Codes: `malformed_outcome`, `duplicate_outcome`, `malformed_event`,
-   * `unknown_status`, `unsupported_version`, `bad_data`, `bad_item`.
+   * A stable code, a colon, then the detail. Codes: `malformed_outcome`, `duplicate_outcome`, `missing_outcome`,
+   * `malformed_event`, `unknown_status`, `unsupported_version`, `bad_data`, `bad_item`. A `missing_outcome` is placed
+   * on the outcome that created the receipt the source lacks.
    */
   problem: string;
 }
@@ -133,6 +140,8 @@ interface WalkedOutcome {
   logs: readonly string[];
   status: ReceiptStatusKind;
   proven: boolean;
+  /** The receipts this outcome created; undefined for an RPC outcome without `receipt_ids` (a trimmed record). */
+  receiptIds: readonly string[] | undefined;
 }
 
 interface WalkedSource {
@@ -147,8 +156,8 @@ const PROVEN_STATUS_KIND: Readonly<Record<string, ReceiptStatusKind>> = {
   unknown: "unknown",
 };
 
-function isLogList(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.every((log) => typeof log === "string");
+function isStringList(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function problemAt(
@@ -162,10 +171,13 @@ function problemAt(
 
 function walkProven(value: unknown, index: number): WalkedOutcome | string {
   if (!isRecord(value)) return `proven outcome ${index} is not an object`;
-  const { id, executorId, logs, status } = value;
+  const { id, executorId, logs, receiptIds, status } = value;
   if (typeof id !== "string" || id.length === 0) return `proven outcome ${index} has no id`;
   if (typeof executorId !== "string") return `proven outcome ${id} has no executorId`;
-  if (!isLogList(logs)) return `the logs of proven outcome ${id} are not a list of strings`;
+  if (!isStringList(logs)) return `the logs of proven outcome ${id} are not a list of strings`;
+  if (!isStringList(receiptIds)) {
+    return `the receiptIds of proven outcome ${id} are not a list of strings`;
+  }
   const kind =
     isRecord(status) &&
     typeof status.kind === "string" &&
@@ -173,7 +185,7 @@ function walkProven(value: unknown, index: number): WalkedOutcome | string {
       ? PROVEN_STATUS_KIND[status.kind]
       : undefined;
   if (kind === undefined) return `the status of proven outcome ${id} is not a ProvenStatus`;
-  return { id, executor: executorId, logs, status: kind, proven: true };
+  return { id, executor: executorId, logs, status: kind, proven: true, receiptIds };
 }
 
 function walkRpc(value: unknown, where: string): WalkedOutcome | string {
@@ -182,20 +194,28 @@ function walkRpc(value: unknown, where: string): WalkedOutcome | string {
   if (typeof id !== "string" || id.length === 0) return `${where} has no id`;
   if (!isRecord(outcome)) return `${where} (${id}) has no outcome`;
   if (typeof outcome.executor_id !== "string") return `${where} (${id}) has no executor_id`;
-  if (!isLogList(outcome.logs)) return `the logs of ${where} (${id}) are not a list of strings`;
+  if (!isStringList(outcome.logs)) return `the logs of ${where} (${id}) are not a list of strings`;
+  const receiptIds = outcome.receipt_ids;
+  if (receiptIds !== undefined && !isStringList(receiptIds)) {
+    return `the receipt_ids of ${where} (${id}) are not a list of strings`;
+  }
   return {
     id,
     executor: outcome.executor_id,
     logs: outcome.logs,
     status: receiptStatusKind(outcome.status),
     proven: false,
+    receiptIds,
   };
 }
 
 /**
  * The outcomes of a source in its order: `transaction_outcome` (when present) then `receipts_outcome`, or the
  * ProvenOutcome array as given. An outcome without the fields read here, or a second outcome with an id already
- * seen (its events would count twice), is a problem and is left out.
+ * seen (its events would count twice), is a problem and is left out. A receipt that an outcome lists as created
+ * (ProvenOutcome `receiptIds`, RPC `receipt_ids`) and that the source does not hold is a `missing_outcome`: a
+ * source that leaves a receipt out (a trimmed record, or an RPC that hides the ft_resolve_transfer refund) would
+ * otherwise drop its events from the count unseen. An RPC outcome without `receipt_ids` cannot be checked this way.
  */
 function walkSource(source: unknown): WalkedSource {
   const outcomes: WalkedOutcome[] = [];
@@ -231,6 +251,21 @@ function walkSource(source: unknown): WalkedSource {
         "malformed_outcome: the source is not a tx answer with receipts_outcome or a list of proven outcomes",
       ),
     );
+  }
+  const reported = new Set<string>();
+  for (const outcome of outcomes) {
+    for (const receiptId of outcome.receiptIds ?? []) {
+      if (seen.has(receiptId) || reported.has(receiptId)) continue;
+      reported.add(receiptId);
+      problems.push(
+        problemAt(
+          outcome.id,
+          outcome.executor,
+          -1,
+          `missing_outcome: ${outcome.id} created receipt ${receiptId}, which is not in the source`,
+        ),
+      );
+    }
   }
   return { outcomes, problems };
 }
@@ -292,8 +327,9 @@ function bind(outcome: WalkedOutcome, logIndex: number, event: Nep297Event): Bou
 
 /**
  * The events of the bound emitters, and (for the typed readers) what stood in the way of reading them all: the
- * walk's problems, a malformed EVENT_JSON: line written by a bound emitter in a counted receipt (it may be the
- * event a reader is after), and matching events left out because their receipt's status is unknown.
+ * walk's problems, a malformed EVENT_JSON: line written by a bound emitter in a counted receipt or in one whose
+ * status is unknown (it may be the event a reader is after), and matching events left out because their receipt's
+ * status is unknown. A failed receipt's malformed line is not a problem: its logs do not count.
  */
 function collect(
   walked: WalkedSource,
@@ -309,7 +345,7 @@ function collect(
       const parsed = parseEventLog(log);
       if (parsed.kind === "plain") return;
       if (parsed.kind === "malformed") {
-        if (counted) {
+        if (counted || outcome.status === "unknown") {
           problems.push(
             problemAt(outcome.id, outcome.executor, logIndex, `malformed_event: ${parsed.problem}`),
           );
@@ -344,8 +380,10 @@ function collect(
  * malformed logs are skipped (`scanAllEvents` lists the malformed ones).
  *
  * Throws TypeError for an invalid query, and NearFormatError (`what` "source") when the source is not a tx answer
- * or a ProvenOutcome list, or holds an outcome without the fields read here or the same outcome twice: a reader
- * with no problem list refuses rather than return fewer events than the source holds.
+ * or a ProvenOutcome list, holds an outcome without the fields read here or the same outcome twice, or lacks a
+ * receipt that one of its outcomes created (`missing_outcome`): a reader with no problem list refuses rather than
+ * return fewer events than the transaction holds. To read the events of a receipt proven on its own, whose
+ * children the list does not hold, use a typed reader or scanAllEvents, which report it as a problem.
  */
 export function eventsOf(source: OutcomeSource, query: EventQuery): BoundEvent[] {
   const checked = checkQuery(query);
@@ -356,9 +394,9 @@ export function eventsOf(source: OutcomeSource, query: EventQuery): BoundEvent[]
 }
 
 /**
- * Every NEP-297 event of every outcome, any emitter and any status, plus every malformed EVENT_JSON: log and
- * malformed outcome. For diagnostics and display: none of it is bound to a contract, so none of it is evidence
- * that a token moved. It does not throw.
+ * Every NEP-297 event of every outcome, any emitter and any status, plus every malformed EVENT_JSON: log and every
+ * malformed, repeated or missing outcome. For diagnostics and display: none of it is bound to a contract, so none
+ * of it is evidence that a token moved. It does not throw.
  */
 export function scanAllEvents(source: OutcomeSource): {
   events: BoundEvent[];
@@ -670,7 +708,7 @@ const NFT_PARSERS: Readonly<Record<string, ItemParser<NftEvent>>> = {
  * NEP-141 `ft_mint`, `ft_burn` and `ft_transfer` items logged by `token` itself (major version 1). Amounts are
  * canonical U128 decimal strings read as bigint; account ids must be valid; `memo` is a string, null or absent
  * (null). Other nep141 events are skipped; an event or item that breaks the schema is a problem, not an item.
- * Throws TypeError for an invalid `token` or option; a malformed source is a problem, not a throw.
+ * Throws TypeError for an invalid `token` or option; a malformed or incomplete source is a problem, not a throw.
  */
 export function nep141Events(
   source: OutcomeSource,
@@ -714,7 +752,11 @@ function addTo(deltas: Map<string, bigint>, key: string, change: bigint): void {
  * Net change per account from `token`'s own NEP-141 events in receipts that succeeded: mint +, burn -, transfer
  * - old and + new. An `ft_transfer_call` refund is the token's second `ft_transfer` (receiver back to sender,
  * logged by `ft_resolve_transfer`), so it nets out here. Every account an event names has an entry, 0n when it
- * nets to zero. The deltas are complete when `problems` is empty; with problems, some events were not counted.
+ * nets to zero. With problems, some events were not counted. With none, the deltas are complete for the outcomes
+ * the source holds, and the source holds every receipt its outcomes list as created (a receipt left out, such as a
+ * hidden refund, is a `missing_outcome` problem). A ProvenOutcome list and a full RPC answer always list them; an
+ * RPC outcome without `receipt_ids` (a trimmed record) cannot be checked, and then the deltas speak for the
+ * outcomes the source holds and no more.
  */
 export function ftDeltas(
   source: OutcomeSource,

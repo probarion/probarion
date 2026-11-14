@@ -361,6 +361,44 @@ describe("schema problems are reported, not counted", () => {
     expect(codes(problems)).toEqual(["duplicate_outcome"]);
   });
 
+  it("reports a token's malformed line in a receipt of unknown status, and not in a failed one", () => {
+    const broken =
+      'EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_mint","data":[{"owner_id"';
+    // Synthetic, labelled: one receipt failed, one carries no status, each with a truncated event of the token.
+    const failedReceipt = outcome(FT, [broken], { Failure: { ActionError: { index: 0 } } });
+    expect(nep141Events(tree(failedReceipt), FT)).toEqual({ items: [], problems: [] });
+    expect(codes(nep141Events(tree(failedReceipt), FT, { status: "any" }).problems)).toEqual([
+      "malformed_event",
+    ]);
+    const statusLess: OutcomeLike = {
+      id: "synthetic-status-less",
+      outcome: { executor_id: FT, logs: ["a plain log", broken] },
+    };
+    const problem = {
+      receiptId: "synthetic-status-less",
+      emitter: FT,
+      logIndex: 1,
+      problem: "malformed_event: the text after EVENT_JSON: is not JSON",
+    };
+    expect(nep141Events(tree(statusLess), FT)).toEqual({ items: [], problems: [problem] });
+    expect(ftDeltas(tree(statusLess), FT).problems).toEqual([problem]);
+  });
+
+  it("counts logIndex over every log of the outcome, plain ones included", () => {
+    // Synthetic, labelled: plain logs and a broken line before the token's event.
+    const receipt = outcome(FT, [
+      "a plain log",
+      "EVENT_JSON:{broken",
+      "another plain log",
+      nep141("ft_mint", [{ owner_id: "a.near", amount: "1" }]),
+    ]);
+    const { items, problems } = nep141Events(tree(receipt), FT);
+    expect(items.map((i) => [i.event.logIndex, i.itemIndex, i.item.event])).toEqual([
+      [3, 0, "ft_mint"],
+    ]);
+    expect(problems.map((p) => [p.logIndex, codes([p])[0]])).toEqual([[1, "malformed_event"]]);
+  });
+
   it("throws TypeError for an invalid contract or option", () => {
     expect(() => nep141Events(TREES.paid, "")).toThrow(TypeError);
     expect(() => nep245Events(TREES.paid, "Not Valid")).toThrow(TypeError);
@@ -420,6 +458,44 @@ describe("ft_transfer_call refund (synthetic, labelled)", () => {
     expect([...ftDeltas(source, FT).deltas]).toEqual([
       [SENDER, 0n],
       [RECEIVER, 0n],
+    ]);
+  });
+
+  it("reports a refund that the source leaves out instead of counting the receiver's 100", () => {
+    // ft_transfer_call's receipt creates ft_on_transfer's and ft_resolve_transfer's: its receipt_ids name both.
+    const onTransfer = outcome(RECEIVER, [], { SuccessValue: "IjEwMCI=" }); // returns "100": refund it all
+    const resolve = outcome(FT, [
+      nep141("ft_transfer", [
+        { old_owner_id: RECEIVER, new_owner_id: SENDER, amount: "100", memo: "refund" },
+      ]),
+    ]);
+    const transferCall: OutcomeLike = {
+      id: "synthetic-transfer-call",
+      outcome: {
+        executor_id: FT,
+        logs: [
+          nep141("ft_transfer", [{ old_owner_id: SENDER, new_owner_id: RECEIVER, amount: "100" }]),
+        ],
+        receipt_ids: [onTransfer.id, resolve.id],
+        status: { SuccessReceiptId: "C7aoovt8hQneqUrrqoaZaWurwNRuwCE3P5rr1RTAXnJe" },
+      },
+    };
+    expect(ftDeltas(tree(transferCall, onTransfer, resolve), FT)).toEqual({
+      deltas: new Map([
+        [SENDER, 0n],
+        [RECEIVER, 0n],
+      ]),
+      problems: [],
+    });
+    const hidden = ftDeltas(tree(transferCall, onTransfer), FT);
+    expect(hidden.deltas.get(RECEIVER)).toBe(100n); // what the events the source holds add up to
+    expect(hidden.problems).toEqual([
+      {
+        receiptId: "synthetic-transfer-call",
+        emitter: FT,
+        logIndex: -1,
+        problem: `missing_outcome: synthetic-transfer-call created receipt ${resolve.id}, which is not in the source`,
+      },
     ]);
   });
 });
@@ -539,5 +615,24 @@ describe("ftDeltas on the reference logs of near-contract-standards 5.29.1", () 
     // mints: bob +100, bob +100, alice +200; burns: bob -100, alice -200, bob -100;
     // transfers: bob -> alice 100, alice -> bob 200, bob -> alice 100.
     expect(Object.fromEntries(deltas)).toEqual({ bob: 0n, alice: 0n });
+  });
+
+  it("gives each reference log its own deltas, none of which nets to zero", () => {
+    // Read one log at a time, so a sign swapped between mint and burn, or between old and new owner, shows.
+    const FT = "ft.test.near";
+    const expected: Record<string, Record<string, bigint>> = {
+      ft_mint: { bob: 100n },
+      ft_mints: { bob: 100n, alice: 200n },
+      ft_burn: { bob: -100n },
+      ft_burns: { alice: -200n, bob: -100n },
+      ft_transfer: { bob: -100n, alice: 100n },
+      ft_transfers: { alice: -100n, bob: 100n }, // alice -> bob 200, then bob -> alice 100
+    };
+    expect(Object.keys(REFERENCE.nep141).sort()).toEqual(Object.keys(expected).sort());
+    for (const [name, log] of Object.entries(REFERENCE.nep141)) {
+      const { deltas, problems } = ftDeltas(tree(outcome(FT, [log])), FT);
+      expect(problems, name).toEqual([]);
+      expect(Object.fromEntries(deltas), name).toEqual(expected[name]);
+    }
   });
 });

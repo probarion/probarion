@@ -23,8 +23,9 @@ export const TESTNET_SPEND_1 = {
 
 /**
  * The merchant's net change in `token` (in the token's smallest unit) over every receipt of the transaction, 0n
- * when no counted event names it. Refuses (throws) when any event of the token could not be read, since the sum
- * would then be partial.
+ * when no counted event names it. Refuses (throws) when any event of the token could not be read, or when the
+ * answer lacks a receipt that one of its outcomes created (a hidden refund, say), since the sum would then be
+ * partial.
  */
 export async function paidAmount(
   rpc: NearRpc,

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ftDeltas, mtDeltas, nep141Events, nep245Events, scanAllEvents } from "../src/events.js";
+import {
+  eventsOf,
+  ftDeltas,
+  mtDeltas,
+  nep141Events,
+  nep245Events,
+  scanAllEvents,
+} from "../src/events.js";
 import { verifyTransactionOutcomes } from "../src/outcome-proof.js";
 import type { ProvenOutcome, TrustedHead, TxTreeLike } from "../src/types.js";
 import { readFixture } from "./helpers/fixtures.js";
@@ -99,5 +106,29 @@ describe("events read from proven outcomes (mainnet spend 2)", () => {
       signerId: VAULT,
     });
     expect(result.ok ? "ok" : result.code).toBe("outcome_root_mismatch");
+  });
+
+  it("reports the POA burn as missing when its outcomes are left out of a list of proven ones", () => {
+    // The POA token's burn receipt and the receipt it created, left out: what a list of receipts proven one by one
+    // gives when the `tx` answer that named them hid those two. Each of the 9 left is still a proven outcome.
+    const BURN = "D7Ux36fgy29tu5jjEoEstVwbLz3FXDP8Q2gDu65ZkK3b";
+    const BURN_CHILD = "9aKWUzfU2vCZSxdZcPeKmTKFLLDqgT6PiWZFGJCUP5xV";
+    const MT_BURN = "F2BErA5fo6HBPhgwjyER9iiCrs9XHmDHX6dsey1dZmVi"; // intents.near's receipt, which created BURN
+    const partial = outcomes.filter((o) => o.id !== BURN && o.id !== BURN_CHILD);
+    expect(partial).toHaveLength(9);
+    const missing = {
+      receiptId: MT_BURN,
+      emitter: INTENTS,
+      logIndex: -1,
+      problem: `missing_outcome: ${MT_BURN} created receipt ${BURN}, which is not in the source`,
+    };
+    // The burn of 1000000 is not in the list: no delta, and a problem says why instead of an empty, clean answer.
+    expect(ftDeltas(partial, POA_ASSET)).toEqual({ deltas: new Map(), problems: [missing] });
+    expect(nep141Events(partial, POA_ASSET).problems).toEqual([missing]);
+    expect(mtDeltas(partial, INTENTS).problems).toEqual([missing]);
+    expect(() => eventsOf(partial, { emitters: [POA_ASSET] })).toThrow(missing.problem);
+    expect(scanAllEvents(partial).malformed).toEqual([missing]);
+    // The whole list of 11 names no receipt it lacks.
+    expect(scanAllEvents(outcomes).malformed).toEqual([]);
   });
 });

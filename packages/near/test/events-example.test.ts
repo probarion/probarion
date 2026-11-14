@@ -44,6 +44,22 @@ describe("examples/read-events.ts paidAmount", () => {
     ).rejects.toThrow(/cannot all be read: malformed_event/);
   });
 
+  it("refuses when the answer lacks a receipt that one of its outcomes created", async () => {
+    // Derived from the real tree, labelled: the token's receipt left out, as an RPC that hides it would.
+    const hidden = structuredClone(PAID);
+    (hidden as { receipts_outcome: OutcomeLike[] }).receipts_outcome =
+      hidden.receipts_outcome.filter((r) => r.outcome.executor_id !== ft);
+    await expect(
+      paidAmount(
+        fakeRpc(() => hidden),
+        txHash,
+        sender,
+        ft,
+        merchant,
+      ),
+    ).rejects.toThrow(/cannot all be read: missing_outcome: .* created receipt /);
+  });
+
   it("passes an RPC failure through", async () => {
     const rpc = fakeRpc(() => {
       throw new Error("UNKNOWN_TRANSACTION");

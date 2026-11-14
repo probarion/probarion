@@ -261,8 +261,9 @@ describe("eventsOf", () => {
     ]);
   });
 
-  it("reads hand-built ProvenOutcome objects as proven", () => {
-    // Hand-built in this test from the `paid` tree, labelled: not recomputed from a light_client_proof.
+  it("reads hand-built ProvenOutcome objects as proven: the flag names the input type, it is not a check", () => {
+    // Hand-built in this test from the `paid` tree, labelled: not recomputed from a light_client_proof. The reader
+    // does not verify proofs, so these read as proven too (see BoundEvent.proven).
     const proven: ProvenOutcome[] = TREES.paid.receipts_outcome.map((r) => ({
       id: r.id,
       executorId: r.outcome.executor_id,
@@ -310,7 +311,24 @@ describe("eventsOf", () => {
       { receipts_outcome: [{ outcome: { executor_id: USDC, logs: [] } }] },
       { transaction_outcome: { id: "t" }, receipts_outcome: [] }, // the trimmed shape: no outcome
       [{ id: "r", executor_id: USDC, logs: [] }], // an RPC outcome passed as a ProvenOutcome
-      [{ id: "r", executorId: USDC, logs: [], status: { kind: "maybe" } }],
+      [{ id: "r", executorId: USDC, logs: [], receiptIds: [], status: { kind: "maybe" } }],
+      [{ id: "r", executorId: USDC, logs: [], status: { kind: "unknown" } }], // no receiptIds
+      [{ id: "r", executorId: USDC, logs: [], receiptIds: [7], status: { kind: "unknown" } }],
+      {
+        receipts_outcome: [{ id: "r", outcome: { executor_id: USDC, logs: [], receipt_ids: "x" } }],
+      },
+      {
+        receipts_outcome: [
+          { id: "r", outcome: { executor_id: USDC, logs: [], receipt_ids: null } },
+        ],
+      },
+      // An outcome that created a receipt the source does not hold.
+      {
+        receipts_outcome: [
+          { id: "r", outcome: { executor_id: USDC, logs: [], receipt_ids: ["c"] } },
+        ],
+      },
+      [{ id: "r", executorId: USDC, logs: [], receiptIds: ["c"], status: { kind: "unknown" } }],
     ];
     for (const source of sources) {
       let error: unknown;
@@ -325,6 +343,37 @@ describe("eventsOf", () => {
     const twice = copy(TREES.paid);
     (twice.receipts_outcome as OutcomeLike[]).push(receiptBy(twice, USDC));
     expect(() => eventsOf(twice, { emitters: [USDC] })).toThrow(/duplicate_outcome/);
+  });
+
+  it("throws for a tree that lacks a receipt one of its outcomes created, and names it", () => {
+    // Derived from the real `paid` tree, labelled: the token's receipt left out, as an RPC that hides it would.
+    const hidden = copy(TREES.paid);
+    const token = receiptBy(hidden, USDC);
+    const parent = [hidden.transaction_outcome, ...hidden.receipts_outcome].find((o) =>
+      o?.outcome.receipt_ids?.includes(token.id),
+    );
+    if (parent === undefined)
+      throw new Error("no outcome of the paid tree created the token receipt");
+    (hidden as { receipts_outcome: OutcomeLike[] }).receipts_outcome =
+      hidden.receipts_outcome.filter((r) => r.id !== token.id);
+    const missing = `missing_outcome: ${parent.id} created receipt ${token.id}, which is not in the source`;
+    // The vault's own events are all still there; the reader refuses anyway, since the tree is not whole.
+    expect(() => eventsOf(hidden, { emitters: [VAULT] })).toThrow(missing);
+    expect(nep141Events(hidden, USDC)).toEqual({
+      items: [],
+      problems: [
+        {
+          receiptId: parent.id,
+          emitter: parent.outcome.executor_id,
+          logIndex: -1,
+          problem: missing,
+        },
+      ],
+    });
+    // The recorded trees are whole: every receipt their outcomes created is in them.
+    for (const whole of [TREES.paid, TREES.burned, TREES.noMandate]) {
+      expect(scanAllEvents(whole).malformed).toEqual([]);
+    }
   });
 });
 

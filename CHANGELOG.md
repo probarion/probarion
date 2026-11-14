@@ -40,10 +40,14 @@ The software is an unaudited beta.
     emitters and, by default, from receipts that succeeded, so a line another contract logs, or one a failed
     receipt left, does not count. NEP-141, NEP-245 and NEP-171 data are typed with exact U128 amounts, and each
     refused event or item is reported as a problem; `ftDeltas` and `mtDeltas` give each account's net change,
-    with an `ft_transfer_call` refund netted out. It reads RPC `tx` answers or the verifier's proven outcomes
-    (each event then says `proven: true`). Tested on the recorded testnet spends, the two mainnet payouts and the
-    expected logs in the unit tests of `near-contract-standards` 5.29.1, with seeded properties: 57 tests. A typed
-    schema for the NEAR Intents `dip4` events is Planned.
+    with an `ft_transfer_call` refund netted out. Every receipt an outcome lists as created must be in the source:
+    one it lacks, such as a refund an RPC hides, is a `missing_outcome` problem, so a partial tree does not read as
+    a complete one (an RPC outcome without `receipt_ids`, as in a trimmed record, cannot be checked this way). It
+    reads RPC `tx` answers or the verifier's proven outcomes; each event then says `proven: true`, which names the
+    input type: the reader does not check proofs itself. Tested on the recorded testnet spends, the two mainnet
+    payouts (spend 2 also with its POA burn left out of the proven list) and the expected logs in the unit tests
+    of `near-contract-standards` 5.29.1, with seeded properties: 64 tests. A typed schema for the NEAR Intents
+    `dip4` events is Planned.
   - **Account lock audit** (`src/access-keys.ts`, `src/code-identity.ts`, `src/account-rpc.ts`). Built, and run
     by the CLI. What each access key can do if it leaks (full access, receiver and exact methods, gas allowance,
     NEP-611 gas keys; a permission it cannot read counts as full access), checked against a policy of exact method
