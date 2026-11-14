@@ -2,8 +2,8 @@
 
 All notable changes to this repository: the NEAR contracts in `contracts/`, the npm packages
 `@probarion/core`, `@probarion/sdk`, `probarion` (the CLI), `@probarion/mcp` (the MCP server, in
-`packages/mcp`) and `@probarion/near` (building blocks for NEAR builders, in `packages/near`, on npm from
-release 0.1.2), and the web console in `apps/web`.
+`packages/mcp`) and `@probarion/near` (building blocks for NEAR builders, in `packages/near`, reaching
+npm with release 0.1.2), and the web console in `apps/web`.
 
 Versions follow semver. The npm packages share one version, released by the tag `sdk-v<version>`;
 0.1.0 was published on 2026-11-09, and 0.1.1, the first release of `@probarion/mcp`, on 2026-11-11.
@@ -20,14 +20,17 @@ The software is an unaudited beta.
 
 - Release 0.1.2 is prepared, and not published: `@probarion/near`, `@probarion/core`, `@probarion/sdk`,
   `probarion` and `@probarion/mcp` are at 0.1.2, with a `## 0.1.2` section below, and
-  `packages/mcp/server.json` names 0.1.2 at the top and on its npm package. `pnpm release:check sdk-v0.1.2`
-  passes, and its `--pack` run checks five tarballs, the CLI's with `@probarion/near` 0.1.2 as a
-  dependency. `docs/RUNBOOK.md` has the OWNER's steps under "Release 0.1.2": the annotated tag on `main`,
-  the `npm-release` approval, what to do if the publish stops at `@probarion/near` (published before the
-  others, and new on npm), the npm checks of the five packages, and the MCP registry's new version. The
-  commands a reader runs against npm today (`npx probarion@0.1.1`, `npx -y @probarion/mcp@0.1.1`) stay at
-  0.1.1 until npm has 0.1.2. The `@probarion/near` README says the package is on npm once release 0.1.2
-  is published, and a clone's `probarion --version` prints 0.1.2.
+  `packages/mcp/server.json` names 0.1.2 at the top and on its npm package.
+  `pnpm run release:check -- sdk-v0.1.2` passes, and its `--pack` run checks five tarballs, the CLI's with
+  `@probarion/near` 0.1.2 as a dependency. `docs/RUNBOOK.md` has the OWNER's steps under "Release 0.1.2":
+  the annotated tag on `main`, the `npm-release` approval, what to do if the publish stops at
+  `@probarion/near` (the release publishes it before the others, and npm does not have it yet), the npm
+  checks of the five packages, and the MCP registry's new version. The commands a reader runs against npm
+  today (`npx probarion@0.1.1`, `npx -y @probarion/mcp@0.1.1`) stay at 0.1.1 until npm has 0.1.2. The
+  `@probarion/near` README says the package is on npm once release 0.1.2 is published. The READMEs of the
+  CLI, core and the SDK say their new parts are in the packages from release 0.1.2 on, and not in 0.1.1,
+  and the docs page "Verify a vault yourself" says the same of `--invoice` and `--invoices`. In a clone,
+  `node packages/cli/dist/bin.js --version` prints 0.1.2.
 - `@probarion/near` (`packages/near`), a new package of building blocks for NEAR builders. It is in this
   repository and not on npm yet: it reaches npm with the next release, at the version the other packages share,
   and the release publishes it before `@probarion/core` (`PUBLISHED_DIRS` in `scripts/release-check.ts`). Its
@@ -2478,17 +2481,23 @@ The software is an unaudited beta.
 
 ## 0.1.2 - 2026-11-14
 
-0.1.2 brings `@probarion/near` to npm, a new package of building blocks for NEAR builders, at the version the other packages share.
-The `probarion` CLI gains `account audit` and `tx prove`, which run it, and `payee check`; its `verify` gains `--invoice`, `--invoices` and `--system-prompt` for check A8.
+0.1.2 brings `@probarion/near`, a new package of building blocks for NEAR builders, to npm. It has the version the other packages share.
+The `probarion` CLI gains `account audit` and `tx prove`, which run `@probarion/near`, and `payee check`. Its `verify` gains `--invoice`, `--invoices` and `--system-prompt` for check A8.
 `@probarion/core` and `@probarion/sdk` gain the parts of the payee check, and `@probarion/core` fixes three payee hint refusals.
 
 ### Added
 
-- `@probarion/near`, new on npm with this release. Four primitives, each with an example in `packages/near/examples`: the outcome proof verifier (`verifyOutcomeProof`, `verifyTransactionOutcomes`, `proveTransaction`, `readCrossCheckedHead`), which checks `light_client_proof` answers against a head the caller trusts and refuses a tree that leaves out a receipt a proven outcome created (`incomplete`); receipt-bound NEP-297 events (`scanAllEvents` and the bound readers, with NEP-141 and NEP-245 amounts as exact U128, and `ftDeltas` and `mtDeltas` for each account's net change), counted from the contracts named as emitters and from receipts that succeeded; the account lock audit (`auditAccessKeys`, `readAccountLock`), which says what each access key can do if it leaks, NEP-611 gas keys and NEP-591 global contracts included; and the NEAR Intents POA withdrawal check (`poaWithdrawCall`, `findPoaBurns`, `verifyPoaSettlement`), with the bridge status reader `readPoaWithdrawalStatus` as Experimental. Its dependencies are `@noble/hashes` and `bs58`. The pure functions use no network and no Node built-in, and the online helpers take any JSON-RPC client (`httpJsonRpc`, or the SDK's `RpcClient`) and sign nothing. 400 tests run offline, on fixtures recorded from public RPC.
-- `probarion account audit <account> [--vault-policy] [--builds <file>] [--json]` runs the account lock audit of `@probarion/near` on any NEAR account: exit 0 locked, 2 warnings to read, 1 not locked or a blocking finding, 64 a usage error. `--vault-policy` holds it to a Probarion vault's `spend` and `anchor` keys and its recorded builds. It reads over JSON-RPC and signs nothing.
-- `probarion tx prove <tx-hash> --signer <account> [--head-rpc <urls>] [--archival-rpc <urls>] [--json]` reads the head on two RPC origins, proves the transaction and every receipt it led to with `light_client_proof`, and lists the NEP-297 events of the proven outcomes: exit 0 proven, 1 not proven, 64 a usage error. A `tx` answer that leaves out a receipt a proven outcome created is not proven (`incomplete`). The head itself is trusted, not proven. It reads over JSON-RPC and signs nothing. From this release on, the CLI depends on `@probarion/near`.
-- `probarion payee check <payee> [--vault <id>] [--json]` checks a payee before a mandate names it and prints allow, warn or block with one reason per check: the NEAR account exists, the seed blocklist, a lookalike of a payee of the vault, contract code, new or code changed in about 7 days, a Base nonce of 0, and whether the vault has paid it before. A read that fails or times out warns. It signs nothing and changes nothing on chain. `@probarion/core` has the pure `assessPayee` and the seed blocklist, and `@probarion/sdk` has `readPayeeSignals`, also as the new entry point `@probarion/sdk/payee`.
-- `probarion verify --invoice <file>` (repeatable) and `--invoices <dir>` (every `.txt` file of a folder) run A8 with invoice texts the auditor holds, live or with `--offline`. The CLI reads each file on the auditor's computer and uses it for A8: it is not sent, not written to `--snapshot` and not printed (`--json` adds an `invoices` list with each file's sha256 and the ledger entries it matches). `--system-prompt <file>` (repeatable) adds a system prompt that A8 accepts besides the standard one.
+- `@probarion/near`, new on npm with this release. It has four primitives, each with an example in `packages/near/examples`:
+  - **Outcome proof verifier** (`verifyOutcomeProof`, `verifyTransactionOutcomes`, `proveTransaction`, `readCrossCheckedHead`). It checks `light_client_proof` answers against a head the caller trusts. `verifyTransactionOutcomes` and `proveTransaction` prove a transaction and every receipt it led to. They refuse a tree that leaves out a receipt a proven outcome created (`incomplete`). The head itself is not proven.
+  - **Receipt-bound NEP-297 events** (`eventsOf`, `nep141Events`, `nep245Events`, `nep171Events`, `ftDeltas`, `mtDeltas`, `scanAllEvents`). The bound and typed readers count an event when a contract named as an emitter logged it and, by default, when its receipt succeeded. NEP-141 and NEP-245 amounts are exact U128. `ftDeltas` and `mtDeltas` give each account's net change. `scanAllEvents` lists every event, from any emitter and any receipt, for display.
+  - **Account lock audit** (`auditAccessKeys`, `readAccountLock`). It says what each access key can do if it leaks, NEP-611 gas keys included. It also reads the account's code identity, NEP-591 global contracts included.
+  - **NEAR Intents POA withdrawal check** (`poaWithdrawCall`, `findPoaBurns`, `verifyPoaSettlement`). The bridge status reader `readPoaWithdrawalStatus` is Experimental.
+
+  Its dependencies are `@noble/hashes` and `bs58`. The pure functions use no network and no Node built-in. The online helpers take any JSON-RPC client (`httpJsonRpc`, or the SDK's `RpcClient`) and sign nothing. 400 tests run offline. Some fixtures were recorded from public RPC; the others are copies of Probarion's earlier public records and the expected logs of `near-contract-standards` 5.29.1.
+- `probarion account audit <account> [--vault-policy] [--builds <file>] [--json]` runs the account lock audit of `@probarion/near` on any NEAR account. Exit codes: 0 locked, 2 locked with a warning to read, 1 not locked, a blocking finding or a failed read, 64 a usage error. `--vault-policy` holds it to a Probarion vault's `spend` and `anchor` keys and its recorded builds. It reads over JSON-RPC and signs nothing.
+- `probarion tx prove <tx-hash> --signer <account> [--head-rpc <urls>] [--archival-rpc <urls>] [--json]` reads the head on two RPC origins. It proves the transaction and every receipt it led to with `light_client_proof`, and lists the NEP-297 events of the proven outcomes. Exit codes: 0 proven, 1 not proven or a failed read, 64 a usage error. A `tx` answer that leaves out a receipt a proven outcome created is not proven (`incomplete`). The head itself is trusted, not proven. It reads over JSON-RPC and signs nothing. From this release on, the CLI depends on `@probarion/near`.
+- `probarion payee check <payee> [--vault <id>] [--archival-rpc <urls>] [--base-rpc <url>] [--json]` checks a payee before a mandate names it. It prints `ALLOW`, `WARN` or `BLOCK`, with one reason per check: the NEAR account exists, the seed blocklist, a lookalike of a payee of the vault, contract code, new or code changed in about 7 days, a Base nonce of 0, and whether the vault has paid it before. A read that fails or times out warns. Exit codes: 0 allow, 2 warn, 1 block or a check that could not run, 64 a usage error. It signs nothing and changes nothing on chain. `@probarion/core` has the pure `assessPayee` and the seed blocklist. `@probarion/sdk` has `readPayeeSignals`, also as the new entry point `@probarion/sdk/payee`.
+- `probarion verify --invoice <file>` and `--invoices <dir>` (every `.txt` file of a folder, not its subfolders) run A8 with invoice texts the auditor holds, live or with `--offline`. Both can be repeated. The CLI reads each file on the auditor's computer and uses it for A8. A file is not sent, not written to `--snapshot` and not printed. `--json` adds an `invoices` list with each file's sha256 and the ledger entries it matches. `--system-prompt <file>` (repeatable) adds a system prompt that A8 accepts besides the standard one.
 
 ### Changed
 
@@ -2498,7 +2507,12 @@ The `probarion` CLI gains `account audit` and `tx prove`, which run it, and `pay
 
 ### Fixed
 
-- `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` an attested model's payee hint that named the mandate's own payee in another field. For a NEAR payee, a chain next to the mandate's own NEAR account with no address, and the mandate's own NEAR account in `address`, now name no other payee (an account that is also a Base or Solana address still refuses in `address`). For a Base or Solana payee, the mandate's `payee.asset` in `near_account`, bare or followed by one short label in parentheses such as `(asset)`, names no other payee in the trusted proposal's hint; in the invoice's hint any `near_account` still refuses. These refusals were seen on testnet vaults on 2026-11-11 and 2026-11-13 and on `v0.probarion.near` on 2026-11-13. `verify` does not re-run the policy, so ledger entries already written are unaffected.
+- `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` three kinds of payee hint from an attested model that named the mandate's own payee in another field. None of them refuses now:
+  - For a NEAR payee, the mandate's own NEAR account in `near_account` next to a chain, with no address. It was seen on the testnet demo vault on 2026-11-11 (INV-2006).
+  - For a NEAR payee, the mandate's own NEAR account in `address`. An account that is also a Base or Solana address still refuses there. It was seen on the testnet demo vault on 2026-11-11 (ledger entry 12).
+  - For a Base or Solana payee, the mandate's `payee.asset` in `near_account`, in the trusted proposal's hint. The asset may be bare or followed by one short label in parentheses, such as `(asset)`. In the invoice's hint, any `near_account` still refuses. It was seen on `v0.probarion.near` on 2026-11-13, and with the label in a testnet rehearsal the same day.
+
+  `verify` does not re-run the policy, so ledger entries already written are unaffected.
 
 ## 0.1.1 - 2026-11-11
 

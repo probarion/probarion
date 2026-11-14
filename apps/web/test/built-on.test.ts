@@ -16,6 +16,7 @@ import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import sh from "@/components/site/ships.module.css";
 import sm from "@/components/site/site.module.css";
+import { MCP_VERSION } from "@/lib/agent/connect";
 import { CLI_ON_NPM } from "@/lib/proof/cli";
 import {
   BUILT_ON,
@@ -285,9 +286,10 @@ describe("where to get Probarion (#get-probarion)", () => {
       "@probarion/core",
     ]);
     expect(npm.ids).toEqual(pkgs.map((p) => `\`${p.name}\``));
-    // The card names the release npm has. While the next one is prepared and not published (0.1.2, which adds
-    // @probarion/near), the packages here share a higher version; the pull request after the publish moves both.
-    const NPM_RELEASE = "0.1.1";
+    // The card names the release npm has, the one the site's npx lines run (MCP_VERSION; the packages share one
+    // version). While the next one is prepared and not published (0.1.2, which adds @probarion/near), the packages
+    // here share a higher version; the pull request after the publish moves MCP_VERSION and the card together.
+    const NPM_RELEASE = MCP_VERSION;
     const here = pkgs[0]?.version ?? "";
     for (const pkg of pkgs) expect(pkg.version, pkg.name).toBe(here);
     expect(here.localeCompare(NPM_RELEASE, "en", { numeric: true })).toBeGreaterThanOrEqual(0);

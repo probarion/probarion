@@ -35,7 +35,8 @@ server and a browser. The network and files live in [`@probarion/sdk`](https://g
   `allow`, `warn` or `block` with one reason per check: exists, seed blocklist, lookalike of a vault's
   payee, contract, new or code changed in about 7 days, past payments. An unread signal is a warning,
   and so is a check with no vault's payees to compare with. `parsePayeeRef` reads `near:`, `base:` and
-  `solana:` payees. It is in this repository, not in release 0.1.1 on npm.
+  `solana:` payees. It is in this package from release 0.1.2 on, and in this repository; release 0.1.1
+  on npm does not have it.
 
 ## Install
 

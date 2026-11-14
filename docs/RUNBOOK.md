@@ -870,11 +870,14 @@ The steps start after the promote pull request that carries the 0.1.2 versions i
    settings page on npm.
 
 6. The MCP registry. `@probarion/mcp` has no code change since 0.1.1, so the registry's 0.1.1 entry still
-   runs the same server, and the server keeps working if this step waits. A registry version is published
-   once and cannot be changed, so the registry lists 0.1.2 after a new publish. To list it, which keeps
-   the registry's latest version equal to npm's, run steps 6 and 7 of [Release 0.1.1](#release-011) from
-   `packages/mcp` of the same checkout, after step 5 here shows the `mcpName`. `publish` ends with
-   `Server io.github.probarion/probarion version 0.1.2`, and the listing check shows the version `0.1.2`.
+   runs the same server, and the server keeps working if this step waits. The registry keeps 0.1.1 as it
+   was published; listing 0.1.2 takes a new publish. To list it, which keeps the registry's latest version
+   equal to npm's, run steps 5 to 7 of [Release 0.1.1](#release-011) after step 5 here shows the
+   `mcpName`. Skip step 5 when `mcp-publisher --help` already runs. Run steps 6 and 7 in the checkout
+   of step 1 here, from its root: the lines of step 6 go into `packages/mcp` with `cd packages/mcp`, and
+   the token file goes under `.keys/` at that root. `publish` ends with
+   `Server io.github.probarion/probarion version 0.1.2`, and the JSON of the listing check holds an entry
+   with the version `0.1.2`.
 
 7. Then a pull request changes what the repository says about npm, as step 8 of 0.1.1 did. Once npm's
    `latest` is 0.1.2, the lines that name 0.1.1 as the npm release, and the "not on npm yet" lines for
@@ -883,8 +886,9 @@ The steps start after the promote pull request that carries the 0.1.2 versions i
    request moves the commands a reader runs against npm (the npx lines of `probarion@0.1.1` and
    `@probarion/mcp@0.1.1` in the README, `JUDGES.md`, the docs, `scripts/smoke-live.mjs` and the no-clone
    CI workflow), the npm pills and the npm card in `apps/web/src/lib/site/facts.ts` (which then lists
-   `@probarion/near` too), `MCP_VERSION` in `apps/web/src/lib/agent/connect.ts`, `NPM_RELEASE` in
-   `apps/web/test/built-on.test.ts`, `SECURITY.md`, the header of `CHANGELOG.md`, and the tests that pin
+   `@probarion/near` too), `MCP_VERSION` in `apps/web/src/lib/agent/connect.ts` (the npm release that
+   `apps/web/test/built-on.test.ts` and `docs-status-labels.test.ts` hold the site to), `SECURITY.md`, the
+   header of `CHANGELOG.md`, and the tests that pin
    these lines. If the tag was pushed on another day than 2026-11-14, the same pull request dates the
    `CHANGELOG.md` heading `## 0.1.2` with the day the packages were published.
 

@@ -15,7 +15,8 @@ yoctoNEAR, the printed command carries it.
 Three commands only read: `check` dry-runs a spend against the vault's own rules, `verify` checks a
 vault's ledger against the chain (or a saved snapshot, with no network at all), and `ledger export`
 copies the ledger. They do not sign or send anything either. Nor do `payee check`, `account audit` and
-`tx prove`, which are in the CLI built from this repository and not in release 0.1.1 on npm.
+`tx prove`, which are in the CLI from release 0.1.2 on, and in a build of this repository; release 0.1.1
+on npm does not have them.
 
 ## Install
 
@@ -249,10 +250,11 @@ The flags:
 
 ## Check a payee
 
-`payee check` is in the CLI built from this repository; release 0.1.1 on npm does not have it. It
-reads the chain and prints `ALLOW`, `WARN` or `BLOCK` for one payee, with one reason per check. Run
-it before you write a payee into a mandate: the agent's `spend` call has no address field, so a
-mandate is where a payee enters.
+`payee check` is in the CLI from release 0.1.2 on, and in a build of this repository; release 0.1.1
+on npm does not have it. It reads the chain and prints `ALLOW`, `WARN` or `BLOCK` for one payee,
+with one reason per check. Run it before you write a payee into a mandate: the agent's `spend` call
+has no address field, so a mandate is where a payee enters. The examples run a clone's build; with
+the CLI from npm, at 0.1.2 or later, write `probarion` in place of `node packages/cli/dist/bin.js`.
 
 ```text
 node packages/cli/dist/bin.js payee check near:vendor.testnet --vault <vault>
@@ -294,8 +296,9 @@ node packages/cli/dist/bin.js payee check base:0x... --network mainnet --vault <
 
 ## Audit an account, prove a transaction
 
-`account audit` and `tx prove` are in the CLI built from this repository; release 0.1.1 on npm does
-not have them. They run the NEAR primitives of
+`account audit` and `tx prove` are in the CLI from release 0.1.2 on, and in a build of this
+repository; release 0.1.1 on npm does not have them. As above, the examples run a clone's build, and
+the CLI from npm, at 0.1.2 or later, runs them as `probarion`. They run the NEAR primitives of
 [`@probarion/near`](https://github.com/probarion/probarion/tree/main/packages/near) on any NEAR account
 or transaction, read views and proofs over JSON-RPC, and sign nothing.
 
