@@ -25,10 +25,10 @@ function Tile({
   return (
     <div className={c.tile}>
       <p className={c.tileLabel}>{label}</p>
-      <p className={c.tileValue}>
+      <div className={c.tileValue}>
         {thousands(value)}
         {unit ? <small> {unit}</small> : null}
-      </p>
+      </div>
       <p className={c.tileSub}>{sub}</p>
     </div>
   );

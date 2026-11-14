@@ -30,13 +30,13 @@ function SourceLink({ source }: { source: TestedSource }) {
 function Row({ row }: { row: TestedRow }) {
   return (
     <li>
-      <p className={u.testedWhat}>
+      <div className={u.testedWhat}>
         <KeepRich text={row.what} />
-      </p>
+      </div>
       <p>
         <KeepRich text={row.figure} />
       </p>
-      <p className={u.testedAt}>
+      <div className={u.testedAt}>
         <KeepRich text={`Read: ${row.at}.`} /> Source:{" "}
         {row.sources.map((source, i) => (
           <span key={source.href}>
@@ -44,7 +44,7 @@ function Row({ row }: { row: TestedRow }) {
             <SourceLink source={source} />
           </span>
         ))}
-      </p>
+      </div>
     </li>
   );
 }

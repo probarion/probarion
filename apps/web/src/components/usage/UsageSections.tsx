@@ -81,7 +81,7 @@ export function Tile({ label, value, sub }: { label: string; value: number; sub:
   return (
     <div className={c.tile}>
       <p className={c.tileLabel}>{label}</p>
-      <p className={value === 0 ? u.counts : c.tileValue}>{thousands(value)}</p>
+      <div className={value === 0 ? u.counts : c.tileValue}>{thousands(value)}</div>
       <p className={c.tileSub}>{sub}</p>
     </div>
   );
