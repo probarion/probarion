@@ -111,9 +111,10 @@ export const TESTED = {
     {
       what: "Eval, 20 synthetic invoices, 6 of them prompt-injected",
       figure:
-        "With the model fooled by every invoice (an offline run that asks no model; 6/6 injections, by construction), 14 of 20 proposals are wrong and `decide()` allows none of them: money moved wrongly 0/20, 0.00 USDC. A grid of over 5,000 attested pay proposals on the 20 cases moves no money wrongly. With rules alone, the code layer stops 8/8 of the invoices that must not be paid, with 0/20 false refusals.",
-      at: `results committed at \`${TESTED_COMMIT}\`; \`pnpm eval:check\` reruns them offline and fails on any drift`,
+        "With the model fooled by every invoice (an offline run that asks no model; 6/6 injections, by construction), 14 of 20 proposals are wrong and `decide()` allows none of them: money moved wrongly 0/20, 0.00 USDC. A grid of over 5,000 attested pay proposals on the 20 cases moves no money wrongly. With rules alone, the code layer stops 8/8 of the invoices that must not be paid, with 0/20 false refusals. With the real model (`Qwen/Qwen3.8-27B` on NEAR AI Cloud, replayed offline): money moved wrongly 0/20, model fooled 0/3 on the injected invoices it answered, 17 of 19 answers attested by A1 to A8 offline (O1 and O2 not run on them), 2 calls failed and were decided by rules alone, 1 false refusal (C-05, nothing sent).",
+      at: `rules-alone results at \`${TESTED_COMMIT}\`; the model replay recorded ${TESTED_AS_OF} 01:10 to 01:22 UTC; \`pnpm eval:check\` reruns both offline and fails on any drift`,
       sources: [
+        { label: "eval results", href: "eval/README.md#results-today" },
         { label: "adversary.md", href: "eval/results/adversary.md" },
         { label: "latest.md", href: "eval/results/latest.md" },
         { label: "adversary.test.ts", href: "apps/web/test/eval/adversary.test.ts" },
