@@ -1,0 +1,119 @@
+{
+  "_source": "The `transaction` and `receipts_outcome` of the two mainnet payouts of v0.probarion.near (spend 2, tx BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9, and spend 3, tx 5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH), copied on 2026-11-14 by hand (a node one-off, no network) from `payouts[i].reads.spend` of apps/web/src/lib/site/mainnet-payout-recorded.json (recorded 2026-11-13T14:09:12.787Z from archival-rpc.mainnet.fastnear.com by RPC `tx`; nothing signed). That file was trimmed when it was recorded (apps/web/src/lib/site/mainnet-payout.ts trimTx): each receipt outcome keeps `id`, `block_hash`, `executor_id` and `logs` only, so every receipt STATUS is missing (and receipt_ids, gas, tokens burnt), and receipts without logs were dropped. `transaction_outcome` is left out here because the trimmed copy has no `outcome` in it. The status-less outcomes are the point of this fixture: a reader that counts events from successful receipts alone must not count these by default.",
+  "spend2": {
+    "transaction": {
+      "hash": "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9",
+      "signer_id": "v0.probarion.near",
+      "receiver_id": "v0.probarion.near",
+      "public_key": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+      "actions": [
+        {
+          "FunctionCall": {
+            "method_name": "spend",
+            "args": "eyJyZXF1ZXN0Ijp7Im1hbmRhdGVfaWQiOjIsImFtb3VudCI6IjEwMDAwMDAiLCJpbnZvaWNlX2hhc2giOiJiZDQ1ZjIzMjdmYjBjMmMxZTk2MDYwNmU1YzBiYjkxZTNjZmVjNzg4M2YyMTMxNWU5NGY0NTRhODNmZWU4MzU3IiwicmVmIjoiSU5WLU0wMDIiLCJkZWNpc2lvbl9oYXNoIjoiZDY0ZjBkZTc3YzM4Mjk0Y2YxMDM0MzllNmI1YjBjMjYyM2I5NmIxMTQ5NjJhZmQ1MGY1YTNjNTUzZGYyYTMzNiJ9fQ=="
+          }
+        }
+      ]
+    },
+    "receipts_outcome": [
+      {
+        "id": "FuEKLqzVPpm3Ks9xVMHmNk3A2SJTNYbra17HVeKz96a9",
+        "block_hash": "GM4ojam5J4e91NpzMF1BdbjF65wJcVPvbF6bijT37FTa",
+        "outcome": {
+          "executor_id": "v0.probarion.near",
+          "logs": [
+            "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"spend_submitted\",\"data\":{\"spend_id\":2,\"mandate_id\":2,\"amount\":\"1000000\",\"invoice_hash\":\"bd45f2327fb0c2c1e960606e5c0bb91e3cfec7883f21315e94f454a83fee8357\",\"decision_hash\":\"d64f0de77c38294cf103439e6b5b0c2623b96b114962afd50f5a3c553df2a336\",\"destination\":{\"type\":\"intents\",\"chain\":\"base\",\"address\":\"0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\",\"asset\":\"base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"}}}"
+          ]
+        }
+      },
+      {
+        "id": "F2BErA5fo6HBPhgwjyER9iiCrs9XHmDHX6dsey1dZmVi",
+        "block_hash": "9yY3gcn9Qa9ZgmngcPuYNhsr2NQsEGBveW8E69FTSE6A",
+        "outcome": {
+          "executor_id": "intents.near",
+          "logs": [
+            "EVENT_JSON:{\"standard\":\"nep245\",\"version\":\"1.0.0\",\"event\":\"mt_burn\",\"data\":[{\"owner_id\":\"v0.probarion.near\",\"token_ids\":[\"nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"],\"amounts\":[\"1000000\"],\"memo\":\"withdraw\"}]}"
+          ]
+        }
+      },
+      {
+        "id": "D7Ux36fgy29tu5jjEoEstVwbLz3FXDP8Q2gDu65ZkK3b",
+        "block_hash": "9p3J9JKpahabecT2pVzmgBJFFegC9xmwQfGmMLFv83z",
+        "outcome": {
+          "executor_id": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+          "logs": [
+            "EVENT_JSON:{\"standard\":\"nep141\",\"version\":\"1.0.0\",\"event\":\"ft_burn\",\"data\":[{\"owner_id\":\"intents.near\",\"amount\":\"1000000\",\"memo\":\"WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\"}]}"
+          ]
+        }
+      },
+      {
+        "id": "ChNYpWkBdspsT81quDPBLKZ5AWn37x6DkN1nNdzComfY",
+        "block_hash": "FNEbSNEgnJHMqyZQff8fihDD2pM5RsEysXRsVzkvvoqv",
+        "outcome": {
+          "executor_id": "v0.probarion.near",
+          "logs": [
+            "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"spend_burned\",\"data\":{\"spend_id\":2,\"mandate_id\":2,\"amount\":\"1000000\",\"chain\":\"base\",\"address\":\"0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\",\"asset\":\"base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\",\"memo\":\"WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\"}}"
+          ]
+        }
+      }
+    ]
+  },
+  "spend3": {
+    "transaction": {
+      "hash": "5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH",
+      "signer_id": "v0.probarion.near",
+      "receiver_id": "v0.probarion.near",
+      "public_key": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+      "actions": [
+        {
+          "FunctionCall": {
+            "method_name": "spend",
+            "args": "eyJyZXF1ZXN0Ijp7Im1hbmRhdGVfaWQiOjMsImFtb3VudCI6IjI1MDAwMCIsImludm9pY2VfaGFzaCI6ImMyNDYxMzQ4ODFlNTJiMTQ3ZjlkNDQxNmY0NDdlNzE1MWI3MDQ5ZDBlMzFjZWZjYWZhMGRiMjUwMjdkNjgzYjYiLCJyZWYiOiJJTlYtTTAwMyIsImRlY2lzaW9uX2hhc2giOiJkMzgwNzk1NmIxZTBhMDQ4MTY1Njg2MmE1MGEyMTQ3ZDJiMGExZjA0ODM0YTMwODI5NTI5MzExYzljZWMzMmFhIn19"
+          }
+        }
+      ]
+    },
+    "receipts_outcome": [
+      {
+        "id": "VCsoJ1nWMU4ubEsFN8kY4C6j228SnxsVWbhrCYByBoK",
+        "block_hash": "B7iXoHCJHWLPWbLNispMCJBzSYC5oD8XqEuZr59MvWeB",
+        "outcome": {
+          "executor_id": "v0.probarion.near",
+          "logs": [
+            "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"spend_submitted\",\"data\":{\"spend_id\":3,\"mandate_id\":3,\"amount\":\"250000\",\"invoice_hash\":\"c246134881e52b147f9d4416f447e7151b7049d0e31cefcafa0db25027d683b6\",\"decision_hash\":\"d3807956b1e0a0481656862a50a2147d2b0a1f04834a30829529311c9cec32aa\",\"destination\":{\"type\":\"intents\",\"chain\":\"base\",\"address\":\"0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\",\"asset\":\"base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"}}}"
+          ]
+        }
+      },
+      {
+        "id": "2HMqxtTBKuKsmvmFeePXm3eELefEtaVGaDWJVMyGaUHq",
+        "block_hash": "9c7iTBokAVahrZ5Gw4C4FKPSpMspaLVvYHv3fhkphxCM",
+        "outcome": {
+          "executor_id": "intents.near",
+          "logs": [
+            "EVENT_JSON:{\"standard\":\"nep245\",\"version\":\"1.0.0\",\"event\":\"mt_burn\",\"data\":[{\"owner_id\":\"v0.probarion.near\",\"token_ids\":[\"nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\"],\"amounts\":[\"250000\"],\"memo\":\"withdraw\"}]}"
+          ]
+        }
+      },
+      {
+        "id": "FNAzBqBEWNeA1eJtnPP2h4VxzNuf3Dn68USwnbTHALSQ",
+        "block_hash": "GjS98wvUoAfKMFUMH9fYzob2NsvGQpVWD6brFdFxaSNw",
+        "outcome": {
+          "executor_id": "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+          "logs": [
+            "EVENT_JSON:{\"standard\":\"nep141\",\"version\":\"1.0.0\",\"event\":\"ft_burn\",\"data\":[{\"owner_id\":\"intents.near\",\"amount\":\"250000\",\"memo\":\"WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\"}]}"
+          ]
+        }
+      },
+      {
+        "id": "H52yYdd3dxdhhhqQeqauq1YndpFMS3SZ8hWe71v8e1zC",
+        "block_hash": "4cpYZwTzqxquhEVWL6tZap2XZSHnhnwsuekn9tbadFpE",
+        "outcome": {
+          "executor_id": "v0.probarion.near",
+          "logs": [
+            "EVENT_JSON:{\"standard\":\"probarion\",\"version\":\"1.0.0\",\"event\":\"spend_burned\",\"data\":{\"spend_id\":3,\"mandate_id\":3,\"amount\":\"250000\",\"chain\":\"base\",\"address\":\"0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\",\"asset\":\"base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near\",\"memo\":\"WITHDRAW_TO:0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27\"}}"
+          ]
+        }
+      }
+    ]
+  }
+}
