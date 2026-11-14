@@ -1,61 +1,37 @@
 import Link from "next/link";
-import { CHAIN, CLOSING, EVALUATE_ROUTE, LINKS } from "@/lib/site/facts";
+import { CLOSING } from "@/lib/site/facts";
 import { NEXT_STEP } from "@/lib/site/next-step";
-import { KeepRich, LIST, Outcome } from "./bits";
-import ch from "./chain.module.css";
+import { GetProbarion, TrademarkLead } from "./BuiltOn";
+import { KeepRich, LIST } from "./bits";
 import { NextStep } from "./NextStep";
-import { Away, Parts, TermRecord } from "./parts";
-import p from "./parts.module.css";
-import { LandingSection } from "./SectionHead";
+import { Away } from "./parts";
+import sh from "./ships.module.css";
 import s from "./site.module.css";
 
-/**
- * The smoke run's three transactions: each row opens with its outcome, then its title and the call the agent key
- * made, what the chain shows, and the transaction on the testnet explorer. What the rows share is the head's record.
- * A short foot points to the demo vault's newer record and to v0's known gap.
- */
-export function ChainList() {
-  return (
-    <LandingSection
-      id="chain"
-      head={{ eyebrow: CHAIN.eyebrow, title: CHAIN.title, lede: CHAIN.intro }}
-      headAfter={<TermRecord rows={CHAIN.record} />}
-    >
-      <ul className={ch.rows} {...LIST}>
-        {CHAIN.rows.map(({ outcome, title, call, body, tx }) => (
-          <li key={tx.hash} className={ch.row}>
-            <div className={ch.what}>
-              <Outcome tone={outcome.tone} className={ch.out}>
-                {outcome.word}
-              </Outcome>
-              <h3 className={ch.title}>{title}</h3>
-              <p className={ch.call}>
-                <KeepRich text={call} />
-              </p>
-            </div>
-            <p className={ch.body}>
-              <KeepRich text={body} />
-            </p>
-            <dl className={ch.ev}>
-              <dt className={p.label}>{CHAIN.evidenceLabel}</dt>
-              <dd>
-                <Away href={tx.url} tx={tx.label} after={CHAIN.txExplorer} />
-              </dd>
-            </dl>
-          </li>
-        ))}
-      </ul>
-      <div className={ch.foot}>
-        {CHAIN.foot.map((line) => (
-          <p key={String(line[0])} className={ch.line}>
-            <Parts parts={line} />
-          </p>
-        ))}
-      </div>
-    </LandingSection>
-  );
+/** A link of the closing: `#id` stays on this page, a path of this site opens in this tab, a full URL in a new one. */
+function CloseLink({ href, label, className }: { href: string; label: string; className: string }) {
+  if (href.startsWith("#")) {
+    return (
+      <a className={className} href={href}>
+        {label}
+      </a>
+    );
+  }
+  if (href.startsWith("/")) {
+    return (
+      <Link className={className} href={href}>
+        {label}
+      </Link>
+    );
+  }
+  return <Away className={className} href={href} label={label} />;
 }
 
+/**
+ * The page's end statement, then one action per audience: the evaluation (solid), the live check the hero opens with,
+ * and the source. Under them the quiet links (the docs, the spec, the demo video), where to get Probarion as a row of
+ * text links, the trademark lead, and last the way into the product.
+ */
 export function Closing() {
   return (
     <section className={s.close}>
@@ -68,11 +44,24 @@ export function Closing() {
           <KeepRich text={CLOSING.live} />
         </p>
         <div className={s.cta}>
-          <Link className={`${s.btn} ${s.solid} ${s.big}`} href={EVALUATE_ROUTE}>
-            {CLOSING.evaluate}
-          </Link>
-          <Away className={`${s.btn} ${s.big}`} href={LINKS.spec} label={CLOSING.spec} />
+          {CLOSING.buttons.map((b) => (
+            <CloseLink
+              key={b.label}
+              href={b.href}
+              label={b.label}
+              className={b.solid ? `${s.btn} ${s.solid} ${s.big}` : `${s.btn} ${s.big}`}
+            />
+          ))}
         </div>
+        <ul className={sh.quiet} {...LIST}>
+          {CLOSING.quiet.map((q) => (
+            <li key={q.label}>
+              <CloseLink href={q.href} label={q.label} className={`${s.link} ${sh.quietLink}`} />
+            </li>
+          ))}
+        </ul>
+        <GetProbarion />
+        <TrademarkLead />
         <NextStep step={NEXT_STEP.closing} className={s.closeNext} linkClassName={s.link} />
       </div>
     </section>

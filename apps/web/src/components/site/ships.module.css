@@ -1,303 +1,223 @@
 /*
- * Built on (components/site/BuiltOn.tsx), from the card's last row down: the rest of the stack, where to get
- * Probarion, and the trademark footer, in that order, so that what Probarion runs on stays in its card, where to get
- * it is a part of its own, and the legal text comes last, for the whole section.
+ * What Probarion rests on, and where to get it (components/site/BuiltOn.tsx). Two places, both text, no logos:
  *
- * - The stack row is a row of the card (.boRow in site.module.css): its tracks, padding and hairline are the rows'.
- *   This file only places its two entries, one in each of the rows' other two tracks.
- * - The four cards and the footer share one four-column grid and its 16px gutter. Text on the paper (the heading and
- *   the footer) starts at the cards' outer edges; text in a card starts at its padding.
- * - Inside each card a subgrid of five rows (logo, label and name, what you get, the exact names, the link) is shared
- *   by the cards of a row, so that the names, the descriptions, the exact names and the links start on one line from
- *   card to card. A card with fewer names keeps the spare height at its foot, over the link's hairline.
+ * - What it rests on (Foundations), a block of the #verify section: four rows under an ink rule, a hairline under
+ *   each. A row is three tracks on a wide screen, its label and name, its sentences, and its tokens in mono chips; from
+ *   1100px down the tokens go under the sentences, and on a phone everything is one column.
+ * - The closing's rows (Sections.tsx Closing): its quiet links, where to get Probarion, each place a text link with
+ *   what is there after it, and the trademark lead in small print.
  *
- * Every colour is a token from app/globals.css. Every third-party logo is its owner's file in its own colour, never
- * stretched; the store's card shows Probarion's own mark, the extension's icon, not the store's logo.
+ * Every colour is a token from app/globals.css. Nothing moves.
  */
 
-/* The rest of the stack: the label in the rows' first track (.boLabel), on the first line of the entries. */
-.stackLabel {
-  align-self: baseline;
-}
 .stackList {
-  grid-column: 2 / -1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--color-ink);
+}
+.rest {
   display: grid;
-  grid-template-columns: subgrid;
-  /* 16px over 15px text: 2.62em from line to line with the 1.55 line (WCAG 1.4.8), where the two entries stack. */
-  row-gap: 16px;
-  align-self: baseline;
+  grid-template-columns: 180px minmax(0, 1fr) minmax(0, 380px);
+  gap: 12px 32px;
+  align-items: start;
+  padding-block: 24px;
+  border-bottom: 1px solid var(--color-line);
 }
-/* Without subgrid (Chrome before 117, Safari before 16): the same two tracks, drawn by the list itself. */
-@supports not (grid-template-columns: subgrid) {
-  .stackList {
-    grid-template-columns: minmax(0, 2fr) minmax(232px, 1fr);
-    column-gap: clamp(20px, 3vw, 44px);
-  }
-}
-.stackItem {
+.restHead {
   min-width: 0;
 }
-.stackName {
-  font-size: 15px;
-  font-weight: 600;
-}
-.stackBody {
-  margin-top: 2px;
-  /* Reading text: about 71 characters a line at most (WCAG 1.4.8). */
-  max-width: var(--container-measure);
-  font-size: 15px;
-  color: var(--color-mute);
-  text-wrap: pretty;
-}
-/* A code span or a date that a line break would split (BuiltOn.tsx sets it). */
-.nowrap {
-  white-space: nowrap;
-}
-
-/* Where to get Probarion: its own part, under an h2 in the section title's style (.boTitle). */
-.get {
-  margin-top: clamp(48px, 5.5vw, 72px);
-}
-/*
- * Four across from 1200px. Each card needs about 230px inside it for its longest name on one line (the MCP server's,
- * 29 characters of 13px mono, is about 226px), so the row of four starts at 1200px, not at the 1101px of the rows.
- */
-.ships {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: clamp(18px, 2vw, 24px);
-}
-.ship {
-  display: grid;
-  grid-row: span 5;
-  grid-template-rows: subgrid;
-  row-gap: 0;
-  min-width: 0;
-  padding: 22px 22px 0;
-  border: 1px solid var(--color-line);
-  border-radius: 16px;
-  background: var(--color-surface);
-}
-/*
- * The logo row is as tall on every card. Each logo keeps its file's aspect ratio and colour. npm's wordmark is a solid
- * block, so it is set a little smaller to look the same size; the MCP logo carries its name in small letters, so it is
- * set a little larger.
- */
-.shipLogo {
-  display: flex;
-  align-items: center;
-  height: 32px;
-  color: var(--color-ink);
-}
-.shipLogo svg {
-  display: block;
-  max-width: 100%;
-  height: 26px;
-  width: auto;
-}
-.shipLogo .npmLogo {
-  height: 22px;
-  aspect-ratio: 780 / 250;
-}
-.shipLogo .mcpLogo {
-  height: 28px;
-  aspect-ratio: 1338 / 195;
-}
-.shipLogo .githubMark {
-  aspect-ratio: 1;
-  fill: currentColor;
-}
-.shipHead {
-  margin-top: 18px;
-}
-/* What ships there, over the name, in the small capitals and the gold of the rows' labels (.boLabel). */
-.shipKind {
-  font-family: var(--font-mono);
-  font-size: 12px;
+/* What kind of part it is, over its name, in the gold of the labels. */
+.restLabel {
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.5;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--color-gold-ink);
 }
-.shipName {
-  margin-top: 4px;
-  font-size: 17px;
-  font-weight: 600;
+.restTitle {
+  margin-top: 2px;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
 }
-.shipBody {
-  align-self: start;
-  margin-top: 10px;
+.restText {
+  min-width: 0;
+}
+.stackBody {
   max-width: var(--container-measure);
-  font-size: 15px;
+  font-size: 16px;
+  line-height: 1.55;
   color: var(--color-mute);
   text-wrap: pretty;
 }
-/*
- * The exact names, right under the description and at the top of their row: the npm card's four names set the row's
- * height, and the other cards keep the spare height under their version line, at the foot, not in the middle.
- */
-.shipArt {
-  align-self: start;
-  margin-top: 20px;
+/* The row's way to the docs: 16px over 16px text, 2.55em from line to line with the 1.55 line (WCAG 1.4.8). */
+.stackLink {
+  margin-top: 16px;
+  max-width: var(--container-measure);
+  font-size: 16px;
+  line-height: 1.55;
 }
-/* Each name moves to the next line whole; one wider than the card breaks at its "/" (BuiltOn.tsx adds the break). */
-.shipIds {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 10px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-ink);
-}
-.shipIds li {
+.tokens {
+  display: grid;
+  gap: 10px;
   min-width: 0;
-  max-width: 100%;
 }
-.ship .shipIds code {
-  font-size: 13px;
-}
-/* The store listing's name is a name, not an identifier. */
-.shipListing {
-  font-family: var(--font-sans);
-}
-.shipMeta {
-  margin-top: 2px;
-  font-size: 13px;
+.tokensNote {
+  max-width: var(--container-measure);
+  font-size: 14px;
   line-height: 1.5;
   color: var(--color-mute);
 }
-.ship .shipMeta code {
-  font-size: 12.5px;
+.tokenList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-/* The card's one link is its foot: a full-width row under a hairline, 46px tall, the whole row a target. */
-.shipGo {
-  margin: 18px -22px 0;
-  border-top: 1px solid var(--color-line);
+/* A token is a chip in mono; a long command breaks inside itself rather than run past a 320px column (WCAG 1.4.10). */
+.token {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
 }
-.shipGo a {
-  display: block;
-  padding: 11.5px 22px 12px;
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.5;
-  border-radius: 0 0 15px 15px;
-}
-/* The whole row shows that it is the target: the soft fill, with ink on it at 7:1 or more, and a heavier underline. */
-.shipGo a:hover {
+.token code {
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
   background: var(--color-soft);
-  text-decoration-thickness: 2px;
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
-/* Drawn inside the row, so that the card's rounded foot does not cut the ring. */
-.shipGo a:focus-visible {
-  outline-offset: -4px;
-  border-radius: 0 0 14px 14px;
+.tokenNote {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-mute);
 }
-/* Without subgrid (Chrome before 117, Safari before 16): a column, with the link row at the foot. */
-@supports not (grid-template-rows: subgrid) {
-  .ship {
-    display: flex;
-    flex-direction: column;
-  }
-  .shipBody,
-  .shipArt {
-    align-self: stretch;
-  }
-  .shipArt {
-    flex: 1;
-  }
+.restFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px 20px;
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+/* The foot's link is a 44px touch target, its words in ink. */
+.restFoot a {
+  display: inline-block;
+  padding-block: 11px;
+  color: var(--color-ink);
 }
 
-/* The trademark footer: small and muted, under a hairline, on the cards' columns. */
-.legal {
+/* --- The closing's rows ---------------------------------------------------------------------------------- */
+
+/* Under the buttons: three light links, each a 44px touch target, as the hero's quiet line. */
+.quiet {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 24px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.quietLink {
+  display: inline-block;
+  padding-block: 11px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.quietLink:hover {
+  color: var(--color-ink);
+}
+
+/* Where to get Probarion: under a hairline, its heading beside its links on a wide screen, over them from 960px down. */
+.get {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  column-gap: 16px;
-  /* 13px over 13px text: 2.55em from line to line with the 1.55 line (WCAG 1.4.8), where the blocks stack. */
-  row-gap: 13px;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 4px 32px;
   align-items: baseline;
-  margin-top: 48px;
-  padding-top: 20px;
+  margin-top: var(--space-block);
+  padding-top: 22px;
   border-top: 1px solid var(--color-line);
+}
+.getTitle {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.getList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.getItem {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  min-width: 0;
+}
+/* Each place's link is a 44px touch target. */
+.getLink {
+  display: inline-block;
+  padding-block: 10px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.getDetail {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+.getDetail code {
+  font-size: 13px;
+}
+
+/* The trademark lead: the README's License line, small and muted. */
+.legal {
+  margin-top: 14px;
+  max-width: var(--container-measure);
   font-size: 13px;
   line-height: 1.55;
   color: var(--color-mute);
-}
-.legalLabel {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.legalLead,
-.legalNotices {
-  min-width: 0;
-  max-width: var(--container-measure);
   text-wrap: pretty;
 }
 
-/* Below 1101px, as the rows do: the stack's two entries stack in the second track. */
+/* Laptops and tablets: a row's tokens go under its sentences. */
 @media (max-width: 1100px) {
-  .stackList {
+  .rest {
+    grid-template-columns: 160px minmax(0, 1fr);
+  }
+  .tokens {
     grid-column: 2;
+  }
+}
+@media (max-width: 960px) {
+  .get {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-/*
- * Tablets and small laptops: the cards two by two. The footer's label and lead run across both columns, and the two
- * blocks of notices sit side by side under them.
- */
-@media (max-width: 1199px) {
-  .ships,
-  .legal {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .legalLabel,
-  .legalLead {
-    grid-column: 1 / -1;
-  }
-}
-/* A phone: one column throughout, the cards a little tighter. */
-@media (max-width: 620px) {
-  .stackList {
-    grid-column: auto;
-  }
-  .ships,
-  .legal {
+/* A phone: one column, in the same order. */
+@media (max-width: 640px) {
+  .rest {
     grid-template-columns: minmax(0, 1fr);
   }
-  .ship {
-    padding: 18px 18px 0;
-  }
-  .shipHead {
-    margin-top: 14px;
-  }
-  .shipArt {
-    margin-top: 16px;
-  }
-  .shipGo {
-    margin: 16px -18px 0;
-  }
-  .shipGo a {
-    padding-inline: 18px;
-  }
-}
-@media (forced-colors: active) {
-  /* The npm and MCP logos keep their own black, so on a dark Canvas each sits on a white plate. */
-  .shipLogo .npmLogo,
-  .shipLogo .mcpLogo {
-    forced-color-adjust: none;
-    box-sizing: content-box;
-    padding: 2px 4px;
-    border-radius: 4px;
-    background: var(--color-surface);
-  }
-  /* A contrast theme drops the hover fill: an outline inside the row marks it instead. */
-  .shipGo a:hover {
-    outline: 1px solid LinkText;
-    outline-offset: -4px;
+  .tokens {
+    grid-column: 1;
   }
 }

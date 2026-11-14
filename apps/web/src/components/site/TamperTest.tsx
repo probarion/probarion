@@ -46,6 +46,10 @@ export interface TamperCopy {
   loadFailed: string;
   runFailed: string;
   noScript: string;
+  /** The summary of the fold the checks sit in, where they fold (`foldChecks`). */
+  checksFold: string;
+  /** What a screen reader names the checks that did not pass, beside the verdict while the checks are folded. */
+  failingLabel: string;
 }
 
 /** The label keeps its place while the button is busy, so that the button does not change size. */
@@ -98,7 +102,8 @@ const checkTone = (word: string, bad: boolean): OutcomeTone =>
  * run just now. Under that block, in a live region of its own so that a press that did not finish does not read the
  * old verdict again as new: `next`, which TamperTest passes only when `offersNext`, and `error`. Then each check's
  * word, read on demand and never announced, and the verifier's own words on the checks that did not pass, in a closed
- * disclosure.
+ * disclosure. With `foldChecks` the checks sit in a closed fold of their own (the landing), and the ones that did not
+ * pass stay named under the verdict, each by its letter, its name and its word.
  */
 export function TamperVerdict({
   result,
@@ -108,6 +113,7 @@ export function TamperVerdict({
   next,
   error,
   busy = false,
+  foldChecks = false,
 }: {
   result: TamperResult;
   checks: readonly { id: CheckId; label: string; hint: string }[];
@@ -118,6 +124,8 @@ export function TamperVerdict({
   error?: string;
   /** While a press is running: the verdict block is busy, so it is not read until the new one is in. */
   busy?: boolean;
+  /** The checks fold under `copy.checksFold`, and the ones that did not pass are named under the verdict. */
+  foldChecks?: boolean;
 }) {
   const views = checks.map(({ id, label, hint }) => ({
     id,
@@ -126,6 +134,22 @@ export function TamperVerdict({
     ...checkView(result.checks.find((c) => c.id === id)),
   }));
   const explained = views.filter((v) => v.why !== "");
+  const failing = foldChecks ? views.filter((v) => v.bad) : [];
+  const list = (
+    <ul className={`${t.grid} ${t.checks}`} {...LIST}>
+      {views.map(({ id, label, hint, word, bad, caveat }) => (
+        <li key={id} className={bad ? `${t.check} ${t.checkBad}` : t.check}>
+          <span className={t.checkId}>{id}</span>
+          <span className={t.checkLabel}>{label}</span>
+          <Outcome tone={checkTone(word, bad)} className={t.checkWord}>
+            {word}
+          </Outcome>
+          <span className={t.checkHint}>{hint}</span>
+          {caveat === "" ? null : <span className={t.caveat}>{caveat}</span>}
+        </li>
+      ))}
+    </ul>
+  );
   const plain = plainVerdict(result, copy.firstBroken);
   const summary = resultSummary(result, copy.firstBroken);
   return (
@@ -146,6 +170,21 @@ export function TamperVerdict({
         )}
         <p className={t.note}>{live ? copy.live : copy.recorded}</p>
       </div>
+      {failing.length === 0 ? null : (
+        <div className={`${t.grid} ${t.after}`}>
+          <ul className={t.failing} aria-label={copy.failingLabel} {...LIST}>
+            {failing.map(({ id, label, word }) => (
+              <li key={id} className={t.failingCheck}>
+                <span className={t.checkId}>{id}</span>{" "}
+                <span className={t.checkLabel}>{label}</span>{" "}
+                <Outcome tone={checkTone(word, true)} className={t.failingWord}>
+                  {word}
+                </Outcome>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {/* Always in the page, so that what comes into it is announced; with nothing in it, it takes no room. */}
       <div
         className={next === undefined && error === undefined ? undefined : `${t.grid} ${t.after}`}
@@ -154,19 +193,14 @@ export function TamperVerdict({
         {next}
         {error === undefined ? null : <p className={t.runError}>{error}</p>}
       </div>
-      <ul className={`${t.grid} ${t.checks}`} {...LIST}>
-        {views.map(({ id, label, hint, word, bad, caveat }) => (
-          <li key={id} className={bad ? `${t.check} ${t.checkBad}` : t.check}>
-            <span className={t.checkId}>{id}</span>
-            <span className={t.checkLabel}>{label}</span>
-            <Outcome tone={checkTone(word, bad)} className={t.checkWord}>
-              {word}
-            </Outcome>
-            <span className={t.checkHint}>{hint}</span>
-            {caveat === "" ? null : <span className={t.caveat}>{caveat}</span>}
-          </li>
-        ))}
-      </ul>
+      {foldChecks ? (
+        <details className={t.checksFold}>
+          <summary className={t.checksSummary}>{copy.checksFold}</summary>
+          {list}
+        </details>
+      ) : (
+        list
+      )}
       {explained.length === 0 ? null : (
         <details className={t.detail}>
           <summary>{VERIFIER_DETAIL}</summary>
@@ -197,6 +231,7 @@ export function TamperTest({
   copy,
   source,
   next,
+  foldChecks = false,
 }: {
   rows: readonly LedgerRow[];
   checks: readonly { id: CheckId; label: string; hint: string }[];
@@ -207,6 +242,8 @@ export function TamperTest({
   source: ReactNode;
   /** Where to go once the verifier has caught an edit. Left out where the page already gives the next step. */
   next?: ReactNode;
+  /** The checks fold, on the landing: see TamperVerdict. */
+  foldChecks?: boolean;
 }) {
   const ids = useId();
   const verifier = useRef<Promise<Verify> | null>(null);
@@ -314,6 +351,7 @@ export function TamperTest({
       <div className={t.readout}>
         <TamperVerdict
           busy={busy !== null}
+          foldChecks={foldChecks}
           result={shown.result}
           checks={checks}
           live={shown.live}
