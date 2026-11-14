@@ -2088,6 +2088,10 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The docs home shows its four doors above the fold again at 1440 x 900 (`docs.spec.ts`). The developer door ran
+  to eight lines when it gained its install line, so all four doors ended at 982 px. It keeps both commands, the no-key
+  demo first, in fewer words, and the home has a little less space above its search and its doors. The doors end at
+  885 px on probarion.xyz's layout.
 - `/usage` passes the e2e reading check (`a11y.spec.ts`, WCAG 1.4.8 at 1440px), which CI does not run. The source
   line under the mainnet proof ran to 121 characters, so `.fresh` now keeps the site's measure. The check then found 32
   paragraph breaks under 2.5em: the testing rows' label and "Read:" line, the tiles' counts and the proof's source
