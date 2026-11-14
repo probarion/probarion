@@ -33,7 +33,9 @@ Exit codes:
  * The key policy of a Probarion vault: every key is a function-call key on the vault itself for `spend` (an agent
  * key) or for `anchor` (the ledger key), with a limited allowance (the vault refuses a zero, unlimited one) and no
  * gas key. No full-access key. The anchor rule names no public key: pinning it to the vault's current ledger key
- * (`get_config`) is check f of `probarion verify`.
+ * (`get_config`) is check f of `probarion verify`. test/near-account-audit.test.ts runs this policy and check f on
+ * the recorded snapshots in docs/evidence: they agree but for those three terms (check f accepts an unlimited
+ * allowance and a scoped gas key, and refuses an anchor key that is not the ledger key).
  */
 export function vaultKeyPolicy(vault: string): KeyPolicy {
   return {

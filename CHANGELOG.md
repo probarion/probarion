@@ -83,10 +83,15 @@ The software is an unaudited beta.
   read, 1 not locked or a blocking finding, 64 a usage error); `--vault-policy` holds it to a Probarion vault's
   `spend` and `anchor` keys and recorded builds. `tx prove` reads the head on two RPC origins, proves the
   transaction and every receipt it led to with `light_client_proof`, and lists the NEP-297 events of the proven
-  outcomes (exit 0 proven, 1 not proven, 64 a usage error). Both read over JSON-RPC and sign nothing. 25 tests
-  (`near-account-audit`, `near-tx-prove`) run them on the recorded fixtures; run by hand on mainnet during the
-  build, on 2026-11-14 at about 05:29 UTC, `account audit v0.probarion.near --vault-policy` and `tx prove` of
-  spend 2 (11 outcomes) and of the drill's refused spend (3 outcomes, one failed) each exited 0. The CLI
+  outcomes (exit 0 proven, 1 not proven, 64 a usage error); a `tx` answer that leaves out a receipt a proven
+  outcome created, such as a failed receipt or the POA burn, is not proven (`incomplete`). Both read over JSON-RPC
+  and sign nothing. 41 tests (`near-account-audit`, `near-tx-prove`) run them on the recorded fixtures, among them
+  `--vault-policy` and check f side by side on the 13 recorded vault snapshots in `docs/evidence`: they agree but
+  for three terms, the anchor key not pinned to the ledger key, and an unlimited allowance and a scoped gas key
+  refused. Run by hand on mainnet during the build, on 2026-11-14 at about 05:29 UTC, `account audit
+  v0.probarion.near --vault-policy` and `tx prove` of spend 2 (11 outcomes) and of the drill's refused spend
+  (3 outcomes, one failed) each exited 0; those runs came before the `incomplete` check, and both trees as recorded
+  are complete and prove with it in the tests. The CLI
   reference and architecture pages of the docs, `packages/cli/README.md` and `docs/RUNBOOK.md` (five packages,
   `@probarion/near` published before `@probarion/core`) name them.
 - The record of a drill on the mainnet vault, run on 2026-11-14 between 01:06 and 01:13 UTC. Rehearsed by the team;

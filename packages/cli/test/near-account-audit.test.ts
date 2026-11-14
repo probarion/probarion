@@ -5,10 +5,12 @@
 //
 // Needs the built packages: pnpm --filter @probarion/core build, --filter @probarion/sdk build and
 // --filter @probarion/near build.
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkVaultLocked, type Snapshot } from "@probarion/core";
+import { toAccessKeyInfo } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import type { CliIo } from "../src/io.js";
 import { runCli } from "../src/program.js";
@@ -17,6 +19,9 @@ import { tempDir, testIo } from "./helpers.js";
 const RPC = "https://rpc.audit.test/";
 const KEYS = fileURLToPath(new URL("../../near/test/fixtures/keys/", import.meta.url));
 const CODE_HASHES = fileURLToPath(new URL("../../../contracts/code-hashes.json", import.meta.url));
+const EVIDENCE = fileURLToPath(new URL("../../../docs/evidence/", import.meta.url));
+/** A recorded factory build (contracts/code-hashes.json): a real code hash that is not a vault build. */
+const FACTORY_BUILD = "FK6mMqUdieWmYyB9hqyJL23Aew9wWGSPustb6tUDtaQ6";
 
 type RawKey = { public_key: string; access_key: { nonce: number; permission: unknown } };
 interface KeysFixture {
@@ -353,4 +358,207 @@ describe("probarion account audit", () => {
       "  64  usage error: a malformed account or flag, or a --builds file that cannot be read",
     );
   });
+});
+
+// --- --vault-policy against check f -----------------------------------------------------------------------------
+// The verifier snapshots in docs/evidence, each served as views: its keys rebuilt in the RPC shape and its code hash.
+// The block (V0's) is a stand-in, since a snapshot records keys and code, not the block they were read at. Each case
+// runs `account audit <vault> --vault-policy` and core's check f (`checkVaultLocked`, on the keys as the SDK folds
+// them) on the same keys, so this pins the CLI's vaultKeyPolicy, the recorded vault builds it holds the code to and
+// the exit code. Mutations are made in the test from the recorded keys and are labelled.
+
+const snapshots = (function walk(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((item) => {
+    const path = join(dir, item.name);
+    if (item.isDirectory()) return walk(path);
+    return /^snapshot-.*\.json$/.test(item.name) ? [path] : [];
+  });
+})(EVIDENCE)
+  .sort()
+  .map((path) => ({
+    name: path.slice(EVIDENCE.length).replaceAll("\\", "/"),
+    snapshot: JSON.parse(readFileSync(path, "utf8")) as Snapshot,
+  }));
+
+/** The SDK-folded key back in the RPC shape (FullAccess, or the FunctionCall wrapper around its fields). */
+function rawKey(key: Snapshot["chain"]["access_keys"][number]): RawKey {
+  const permission =
+    key.permission === "FullAccess"
+      ? "FullAccess"
+      : functionCall(
+          key.permission.receiver_id,
+          [...key.permission.method_names],
+          key.permission.allowance,
+        );
+  return { public_key: key.public_key, access_key: { nonce: 0, permission } };
+}
+
+const keyWith = (raw: RawKey[], method: string): RawKey | undefined =>
+  raw.find((k) => {
+    const p = k.access_key.permission as { FunctionCall?: { method_names: string[] } };
+    return p.FunctionCall?.method_names.length === 1 && p.FunctionCall.method_names[0] === method;
+  });
+
+/** Check f's verdict and the CLI's exit code under --vault-policy, on one raw key list and code hash. */
+async function policyVerdicts(s: Snapshot, raw: RawKey[], codeHash = s.chain.code_hash) {
+  const folded: Snapshot = {
+    ...s,
+    chain: { ...s.chain, access_keys: raw.map((key) => toAccessKeyInfo(key)), code_hash: codeHash },
+  };
+  const views: KeysFixture = {
+    network: s.network,
+    account_id: s.vault,
+    view_account: { ...V0.view_account, code_hash: codeHash },
+    view_access_key_list: { ...V0.view_access_key_list, keys: raw },
+  };
+  const { code, out, err } = await run(["--vault-policy"], views);
+  return { checkF: checkVaultLocked(folded).status === "pass", cli: code, out, err };
+}
+
+/**
+ * Each case: what it does to the recorded keys, check f's verdict and the CLI's exit code. They agree (pass and 0,
+ * fail and 1) but for the three cases marked as a difference, each one written in vaultKeyPolicy's comment.
+ */
+const POLICY_CASES: {
+  label: string;
+  mutate: (raw: RawKey[], s: Snapshot) => void;
+  codeHash?: string;
+  checkF: boolean;
+  cli: 0 | 1;
+}[] = [
+  { label: "as recorded", mutate: () => {}, checkF: true, cli: 0 },
+  {
+    label: "a FullAccess key added",
+    mutate: (raw) =>
+      raw.push({ public_key: OTHER_PK, access_key: { nonce: 0, permission: "FullAccess" } }),
+    checkF: false,
+    cli: 1,
+  },
+  {
+    label: "the spend key can also anchor",
+    mutate: (raw, s) => {
+      const key = keyWith(raw, "spend");
+      if (key) key.access_key.permission = functionCall(s.vault, ["spend", "anchor"], "1000");
+    },
+    checkF: false,
+    cli: 1,
+  },
+  {
+    label: "the spend key can call any method ([])",
+    mutate: (raw, s) => {
+      const key = keyWith(raw, "spend");
+      if (key) key.access_key.permission = functionCall(s.vault, [], "1000");
+    },
+    checkF: false,
+    cli: 1,
+  },
+  {
+    label: "the spend key on another receiver",
+    mutate: (raw) => {
+      const key = keyWith(raw, "spend");
+      if (key) key.access_key.permission = functionCall("usdc.probarion.near", ["spend"], "1000");
+    },
+    checkF: false,
+    cli: 1,
+  },
+  {
+    label: "a GasKeyFullAccess key added (shape from near-api-js 7.4.0 types)",
+    mutate: (raw) =>
+      raw.push({
+        public_key: OTHER_PK,
+        access_key: {
+          nonce: 0,
+          permission: { GasKeyFullAccess: { balance: "1", num_nonces: 1 } },
+        },
+      }),
+    checkF: false,
+    cli: 1,
+  },
+  {
+    label: "a second agent key added",
+    mutate: (raw, s) =>
+      raw.push({
+        public_key: OTHER_PK,
+        access_key: { nonce: 0, permission: functionCall(s.vault, ["spend"], "1000") },
+      }),
+    checkF: true,
+    cli: 0,
+  },
+  { label: "every key removed", mutate: (raw) => raw.splice(0), checkF: true, cli: 0 },
+  {
+    label: "code that is a recorded factory build, not a vault build",
+    mutate: () => {},
+    codeHash: FACTORY_BUILD,
+    checkF: false,
+    cli: 1,
+  },
+  {
+    // Difference: the CLI does not pin the anchor key to config.ledger_key (check f does, and the CLI says so).
+    label: "an anchor key that is not the ledger key",
+    mutate: (raw, s) => {
+      const anchor = keyWith(raw, "anchor");
+      if (anchor !== undefined) anchor.public_key = OTHER_PK;
+      else
+        raw.push({
+          public_key: OTHER_PK,
+          access_key: { nonce: 0, permission: functionCall(s.vault, ["anchor"], "1000") },
+        });
+    },
+    checkF: false,
+    cli: 0,
+  },
+  {
+    // Difference: the vault refuses a zero (unlimited) allowance (contracts/vault/src/keys.rs), so the CLI does too.
+    label: "the spend key with no allowance limit",
+    mutate: (raw, s) => {
+      const key = keyWith(raw, "spend");
+      if (key) key.access_key.permission = functionCall(s.vault, ["spend"], null);
+    },
+    checkF: true,
+    cli: 1,
+  },
+  {
+    // Difference: the SDK folds a scoped NEP-611 gas key into a function-call key; the CLI refuses gas keys. The
+    // allowance is null, as NEP-611 requires of a gas key.
+    label: "the spend key as a scoped gas key (shape from near-api-js 7.4.0 types)",
+    mutate: (raw, s) => {
+      const key = keyWith(raw, "spend");
+      if (key)
+        key.access_key.permission = {
+          GasKeyFunctionCall: {
+            allowance: null,
+            balance: "1000000000000000000000000",
+            method_names: ["spend"],
+            num_nonces: 2,
+            receiver_id: s.vault,
+          },
+        };
+    },
+    checkF: true,
+    cli: 1,
+  },
+];
+
+describe("probarion account audit --vault-policy against check f on the recorded snapshots", () => {
+  it("finds the recorded vault snapshots, each with a spend key, as the cases below need", () => {
+    expect(snapshots.length).toBeGreaterThanOrEqual(13);
+    for (const { name, snapshot } of snapshots) {
+      expect(keyWith(snapshot.chain.access_keys.map(rawKey), "spend"), name).toBeDefined();
+    }
+  });
+
+  for (const { label, mutate, codeHash, checkF, cli } of POLICY_CASES) {
+    it(`gives check f ${checkF ? "pass" : "fail"} and exit ${cli} on every snapshot: ${label}`, async () => {
+      for (const { name, snapshot } of snapshots) {
+        const raw = snapshot.chain.access_keys.map(rawKey);
+        mutate(raw, snapshot);
+        const got = await policyVerdicts(snapshot, raw, codeHash);
+        expect({ checkF: got.checkF, cli: got.cli }, `${name}: ${label}`).toEqual({ checkF, cli });
+        expect(got.err, `${name}: ${label}`).toBe("");
+        expect(got.out, `${name}: ${label}`).toContain(
+          "The vault policy does not pin the anchor key to the vault's current ledger key",
+        );
+      }
+    });
+  }
 });

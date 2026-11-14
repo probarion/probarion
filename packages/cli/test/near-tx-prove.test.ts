@@ -24,7 +24,7 @@ type Call = { url: string; method: string; params: Params };
 interface Proof {
   outcome_proof: {
     id: string;
-    outcome: { executor_id: string; logs: string[]; status: unknown };
+    outcome: { executor_id: string; logs: string[]; receipt_ids: string[]; status: unknown };
   };
 }
 interface ProofsFixture {
@@ -261,29 +261,92 @@ describe("probarion tx prove", () => {
   });
 
   it("proves a refused spend: the failed receipt is proven with status failure (exit 0)", async () => {
-    // The drill's over-cap spend, with the tx answer cut to the receipt whose proof was recorded (the answer only
-    // says what to fetch; the refund receipt has no recorded proof).
+    // The drill's over-cap spend as recorded: the tx, its failed receipt and the refund receipt that one created.
     const drill = fixture("mainnet-drill-over-cap.json");
     const failed = drill.proofs[1]?.outcome_proof.id;
-    const fx: ProofsFixture = {
-      ...drill,
-      tx: {
-        ...drill.tx,
-        receipts_outcome: drill.tx.receipts_outcome.filter((r) => r.id === failed),
-      },
-    };
     const { code, out } = await run(
       [],
-      fx,
+      drill,
       drill.tx.transaction.hash,
       drill.tx.transaction.signer_id,
     );
     expect(code).toBe(0);
+    expect(out).toMatch(
+      new RegExp(
+        `^PROVEN: tx ${drill.tx.transaction.hash} .*: 3 outcome\\(s\\) committed under block `,
+      ),
+    );
+    for (const proof of drill.proofs) expect(out).toContain(`  ${proof.outcome_proof.id}  `);
     expect(out).toContain(`  ${failed}  v0.probarion.near  block `);
     expect(out).toContain("failure (the proof does not carry the reason)");
     expect(out).toContain(
       "1 receipt(s) failed: the proof shows they ran and failed, and an event a failed receipt logged did not take effect.",
     );
+  });
+
+  // The tx answer only says what to fetch. An answer that leaves receipts out (tampered here from the recorded one)
+  // would leave a tree that verifies but hides them, so proveTransaction refuses a proven outcome's receipt without a
+  // proof as `incomplete`, and the CLI says to read it again.
+  it("exits 1, NOT PROVEN (incomplete), when the tx answer leaves out the drill's failed receipt", async () => {
+    const drill = fixture("mainnet-drill-over-cap.json");
+    const failed = drill.proofs[1]?.outcome_proof.id as string;
+    const fx: ProofsFixture = { ...drill, tx: { ...drill.tx, receipts_outcome: [] } };
+    const args = [fx, drill.tx.transaction.hash, drill.tx.transaction.signer_id] as const;
+    const { code, out, err, calls } = await run([], ...args);
+    expect(err).toBe("");
+    expect(code).toBe(1);
+    expect(out).toMatch(
+      new RegExp(
+        `^NOT PROVEN: tx ${drill.tx.transaction.hash} signed by v0\\.probarion\\.near on mainnet: proof 0: incomplete: `,
+      ),
+    );
+    expect(out).toContain(failed);
+    expect(out).toMatch(
+      / \(the tx answer left out a receipt: run it again, or with another --archival-rpc\)\n$/,
+    );
+    expect(out).not.toContain("failure (the proof");
+    // Only the transaction's own proof was asked for: the answer named no receipt.
+    expect(calls.filter((c) => c.method === "light_client_proof")).toHaveLength(1);
+    const json = JSON.parse((await run(["--json"], ...args)).out) as Record<string, unknown>;
+    expect(json.proven).toBe(false);
+    expect(json.code).toBe("incomplete");
+    expect(json.index).toBe(0);
+    expect(json.detail).toContain(failed);
+    expect(json).not.toHaveProperty("outcomes");
+  });
+
+  it("exits 1, NOT PROVEN (incomplete), when the tx answer leaves out the POA burn and the receipt it created", async () => {
+    const burn = SPEND_2.proofs.find((p) => p.outcome_proof.id === POA_BURN);
+    const dropped = new Set([POA_BURN, ...(burn?.outcome_proof.outcome.receipt_ids ?? [])]);
+    expect(dropped.size).toBe(2);
+    const fx = tampered((copy) => {
+      copy.tx.receipts_outcome = copy.tx.receipts_outcome.filter((r) => !dropped.has(r.id));
+    });
+    const { code, out } = await run([], fx);
+    expect(code).toBe(1);
+    expect(out).toMatch(/^NOT PROVEN: .* on mainnet: proof \d+: incomplete: /);
+    expect(out).toContain(POA_BURN);
+    expect(out).not.toContain("ft_burn");
+    const json = JSON.parse((await run(["--json"], fx)).out) as Record<string, unknown>;
+    expect(json.proven).toBe(false);
+    expect(json.code).toBe("incomplete");
+  });
+
+  it("exits 1, NOT PROVEN (incomplete), when the tx answer leaves out any one leaf receipt of spend 2", async () => {
+    const leaves = SPEND_2.proofs.filter(
+      (p, i) => i > 0 && p.outcome_proof.outcome.receipt_ids.length === 0,
+    );
+    expect(leaves.length).toBeGreaterThan(0);
+    for (const leaf of leaves) {
+      const id = leaf.outcome_proof.id;
+      const fx = tampered((copy) => {
+        copy.tx.receipts_outcome = copy.tx.receipts_outcome.filter((r) => r.id !== id);
+      });
+      const { code, out } = await run([], fx);
+      expect(code, id).toBe(1);
+      expect(out, id).toMatch(/^NOT PROVEN: .*: incomplete: /);
+      expect(out, id).toContain(id);
+    }
   });
 
   it("exits 1 with an error when the two head providers disagree", async () => {
@@ -394,5 +457,6 @@ describe("probarion tx prove", () => {
     expect(state.out).toContain(
       "  0   proven: the transaction and every receipt it led to are committed under the head",
     );
+    expect(state.out).toContain("the tx answer left out a receipt that a proven outcome created");
   });
 });

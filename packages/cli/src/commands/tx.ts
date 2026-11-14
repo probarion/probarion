@@ -31,7 +31,7 @@ type TxProveOpts = GlobalOpts & {
 const TX_PROVE_EXIT_CODES = `
 Exit codes:
   0   proven: the transaction and every receipt it led to are committed under the head (a failed receipt is proven as a failure)
-  1   not proven: a proof did not verify, the two head providers disagree, or a read failed (error: on stderr)
+  1   not proven: a proof did not verify, the tx answer left out a receipt that a proven outcome created, the two head providers disagree, or a read failed (error: on stderr)
   64  usage error: a malformed hash, account or flag, or head URLs on fewer than two origins
 `;
 
@@ -60,6 +60,17 @@ function byOrigin(urls: readonly string[], flag: string): string[][] {
 
 function originOf(url: string): string {
   return new URL(url).origin;
+}
+
+/**
+ * What to do about a tree that is not proven. proveTransaction requires the whole tree: the `tx` answer says which
+ * receipts to fetch, and one that leaves out a receipt a proven outcome created (a failed receipt, a burn) is
+ * `incomplete`, not a smaller clean tree. That answer came from one archival node, so another read can complete it.
+ */
+function notProvenHint(code: string): string {
+  return code === "incomplete"
+    ? " (the tx answer left out a receipt: run it again, or with another --archival-rpc)"
+    : "";
 }
 
 function statusText(status: ProvenStatus): string {
@@ -255,7 +266,7 @@ export function registerTx(program: Command, io: CliIo): void {
       io.out(formatProvenTree(ctx, result.outcomes));
     } else {
       io.out(
-        `NOT PROVEN: tx ${printable(parsed.txHash)} signed by ${printable(parsed.signer)} on ${parsed.network}: ${result.index >= 0 ? `proof ${result.index}: ` : ""}${result.code}: ${printable(result.detail)}\n`,
+        `NOT PROVEN: tx ${printable(parsed.txHash)} signed by ${printable(parsed.signer)} on ${parsed.network}: ${result.index >= 0 ? `proof ${result.index}: ` : ""}${result.code}: ${printable(result.detail)}${notProvenHint(result.code)}\n`,
       );
     }
     io.setExitCode(result.ok ? 0 : 1);
