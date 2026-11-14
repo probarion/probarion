@@ -205,6 +205,16 @@ testnet archival RPC answered HTTP 429 to that run, so its 16 online checks did 
 | Eval: the model replay on NEAR AI Cloud | On 2026-11-14 `Qwen/Qwen3.8-27B` on NEAR AI Cloud was asked about the 19 synthetic invoices that reach the model step: 17 answers pass A1 to A8 offline, and 2 calls failed (I-01 timed out, I-06's output was not valid JSON), so those two are decided rules-only. Replayed offline through the same `decide()`: money moved wrongly 0/20; model fooled 0/3 (the injected invoices whose injection it is shown and that have an attested answer); 1/20 false refusals (C-05, a clean invoice, refused by `mandate.payee_mismatch` on the model's malformed Base payee hint); and the model proposed paying 2 of the 7 invoices that must not be paid and reach it (D-02 and M-01), which the code refused. An earlier run with `z-ai/glm-5.3-flash` wrote no answer: 17 answers failed A3 to A5 and 2 calls timed out. The TEE measurement is not pinned, and O1 and O2 were not run on these recordings ([results and run history](eval/README.md#results-today)) | None |
 | Reproducible builds | CI rebuilds both contracts in Docker with cargo-near 0.22.0 and compares their code hashes with [`contracts/code-hashes.json`](contracts/code-hashes.json) ([script](scripts/build-reproducible.sh)). `v0.probarion.near` and the factory's vaults run the recorded build `3cQXYDvf…`; check f of `verify` reads it on chain | None |
 
+## Tested, in numbers
+
+Every suite in CI passed at commit `ed41104` on 2026-11-14: 13,450 tests, 0 failed. With the model fooled by every
+invoice, in an offline run that asks no model, the eval moves no money wrongly (0/20, 0.00 USDC).
+`npx probarion@0.1.1 verify` on the mainnet vault gives RESULT: PASS on Node v22.23.4 and on Node v24.22.2. Each
+figure, with the CI run, the file or the chain read it was counted at, is in
+[Tested, in numbers](README.md#tested-in-numbers) in the README: the tests of each suite, the
+contract's unit, property and sandbox tests, the CI checks, the eval, the mainnet and testnet records, the Canary
+rehearsals and what the claim checker covers.
+
 ## Assume breach
 
 | If this is compromised | What still bounds the loss |
@@ -254,8 +264,6 @@ and verifier stay free under the MIT license; the hosted console would be paid, 
   date ([runs](docs/evidence/payee-check/2026-11-13.txt), [06 in docs/TRACKS.md](docs/TRACKS.md#06-ai-security--defense)).
 - **NEAR Intents is a stand-in on testnet.** `intents-stub.probarion.testnet` stands in for `intents.near`, so a
   testnet burn does not leave NEAR; the real Intents payouts are the two mainnet tests of 2026-11-13.
-- **No outside users yet.** [/usage](https://probarion.xyz/usage) on testnet showed 0 external owners, 0 Canary
-  participants and 0 pilots, beside 2 team vaults; the Canary's board showed 0 visitor attempts and 6 by the team.
 - **The TEE measurement is not pinned**, so no check shows which model image ran ([why](docs/measurement-pin-2026-11.md)),
   though O1 and O2 passed on the mainnet vault's 3 attested decisions at 17:52 UTC on 2026-11-13.
 - **No audit.** No third party has audited the contracts or the packages.

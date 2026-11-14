@@ -211,7 +211,7 @@ describe("the form, used", () => {
 });
 
 describe("the line of how many have tried, used", () => {
-  const LINE = "6 attempts so far, all by the team. Be the first visitor.";
+  const LINE = "The team has run 6 rehearsal attempts. Your turn: try to get paid.";
   const shown = (f: ReturnType<typeof open>) => textOf(f.view.result).includes(LINE);
 
   it("shows the page's line over the chips, and none when the page had no board", () => {
@@ -220,7 +220,7 @@ describe("the line of how many have tried, used", () => {
     const line = elements(f.view.result).find((e) => e.type === "p" && textOf(e) === LINE);
     // Not a live region: the answer's region and the line under the chips are the form's two.
     expect(line?.props["aria-live"]).toBeUndefined();
-    expect(textOf(open().view.result)).not.toMatch(/so far|Be the first visitor/);
+    expect(textOf(open().view.result)).not.toMatch(/so far|rehearsal attempts?\.|Your turn/);
   });
 
   it("goes once the visitor's attempt is answered, and stays gone when a chip clears the answer", async () => {
