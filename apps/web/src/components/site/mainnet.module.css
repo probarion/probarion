@@ -1,8 +1,9 @@
 /*
  * The #mainnet section (MainnetPayout.tsx): a payout on NEAR mainnet drawn as the brand mark laid along a route, the
- * stone, with its seven checks; then the decision trail beside the verifier's verdict. The newest payout shows open, and
- * each earlier one follows, folded behind a summary card. Light only, and every colour is
- * a token from app/globals.css. Nothing moves until the button is pressed, and then only under
+ * stone, with its seven checks; then the decision trail beside the verifier's verdict. The newest payout shows its stone
+ * open, its trail and verdict folded under it, and each earlier one follows, folded behind a summary card. Then the
+ * question to the vault beside its no-clone verify, and one line of the vault's earlier transactions. Light only, and
+ * every colour is a token from app/globals.css. Nothing moves until the button is pressed, and then only under
  * prefers-reduced-motion: no-preference, once each time: no effect starts on scroll, and nothing loops.
  */
 
@@ -13,11 +14,11 @@
 
 .payouts {
   display: grid;
-  gap: clamp(48px, 6vw, 80px);
+  gap: clamp(16px, 2vw, 24px);
 }
 .payout {
   display: grid;
-  gap: clamp(28px, 3vw, 40px);
+  gap: 16px;
   min-width: 0;
 }
 /* Shown when there is more than one payout, to tell the stones apart. */
@@ -41,10 +42,6 @@
 }
 .fold {
   min-width: 0;
-}
-/* With earlier payouts, the transactions of 2026-11-11 come after their folds, at the width of the verdict column. */
-.earlierAfter {
-  max-width: 520px;
 }
 .foldSummary {
   display: grid;
@@ -123,6 +120,59 @@
   gap: clamp(28px, 3vw, 40px);
   min-width: 0;
   margin-top: clamp(28px, 3vw, 40px);
+}
+
+/*
+ * A smaller fold (MainnetAsk.tsx Drawer): the newest payout's trail and verdict under its stone, and the verify commands
+ * under their title. A hairline, then one line with a gold ring whose arrow turns once it is open. It starts closed and
+ * opens with no script.
+ */
+.drawer {
+  min-width: 0;
+  border-block: 1px solid var(--color-line);
+}
+.drawerSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  padding-block: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-ink);
+  cursor: pointer;
+  list-style: none;
+}
+.drawerSummary::-webkit-details-marker {
+  display: none;
+}
+.drawerLabel {
+  min-width: 0;
+}
+.drawerSummary:hover .drawerLabel {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.drawerArrow {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-gold-deep);
+  border-radius: 50%;
+  font-size: 16px;
+  color: var(--color-gold-ink);
+}
+.drawer[open] .drawerArrow {
+  transform: rotate(180deg);
+}
+.drawerBody {
+  min-width: 0;
+  padding-block: 12px clamp(20px, 2.4vw, 28px);
 }
 
 /* A pill in the section's tones: a burn is neutral, an arrival or an allow is ok, a refusal is bad. */
@@ -647,20 +697,15 @@
   color: var(--color-band-mute);
 }
 
-/* --- Under the stone: the decision trail beside the verifier's verdict and the earlier mainnet transactions. --- */
+/* --- Under the stone: the decision trail beside the verifier's verdict. --- */
 .lower {
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
   gap: clamp(28px, 4vw, 56px);
   align-items: start;
 }
-.trail,
-.side {
+.trail {
   min-width: 0;
-}
-.side {
-  display: grid;
-  gap: 24px;
 }
 .sideTitle {
   font-weight: 400;
@@ -678,8 +723,7 @@
 }
 .setup a,
 .entryText a,
-.sealText a,
-.earlier a {
+.sealText a {
   color: var(--color-ink);
 }
 
@@ -953,35 +997,61 @@
   font-size: 14px;
   line-height: 1.55;
 }
-.earlierList {
-  margin-top: 10px;
+/*
+ * After the payouts: the vault's transactions of 2026-11-11 in one line, then the docs page that gives every value, a
+ * link with a 44px target of its own.
+ */
+.after {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
 }
-.earlierList li {
-  padding-block: 10px;
+.earlierLine {
+  max-width: var(--container-measure);
   font-size: 15px;
   line-height: 1.5;
-  border-top: 1px solid var(--color-line);
+  color: var(--color-mute);
 }
-.earlierList li:last-child {
-  border-bottom: 1px solid var(--color-line);
+.earlierLine a {
+  color: var(--color-ink);
 }
-/* Each earlier transaction: its line, then its hash on the same line while it fits. */
-.earlierText {
-  margin-right: 4px;
+/* Two classes and an element: the code keeps 0.9em of the line, as the hashes do, never .site code's 0.86em. */
+.after .earlierLine code {
+  font-size: 0.9em;
+  color: var(--color-ink);
+}
+.more {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.more a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-ink);
 }
 
 /*
- * The visitor's own question to the mainnet vault (MainnetAsk.tsx), after the newest payout: what it asks beside two
- * amounts and the contract's answer, on the stone's ink ground. The no-clone verify block, once it has lines, spans both
- * columns under them.
+ * The visitor's own question to the mainnet vault (MainnetAsk.tsx) beside the vault's no-clone verify, after the
+ * payouts: two white panels, side by side from 961px. The question's answer sits on the stone's ink ground.
  */
-.ask {
+.pair {
   display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: 20px clamp(28px, 4vw, 56px);
-  align-items: start;
-  padding-top: clamp(28px, 3vw, 40px);
-  border-top: 1px solid var(--color-line);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.ask,
+.askVerify {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 18px;
+  min-width: 0;
+  padding: clamp(20px, 2.4vw, 32px);
+  border: 1px solid var(--color-line);
+  border-radius: 24px;
+  background: var(--color-surface);
 }
 .askHead {
   min-width: 0;
@@ -1124,21 +1194,26 @@
   overflow-wrap: anywhere;
 }
 /*
- * The no-clone verify: a block for each shell on the ink ground, its name and copy button over the commands. The lines
- * wrap rather than scroll, so the block needs no keyboard focus to be read; the copy keeps each line whole.
+ * The no-clone verify: its title and intro in the open, then its commands in a drawer, a block for each shell on the ink
+ * ground, its name and copy button over the commands. The lines wrap rather than scroll, so the block needs no keyboard
+ * focus to be read; the copy keeps each line whole.
  */
-.askVerify {
-  grid-column: 1 / -1;
+.askVerify .askLede {
+  margin-top: 0;
+}
+.askVerify .drawer {
+  border-bottom: 0;
+}
+.askBlocks {
+  display: grid;
+  gap: 14px;
   min-width: 0;
 }
-.askVerifyTitle {
-  font-weight: 400;
-  font-size: 20px;
-  line-height: 1.3;
+.askBlocks .askNote {
+  margin-top: 0;
 }
 .askBlock {
   min-width: 0;
-  margin-top: 14px;
   border-radius: 12px;
   background: var(--color-band);
   color: var(--color-band-fg);
@@ -1164,7 +1239,7 @@
   overflow-wrap: anywhere;
 }
 /* Two classes and an element, as above: the commands keep the block's 13px. */
-.ask .askCode code {
+.askVerify .askCode code {
   font-size: 1em;
 }
 /* On the ink ground the page's gold focus ring is faint (about 3:1), so it takes the ground's own ink, as .stone does. */
@@ -1232,7 +1307,8 @@
   }
 }
 @media (max-width: 960px) {
-  .ask {
+  /* The question and the verify stack, the question first. */
+  .pair {
     grid-template-columns: minmax(0, 1fr);
   }
   .lower {
