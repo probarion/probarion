@@ -753,6 +753,7 @@ const UNSHOWN_CAPS: Record<string, string> = {
   MAX_BLOCK_LAG_S: "The health check's own work: how stale a node it accepts",
   MAX_PROVIDERS: "The health check's own work: the probes one list may hold",
   MAX_TEXT: "A display cap: how much of a ledger string the proof page shows",
+  MIN_SHOW_MS: "A display timing, not a cap: how long a loading sign stays once it shows",
   MIN_ALLOWANCE: "The faucet key's own floor, which the operator tops up",
 };
 
