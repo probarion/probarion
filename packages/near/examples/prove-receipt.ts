@@ -1,8 +1,9 @@
 // Example: prove one mainnet receipt without trusting the RPC node that served it. The head is read from two
 // providers and cross-checked, the proof comes from an archival node, and verifyOutcomeProof recomputes the
-// receipt's outcome, its block and that block's place under the head. The receipt is the POA token contract's
-// burn in Probarion's mainnet spend 2: base-0x8335...omft.near burns the 1 USDC that intents.near withdrew for the
-// vault, and its one log (an nep141 ft_burn event) carries the memo WITHDRAW_TO:<Base address> the bridge pays to.
+// receipt's outcome, the block that commits it and that block's place under the head. The receipt is the POA token
+// contract's burn in Probarion's mainnet spend 2: base-0x8335...omft.near burns the 1 USDC that intents.near
+// withdrew for the vault, and its one log (an nep141 ft_burn event) carries the memo WITHDRAW_TO:<Base address> the
+// bridge pays to.
 //
 //   pnpm --filter @probarion/near exec tsx examples/prove-receipt.ts
 //
@@ -20,7 +21,11 @@ export interface ProvenReceipt {
   receiptId: string;
   executorId: string;
   logs: readonly string[];
-  /** The block whose header commits the outcome, and its height. */
+  /**
+   * The block whose header commits the outcome, and its height. It is not the block the receipt ran in:
+   * light_client_proof names the next block with a new chunk on the receipt's shard (one block later in the
+   * recorded proofs), and the proof does not carry the block the receipt ran in.
+   */
   blockHash: string;
   height: number;
   head: Required<TrustedHead>;
@@ -58,7 +63,7 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
     httpJsonRpc("https://archival-rpc.mainnet.fastnear.com"),
   );
   process.stdout.write(
-    `receipt ${proven.receiptId} ran on ${proven.executorId} in block ${proven.blockHash} ` +
+    `receipt ${proven.receiptId} ran on ${proven.executorId} and is committed by block ${proven.blockHash} ` +
       `(height ${proven.height}), proven under head ${proven.head.hash} (height ${proven.head.height})\n`,
   );
   for (const log of proven.logs) process.stdout.write(`  log: ${log}\n`);

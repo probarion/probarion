@@ -177,7 +177,7 @@ const spendTree = verifyTransactionOutcomes(spendProofs, head, {
 });
 if (!spendTree.ok)
   fail(`spend 2 tree: ${spendTree.code} at ${spendTree.index}: ${spendTree.detail}`);
-process.stdout.write(`spend 2: ${spendProofs.length} outcomes proven and linked\n`);
+process.stdout.write(`spend 2: ${spendProofs.length} outcomes proven, linked and complete\n`);
 
 // ---------- the drill's over-cap spend ----------
 

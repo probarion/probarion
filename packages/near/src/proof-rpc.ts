@@ -158,10 +158,12 @@ function receiptTargets(answer: unknown): ProofTarget[] {
 /**
  * Proves a transaction's outcome tree under `head`: reads `tx` (wait_until "FINAL") for the ids and executors of
  * its receipts, fetches a light_client_proof for the transaction and for each of those receipts, in that order, and
- * returns verifyTransactionOutcomes over them. The `tx` answer says what to fetch and nothing more: a receipt it
- * leaves out is not in the result, and a receipt it invents does not link (`not_linked`). Proofs are fetched one at
- * a time, gentle on rate-limited public RPCs. Use an archival RPC for older transactions. Throws NearFormatError for
- * malformed input or a `tx` answer without a receipt list, and passes RPC errors through.
+ * returns verifyTransactionOutcomes over them, which requires the whole tree. The `tx` answer says what to fetch and
+ * nothing more: a receipt it leaves out leaves a proven receipt id without a proof (`incomplete`), and a receipt it
+ * invents does not link (`not_linked`). So an `ok` result proves the transaction and every receipt it led to, and
+ * that set does not rest on the list one node chose to serve. Proofs are fetched one at a time, gentle on
+ * rate-limited public RPCs. Use an archival RPC for older transactions. Throws NearFormatError for malformed input
+ * or a `tx` answer without a receipt list, and passes RPC errors through.
  */
 export async function proveTransaction(
   rpc: NearRpc,

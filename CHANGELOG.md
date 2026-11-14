@@ -26,13 +26,16 @@ The software is an unaudited beta.
     `light_client_proof` answer against a block the caller trusts: it recomputes the outcome's Merkle leaf, the
     chunk and block outcome roots, the block hash from `block_header_lite`, and that block's path to the head's
     `block_merkle_root`, so a receipt's logs, status, gas and receipt ids no longer rest on the RPC node that served
-    them. `verifyTransactionOutcomes` and `proveTransaction` prove a transaction and its receipts under one head
-    and refuse a receipt the transaction did not lead to; `readCrossCheckedHead` reads the head on one provider
+    them. `verifyTransactionOutcomes` and `proveTransaction` prove a transaction and every receipt it led to under
+    one head: they refuse a receipt the transaction did not lead to (`not_linked`) and a tree that leaves out a
+    receipt a proven outcome created (`incomplete`), so the set of receipts does not rest on one node's `tx` answer
+    either (`complete: false` proves a linked subset instead); `readCrossCheckedHead` reads the head on one provider
     and matches it on another. It does not prove the head itself: checking it by validator signatures is Planned.
-    Tested on recorded mainnet proofs of payout spend 2 (`BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9`, all 11
+    The block it reports for an outcome is the block that commits it, a block or more after the one the receipt ran
+    in. Tested on recorded mainnet proofs of payout spend 2 (`BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9`, all 11
     outcomes) and of the drill's refused spend (`G6WJcTZA67NBSrLV8zhS7Ay5BQKt6qCSao7dndm1tF1c`, its failed receipt
-    proven as a failure), with a tamper case for each committed field and a seeded mutation loop of 500 runs: 161
-    tests.
+    proven as a failure, and its tree refused as `incomplete` when the failed receipt is left out), with a tamper
+    case for each committed field and a seeded mutation loop of 500 runs: 167 tests.
   - **Receipt-bound events** (`src/events.ts`). Built. NEP-297 events counted from the contracts named as
     emitters and, by default, from receipts that succeeded, so a line another contract logs, or one a failed
     receipt left, does not count. NEP-141, NEP-245 and NEP-171 data are typed with exact U128 amounts, and each

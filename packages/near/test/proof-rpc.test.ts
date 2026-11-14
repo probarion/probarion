@@ -257,6 +257,43 @@ describe("proveTransaction", () => {
     ).resolves.toMatchObject({ ok: false, code: "outcome_root_mismatch" });
   });
 
+  it("does not trust the tx answer's list either: a receipt it leaves out makes the tree incomplete", async () => {
+    // The drill's tx answer with its receipts dropped: without the check, the refused spend would read as a success.
+    const dropped = archivalFrom(drill, (method, _params, answer) => {
+      if (method === "tx") answer.receipts_outcome = [];
+      return answer;
+    });
+    const result = await proveTransaction(dropped, {
+      txHash: drill.tx.transaction.hash,
+      senderId: SIGNER,
+      head,
+    });
+    expect(result).toMatchObject({ ok: false, index: 0, code: "incomplete" });
+    if (!result.ok) {
+      expect(result.detail).toContain(`created receipt ${drill.proofs[1]?.outcome_proof.id}`);
+    }
+    expect(dropped.calls.map((call) => call.method)).toEqual(["tx", "light_client_proof"]);
+
+    // Spend 2's tx answer without one of its leaf receipts: the proof of the receipt that created it is named.
+    const leaf = spend.tx.receipts_outcome.find(
+      (entry: Json) => entry.outcome.receipt_ids.length === 0,
+    ) as Json;
+    const short = archivalFrom(spend, (method, _params, answer) => {
+      if (method === "tx") {
+        answer.receipts_outcome = answer.receipts_outcome.filter((e: Json) => e.id !== leaf.id);
+      }
+      return answer;
+    });
+    const served = [spend.tx.transaction_outcome, ...spend.tx.receipts_outcome].filter(
+      (entry: Json) => entry.id !== leaf.id,
+    );
+    const parent = served.findIndex((entry: Json) => entry.outcome.receipt_ids.includes(leaf.id));
+    expect(parent).toBeGreaterThanOrEqual(0);
+    await expect(
+      proveTransaction(short, { txHash: SPEND_2, senderId: SIGNER, head }),
+    ).resolves.toMatchObject({ ok: false, index: parent, code: "incomplete" });
+  });
+
   it("returns too_many without fetching proofs for a tree over the cap", async () => {
     const rpc = archivalFrom(spend, (method, _params, answer) => {
       if (method !== "tx") return answer;

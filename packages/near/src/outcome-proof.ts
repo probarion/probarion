@@ -76,9 +76,18 @@ export type OutcomeProofResult =
   | { ok: true; outcome: ProvenOutcome }
   | { ok: false; code: OutcomeProofCode; detail: string };
 
-export type OutcomeTreeCode = OutcomeProofCode | "empty" | "too_many" | "duplicate" | "not_linked";
+export type OutcomeTreeCode =
+  | OutcomeProofCode
+  | "empty"
+  | "too_many"
+  | "duplicate"
+  | "not_linked"
+  | "incomplete";
 
-/** `index` is the refused proof's position in the list, or -1 when the list or the expectation itself is refused. */
+/**
+ * `index` is the refused proof's position in the list (for `incomplete`, the proof whose outcome created the receipt
+ * that has no proof), or -1 when the list or the expectation itself is refused.
+ */
 export type OutcomeTreeResult =
   | { ok: true; outcomes: readonly ProvenOutcome[] }
   | { ok: false; index: number; code: OutcomeTreeCode; detail: string };
@@ -590,14 +599,19 @@ export function verifyOutcomeProof(
  * Verifies the proofs of one transaction's outcome tree under one head. `proofs[0]` is the transaction's own proof
  * (its id must be `txHash`, its executor `signerId` when given). Every other proof is a receipt's, and its id must be
  * reachable from the transaction through proven `receipt_ids`, in any order of the list, so the proof of an
- * unrelated receipt is `not_linked`. A receipt the list leaves out is not reported: the result proves the outcomes
- * the list holds. At most 256 proofs. Statuses are reported, not judged (a failed receipt is in `outcomes` with
- * `status.kind` "failure"). Pure; it does not throw.
+ * unrelated receipt is `not_linked`. Then the tree must be complete: a receipt id that a proven outcome lists must
+ * have its own proof in the list, or the result is `incomplete` (its index is the proof that lists the missing
+ * receipt). So a list that leaves out a receipt, a failed one included, is refused rather than read as the whole
+ * tree; the tx answer of a finished transaction lists an outcome for each of these ids. `complete: false` proves a
+ * subset instead: the outcomes the list holds, each linked to the transaction, with no claim about the receipts it
+ * leaves out. At most 256 proofs. Checks run in a fixed order: each proof in list order (its own codes, then
+ * `duplicate`), then `not_linked`, then `incomplete`. Statuses are reported, not judged (a failed receipt is in
+ * `outcomes` with `status.kind` "failure"). Pure; it does not throw.
  */
 export function verifyTransactionOutcomes(
   proofs: readonly unknown[],
   head: TrustedHead,
-  expect: { txHash: string; signerId?: string },
+  expect: { txHash: string; signerId?: string; complete?: boolean },
 ): OutcomeTreeResult {
   try {
     if (!isRecord(expect) || typeof expect.txHash !== "string") {
@@ -605,6 +619,14 @@ export function verifyTransactionOutcomes(
     }
     if (expect.signerId !== undefined && typeof expect.signerId !== "string") {
       return { ok: false, index: -1, code: "malformed", detail: "expect.signerId is not a string" };
+    }
+    if (expect.complete !== undefined && typeof expect.complete !== "boolean") {
+      return {
+        ok: false,
+        index: -1,
+        code: "malformed",
+        detail: "expect.complete is not a boolean",
+      };
     }
     if (!Array.isArray(proofs)) {
       return { ok: false, index: -1, code: "malformed", detail: "proofs is not an array" };
@@ -670,6 +692,21 @@ export function verifyTransactionOutcomes(
           code: "not_linked",
           detail: `proof ${i} proves receipt ${outcome.id}, which no proven outcome of transaction ${expect.txHash} created`,
         };
+      }
+    }
+    if (expect.complete !== false) {
+      // Every outcome is linked by now, so a receipt id with no proof is a receipt of this transaction left out.
+      for (let i = 0; i < outcomes.length; i++) {
+        const outcome = outcomes[i] as ProvenOutcome;
+        const missing = outcome.receiptIds.find((receiptId) => !indexById.has(receiptId));
+        if (missing !== undefined) {
+          return {
+            ok: false,
+            index: i,
+            code: "incomplete",
+            detail: `proof ${i} proves that outcome ${outcome.id} created receipt ${missing}, and no proof in the list proves that receipt: the tree of transaction ${expect.txHash} is not complete`,
+          };
+        }
       }
     }
     return { ok: true, outcomes };

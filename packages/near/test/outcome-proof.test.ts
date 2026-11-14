@@ -336,14 +336,100 @@ describe("verifyTransactionOutcomes", () => {
     });
   });
 
-  it("proves a subset that stays linked: a receipt left out of the list is not reported", () => {
+  it("proves a subset that stays linked with complete: false, and refuses it by default", () => {
     const vault = proofIndex(spend, VAULT_RECEIPT);
-    const result = verifyTransactionOutcomes(
-      [spend.proofs[0], spend.proofs[vault]],
-      spend.head,
-      expectSpend,
-    );
+    const subset = [spend.proofs[0], spend.proofs[vault]];
+    const result = verifyTransactionOutcomes(subset, spend.head, {
+      ...expectSpend,
+      complete: false,
+    });
     expect(result.ok).toBe(true);
+    if (result.ok) expect(result.outcomes.map((o) => o.id)).toEqual([SPEND_2, VAULT_RECEIPT]);
+    // The vault's spend receipt created receipts the list leaves out: as the whole tree, it is refused.
+    expect(verifyTransactionOutcomes(subset, spend.head, expectSpend)).toMatchObject({
+      ok: false,
+      index: 1,
+      code: "incomplete",
+    });
+    expect(
+      verifyTransactionOutcomes(subset, spend.head, { ...expectSpend, complete: true }),
+    ).toMatchObject({ ok: false, index: 1, code: "incomplete" });
+  });
+
+  it("finds both recorded trees complete: each receipt id a proven outcome lists has its own proof", () => {
+    for (const fixture of [spend, drill]) {
+      const ids = new Set(fixture.proofs.map((proof) => proof.outcome_proof.id));
+      const listed = fixture.proofs.flatMap((proof) => proof.outcome_proof.outcome.receipt_ids);
+      expect(listed.length).toBe(fixture.proofs.length - 1);
+      expect(listed.filter((id: string) => !ids.has(id))).toEqual([]);
+    }
+  });
+
+  it("refuses the drill's tree with its failed receipt left out (incomplete), naming that receipt", () => {
+    // What an archival node that drops the refused spend from its tx answer would make proveTransaction send.
+    const result = verifyTransactionOutcomes([drill.proofs[0]], drill.head, {
+      txHash: DRILL_OVER_CAP,
+      signerId: SIGNER,
+    });
+    expect(result).toMatchObject({ ok: false, index: 0, code: "incomplete" });
+    if (result.ok) return;
+    expect(result.detail).toContain(
+      `outcome ${DRILL_OVER_CAP} created receipt ${drill.failed_receipt_id}`,
+    );
+    // The failure stays visible either way: the transaction's outcome alone says nothing about its receipts.
+    const alone = verifyTransactionOutcomes([drill.proofs[0]], drill.head, {
+      txHash: DRILL_OVER_CAP,
+      complete: false,
+    });
+    expect(alone.ok).toBe(true);
+    if (alone.ok) expect(alone.outcomes).toHaveLength(1);
+  });
+
+  it("refuses each tree with any one leaf receipt left out, naming the proof that created it", () => {
+    for (const [fixture, txHash] of [
+      [spend, SPEND_2],
+      [drill, DRILL_OVER_CAP],
+    ] as const) {
+      const leaves = fixture.proofs.filter(
+        (proof, i) => i > 0 && proof.outcome_proof.outcome.receipt_ids.length === 0,
+      );
+      expect(leaves.length).toBeGreaterThan(0);
+      for (const leaf of leaves) {
+        const leafId: string = leaf.outcome_proof.id;
+        const proofs = fixture.proofs.filter((proof) => proof !== leaf);
+        const parent = proofs.findIndex((proof) =>
+          proof.outcome_proof.outcome.receipt_ids.includes(leafId),
+        );
+        const result = verifyTransactionOutcomes(proofs, fixture.head, { txHash });
+        expect(result).toMatchObject({ ok: false, index: parent, code: "incomplete" });
+        if (!result.ok) expect(result.detail).toContain(`created receipt ${leafId}`);
+      }
+    }
+  });
+
+  it("reports not_linked before incomplete when a dropped proof orphans its children", () => {
+    // Without INTENTS_RECEIPT, its children do not link and its parent lists a receipt with no proof.
+    const proofs = spend.proofs.filter((proof) => proof.outcome_proof.id !== INTENTS_RECEIPT);
+    expect(verifyTransactionOutcomes(proofs, spend.head, expectSpend)).toMatchObject({
+      code: "not_linked",
+    });
+    // The same list as a subset still refuses the orphans: complete: false does not relax the link check.
+    expect(
+      verifyTransactionOutcomes(proofs, spend.head, { ...expectSpend, complete: false }),
+    ).toMatchObject({ code: "not_linked" });
+  });
+
+  it("refuses a complete flag that is not a boolean", () => {
+    for (const complete of ["false", 0, null]) {
+      expect(
+        verifyTransactionOutcomes(spend.proofs, spend.head, { ...expectSpend, complete } as never),
+      ).toMatchObject({
+        ok: false,
+        index: -1,
+        code: "malformed",
+        detail: "expect.complete is not a boolean",
+      });
+    }
   });
 });
 
