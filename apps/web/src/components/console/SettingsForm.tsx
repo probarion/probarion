@@ -1,22 +1,59 @@
 "use client";
 
-import { useActionState } from "react";
+import { useRef } from "react";
 import type { SettingsState } from "@/app/console/[vault]/actions";
+import { busyLabel } from "@/components/pending/busy-label";
 import { buttonClass, Notice } from "@/components/ui";
 import type { TenantKind } from "@/lib/db/tenants";
+import { chainTimedOut, SAVE_UNCLEAR } from "@/lib/ui/pending";
+import { readAction, saveAction } from "@/lib/ui/server-action";
+import { blockableTextButtonClass, staleNoticeClass } from "./form-look";
+import { type FormRun, tryAgainButton, useFormRun } from "./form-run";
 
 type Action = (prev: SettingsState, formData: FormData) => Promise<SettingsState>;
+/** What a form shows: the server's answer, or the console's own when the call gave none, with a Try again. */
+type Shown = SettingsState | { ok: false; error: string; retry: true };
 
-function Result({ state }: { state: SettingsState }) {
-  if (state === null) return null;
-  return state.ok ? (
-    <Notice tone="good">{state.message}</Notice>
-  ) : (
-    <Notice tone="bad">{state.error}</Notice>
+const retryable = (s: Shown) => s !== null && !s.ok && "retry" in s;
+
+/**
+ * A form's status region: mounted empty, then its last answer, which stays (dimmed) while the form runs again, and the
+ * slow hint under it. `held` is any run of the settings, which blocks both forms.
+ */
+function Result({ run, held }: { run: FormRun<Shown>; held: boolean }) {
+  const s = run.state;
+  return (
+    <div role="status">
+      {s === null ? null : (
+        <div className={`mt-2 ${run.pending ? staleNoticeClass : ""}`}>
+          {s.ok ? (
+            <Notice tone="good">{s.message}</Notice>
+          ) : (
+            <Notice tone="bad">
+              {s.error}
+              {"retry" in s
+                ? tryAgainButton({
+                    ref: run.refs.retry,
+                    type: "submit",
+                    busy: run.busy.retry,
+                    held,
+                    onClick: run.press("retry"),
+                  })
+                : null}
+            </Notice>
+          )}
+        </div>
+      )}
+      {run.hint}
+    </div>
   );
 }
 
-/** The owner's settings. Both actions re-check the owner role on the server. */
+/**
+ * The owner's settings. Both actions re-check the owner role on the server, and one runs at a time. Saving the same
+ * settings twice is harmless, so a save that may have gone through offers Try again; Re-sync only re-reads the chain,
+ * so the console stops waiting for it after 20 s.
+ */
 export function SettingsForm({
   vault,
   kind,
@@ -33,11 +70,35 @@ export function SettingsForm({
   save: Action;
   refresh: Action;
 }) {
-  const [saved, saveAction, saving] = useActionState(save, null);
-  const [synced, syncAction, syncing] = useActionState(refresh, null);
+  const lock = useRef(false);
+  const saving = useFormRun<Shown>(
+    (prev, formData) =>
+      saveAction<Shown>(() => save(prev, formData), {
+        ok: false,
+        error: SAVE_UNCLEAR,
+        retry: true,
+      }),
+    null,
+    { kind: "action-write", retryable, lock },
+  );
+  const syncing = useFormRun<Shown>(
+    (prev, formData) =>
+      readAction<Shown>(
+        () => refresh(prev, formData),
+        (why) => ({
+          ok: false,
+          error:
+            why === "timeout" ? chainTimedOut() : "The console could not re-read the approvers.",
+          retry: true,
+        }),
+      ),
+    null,
+    { kind: "action-read", retryable, lock },
+  );
+  const held = saving.pending || syncing.pending;
   return (
     <div className="text-sm">
-      <form action={saveAction}>
+      <form action={saving.action} onSubmit={saving.onSubmit}>
         <label className="mb-2 block">
           <input type="checkbox" name="zero_retention" defaultChecked={zeroRetention} />{" "}
           Zero-retention: keep only each invoice&apos;s hash, discard its content after the decision
@@ -52,19 +113,35 @@ export function SettingsForm({
             page (ledger, anchors and checks visible to anyone at /proof/{vault})
           </label>
         )}
-        <button className={buttonClass} type="submit" disabled={saving}>
-          {saving ? "Saving…" : "Save settings"}
+        <button
+          ref={saving.refs.button}
+          className={buttonClass}
+          type="submit"
+          aria-disabled={held || undefined}
+          onClick={saving.press("button")}
+        >
+          {busyLabel("Save settings", "Saving…", saving.busy.button)}
         </button>
-        <Result state={saved} />
+        <Result run={saving} held={held} />
       </form>
-      <form action={syncAction} className="mt-4 border-t border-line pt-3">
+      <form
+        action={syncing.action}
+        onSubmit={syncing.onSubmit}
+        className="mt-4 border-t border-line pt-3"
+      >
         <p className="mb-2 text-xs text-mute">
           The approvers are read from the vault&apos;s on-chain config when it is registered.
         </p>
-        <button className="text-sm underline disabled:opacity-65" type="submit" disabled={syncing}>
-          {syncing ? "Reading the chain…" : "Re-sync approvers from the chain"}
+        <button
+          ref={syncing.refs.button}
+          className={`text-sm ${blockableTextButtonClass}`}
+          type="submit"
+          aria-disabled={held || undefined}
+          onClick={syncing.press("button")}
+        >
+          {busyLabel("Re-sync approvers from the chain", "Reading the chain…", syncing.busy.button)}
         </button>
-        <Result state={synced} />
+        <Result run={syncing} held={held} />
       </form>
     </div>
   );

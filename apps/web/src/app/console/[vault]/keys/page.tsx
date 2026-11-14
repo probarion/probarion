@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { textButtonClass } from "@/components/console/form-look";
 import {
   KeyActions,
   KeyKeepButton,
@@ -8,6 +9,7 @@ import {
 } from "@/components/console/KeyActions";
 import { VaultNav } from "@/components/console/VaultNav";
 import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
+import { SubmitButton } from "@/components/pending/SubmitButton";
 import { RouteLink } from "@/components/RouteLink";
 import { Badge, Card, Notice, type Tone } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
@@ -128,9 +130,11 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
         {k.discardedOnChain ? <KeyKeepButton keep={keepKeyAction.bind(null, vault, k.id)} /> : null}
         {k.status === "pending" ? (
           <form action={discardKeyAction.bind(null, vault, k.id)}>
-            <button type="submit" className="text-xs text-mute underline">
-              Discard
-            </button>
+            <SubmitButton
+              label="Discard"
+              busy="Discarding…"
+              className={`text-xs text-mute ${textButtonClass}`}
+            />
           </form>
         ) : null}
       </>

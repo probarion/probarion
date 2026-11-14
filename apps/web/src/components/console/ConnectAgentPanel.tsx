@@ -14,6 +14,7 @@ import {
 } from "react";
 import { signerFirst } from "@/components/console/KeyActions";
 import { CopyButton } from "@/components/docs/CopyButton";
+import { busyLabel } from "@/components/pending/busy-label";
 import { RouteLink } from "@/components/RouteLink";
 import {
   Badge,
@@ -274,6 +275,7 @@ function Done({ network, result }: { network: Network; result: TxResult | undefi
   );
 }
 
+/** Reads the page again from the chain. It stays focusable while it reads (aria-disabled), and a press then does nothing. */
 function RecheckButton() {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -281,10 +283,12 @@ function RecheckButton() {
     <button
       type="button"
       className={lineButtonClass}
-      disabled={pending}
-      onClick={() => start(() => router.refresh())}
+      aria-disabled={pending || undefined}
+      onClick={() => {
+        if (!pending) start(() => router.refresh());
+      }}
     >
-      {pending ? "Checking..." : "Check on chain again"}
+      {busyLabel("Check on chain again", "Checking the chain…", pending)}
     </button>
   );
 }
