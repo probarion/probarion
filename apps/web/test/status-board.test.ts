@@ -433,12 +433,22 @@ describe("the status board's rows", () => {
     expect(SOURCES.judges).toContain(`## Not yet, as of ${STATUS_AS_OF}`);
     expect(STATUS_BOARD.eyebrow).toBe(`Status as of ${STATUS_AS_OF}`);
     expect(visibleText(board())).toContain(`Status as of ${STATUS_AS_OF}`);
-    expect(SOURCES.judges).toContain(
-      "the Canary's board showed 0 visitor attempts and 6 by the team",
-    );
-    expect(SOURCES.judges).toContain(
-      "showed 0 external owners, 0 Canary participants and 0 pilots, beside 2 team vaults",
-    );
+  });
+
+  it("shows no count of outside users while it is zero: not on the board, and not in JUDGES.md's Not yet list", () => {
+    const text = visibleText(board());
+    for (const zero of [
+      /No outside users/,
+      /\b0 (external owners|Canary participants|pilots|visitor attempts?)\b/,
+      /No visitor attempt yet/,
+      /Be the first visitor/,
+    ]) {
+      expect(text).not.toMatch(zero);
+      expect(SOURCES.judges).not.toMatch(zero);
+    }
+    // The audit gap stays: it is about the code, not a count of users.
+    expect(text).toContain("No outside review yet.");
+    expect(SOURCES.judges).toContain("**No audit.** No third party has audited");
   });
 
   it("tells the mainnet vault's three test payments, the 0.25 USDC one on an attested model's proposal", () => {

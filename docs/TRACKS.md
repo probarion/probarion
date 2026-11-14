@@ -8,6 +8,9 @@ Each table below takes one track's brief, from its prompt in
 Three caveats apply to every table. The code is unaudited. Every mainnet payment so far is a test to the owner's own
 addresses. The TEE measurement is not pinned, so no check shows which model image ran.
 
+How far it is tested, as of 2026-11-14, is one table in the README, each figure with the CI run, the file or the chain
+read it was counted at: [Tested, in numbers](../README.md#tested-in-numbers).
+
 ## 06 AI Security & Defense
 
 The brief asks for spending limits and policy engines that give AI money "without handing it the keys to

@@ -57,6 +57,8 @@ export const USAGE_COPY = {
   },
   pilots: {
     title: "Pilots, by cohort",
+    /** The title while no cohort has a pilot: the card then offers the form, with no count. */
+    titleNone: "Pilots",
     named: "Named with written consent:",
   },
   definitions: {
@@ -87,8 +89,22 @@ export const tokensCell = (tokens: number | null): string =>
 export const priceLine = (price: { model: string; source: string }): string =>
   `Price: ${price.model}, ${price.source}`;
 
-export const pilotsLine = (c: SegmentCounts): string =>
-  `External ${thousands(c.external)} · Team ${thousands(c.team)} · Canary ${thousands(c.canary)}`;
+/**
+ * The pilots of each cohort that has one: "External 2 · Team 1". A cohort with none is left out, and with none at all
+ * there is no line (null), so that no pilot count is drawn as a zero.
+ */
+export const pilotsLine = (c: SegmentCounts): string | null => {
+  const cohorts = (
+    [
+      ["External", c.external],
+      ["Team", c.team],
+      ["Canary", c.canary],
+    ] as const
+  ).filter(([, n]) => n > 0);
+  return cohorts.length === 0
+    ? null
+    : cohorts.map(([name, n]) => `${name} ${thousands(n)}`).join(" · ");
+};
 
 /**
  * Which network the live counts are for. The other one is named by what it is, so that a testnet page's counts do not
@@ -107,6 +123,9 @@ export function definitions(network: Network): readonly Definition[] {
   return [
     {
       text: "Team vaults, external owners and Canary participants are counted apart. A vault is team when we run it, and external when its owner registered it themselves. Canary participants are people who tried the public Canary and are not on the team.",
+    },
+    {
+      text: "The team's counts are always shown. External owners, Canary participants and pilots, with their columns and tiles, appear once their count is above zero. The Canary vault and its mandate, which the team set up, do not show the Canary column on their own.",
     },
     {
       text: "Canary participants come only from Canary attempts by people who are not on the team. A team member's Canary attempts are counted under team. The Canary's own vault is left out of every figure taken from a ledger, so an attempt is not counted twice.",

@@ -1823,12 +1823,6 @@ export const STATUS = {
               "The request to NEAR AI Cloud is plain JSON over HTTPS, the hosted console reads each invoice, and the signed ledger keeps the model's answer, which can restate it.",
             ],
           },
-          {
-            lead: "No outside users yet.",
-            parts: [
-              `As of ${STATUS_AS_OF}, \`/usage\` on testnet showed 0 external owners, 0 Canary participants and 0 pilots, beside 2 team vaults.`,
-            ],
-          },
         ],
       },
       {
@@ -2542,7 +2536,8 @@ export const STATUS_BOARD = {
           proof: "verified",
           use: "running",
           what: "A public vault anyone may try to trick into paying them. Code refuses every attempt by design. In the team's own try, the contract refused a spend of 50 test USDC on chain.",
-          limit: `No visitor attempt yet: as of ${STATUS_AS_OF}, all 6 attempts are the team's own.`,
+          limit:
+            "It runs on testnet with test tokens. Its ledger is private, so its decisions have no public proof page; what it sends to the contract is on chain.",
           where: { place: "probarion.xyz, testnet", detail: "`canary.vaults.probarion.testnet`" },
           evidence: [
             { kind: "try", label: "try to make it pay you", href: HERO.refused.tryIt.href },

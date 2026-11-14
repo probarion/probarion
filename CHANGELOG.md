@@ -15,6 +15,26 @@ The software is an unaudited beta.
 
 ### Added
 
+- How far it is tested, in numbers, and no outside counts while they are zero. The README has a dated table near its
+  top, "Tested, in numbers": as of 2026-11-14, the tests of every suite in the CI run of `ed41104` (13,450 passed,
+  0 failed: 13,131 TypeScript, 301 Rust, 18 sandbox), the vault's property tests and error-code coverage, the CI
+  checks (the reproducible code hashes, the secret scan, and the no-clone verify of the mainnet vault on
+  Node v22.23.4 and on Node v24.22.2), the eval with the model fooled in an offline run, the mainnet and testnet
+  records from the committed evidence and read-only view calls, the Canary rehearsals, what the claim checker covers
+  and the live checks, each row with the run, the file or the chain read it was counted at. Its rows live in
+  `apps/web/src/lib/site/tested.ts`, which also gives JUDGES.md its short block and `/usage` a card near the top,
+  "How far it is tested"; `apps/web/src/lib/site/tested.test.ts` holds the README's table to it cell by cell, and the
+  figures the repository can derive (the eval, the code hashes, the error codes, the property tests, the threat
+  model) to their files. docs/TRACKS.md points to the table. On `/usage`, an outside figure (external owners, Canary
+  participants, pilots, and their columns in the tables) is drawn once it is above zero and left out until then
+  (`shownSegments` in `apps/web/src/lib/usage/view.ts`); the team's counts and the mainnet record stay, and "How each
+  number is counted" says so. On `/canary`, until the first outside attempt, the line over the form and the
+  scoreboard name the team's attempts as rehearsals ("The team has run 6 rehearsal attempts. Your turn: try to get
+  paid.") instead of "6 attempts so far, all by the team. Be the first visitor.", and an empty feed reads "Attempts
+  appear here as they come in."; from the first outside attempt the tiles and the visitors' line are as before. The
+  "No outside users yet" gap is gone from the landing's Known gaps and from JUDGES.md, and the Canary's status row
+  no longer says that every attempt is the team's. The audit gap stays.
+
 - A no-clone check of the mainnet vault. The site serves `v0.probarion.near`'s signed ledger after S2, the recorded
   transactions, spend 1's pre-ledger decision and the two invoice texts under `/samples/mainnet/`, each a byte copy
   of its source in `docs/` (`apps/web/test/samples-mainnet.test.ts` compares them). In an empty folder, one `curl`

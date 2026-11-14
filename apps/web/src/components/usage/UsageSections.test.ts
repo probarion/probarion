@@ -103,7 +103,7 @@ describe("the tiles", () => {
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
-  it("draws a zero as a zero and thousands apart", () => {
+  it("leaves out an outside count while it is zero, and keeps the team's, thousands apart", () => {
     const t = visible(
       html(
         createElement(UsageTiles, {
@@ -111,12 +111,32 @@ describe("the tiles", () => {
         }),
       ),
     );
-    expect(t).toContain("External owners 0");
+    expect(t).not.toContain("External owners");
     expect(t).toContain("Canary participants: at least 12,345");
     expect(t).toContain("Team vaults 0");
   });
 
-  it("draws a zero smaller than a count, so that what has happened leads", () => {
+  it("draws no outside tile at all before anyone outside has come, and each one from its first count", () => {
+    const none = visible(
+      html(
+        createElement(UsageTiles, {
+          usage: usage({ external_owners: 0, canary_participants: 0, team_vaults: 2 }),
+        }),
+      ),
+    );
+    expect(none).toBe("Team vaults 2 ours, counted apart");
+    const first = visible(
+      html(
+        createElement(UsageTiles, {
+          usage: usage({ external_owners: 1, canary_participants: 1, team_vaults: 2 }),
+        }),
+      ),
+    );
+    expect(first).toContain("External owners 1 distinct owner wallets");
+    expect(first).toContain("Canary participants: at least 1 not customers");
+  });
+
+  it("draws a zero of the team's smaller than a count, so that what has happened leads", () => {
     const h = html(
       createElement(UsageTiles, {
         usage: usage({ external_owners: 0, canary_participants: 12345, team_vaults: 0 }),
@@ -129,7 +149,6 @@ describe("the tiles", () => {
         /tileValue/.test(m[1] ?? "") ? "large" : /counts/.test(m[1] ?? "") ? "small" : "?",
       ]);
     expect(values).toEqual([
-      ["0", "small"],
       ["12,345", "large"],
       ["0", "small"],
     ]);
@@ -154,6 +173,44 @@ describe("the table", () => {
     expect(visible(h)).toContain("All time, with the last 7 days in grey");
     expect(rows(h)[0]).toEqual(["Metric", "Team", "External", "Canary"]);
     expect([...h.matchAll(/<th scope="col"/g)]).toHaveLength(4);
+  });
+
+  it("leaves out an outside column while it has no count, so that no column of zeros is drawn", () => {
+    // The team's counts and the Canary vault with its mandate, which the team set up: no outside figure yet.
+    const teamOnly = usage({
+      external_owners: 0,
+      canary_participants: 0,
+      totals: [
+        { segment: "team", metric: "vaults", value: 2 },
+        { segment: "team", metric: "canary_attempts", value: 6 },
+        { segment: "external", metric: "vaults", value: 0 },
+        { segment: "canary", metric: "vaults", value: 1 },
+        { segment: "canary", metric: "mandates", value: 1 },
+      ],
+      recent: [],
+    });
+    const h = render(teamOnly);
+    expect(rows(h)[0]).toEqual(["Metric", "Team"]);
+    expect([...h.matchAll(/<td/g)]).toHaveLength(10);
+    expect(rows(h)[1]).toEqual(["Vaults", "2"]);
+    expect(rows(h).find((r) => r[0] === "Canary attempts")).toEqual(["Canary attempts", "6"]);
+  });
+
+  it("shows an outside column from its first count: an owner, a count of the segment, or a Canary participant", () => {
+    const base = { external_owners: 0, canary_participants: 0, recent: [] };
+    const team = { segment: "team", metric: "vaults", value: 2 };
+    const heads = (over: Record<string, unknown>) => rows(render(usage({ ...base, ...over })))[0];
+    expect(heads({ external_owners: 1, totals: [team] })).toEqual(["Metric", "Team", "External"]);
+    expect(
+      heads({ totals: [team, { segment: "external", metric: "spends_paid", value: 1 }] }),
+    ).toEqual(["Metric", "Team", "External"]);
+    expect(heads({ canary_participants: 1, totals: [team] })).toEqual(["Metric", "Team", "Canary"]);
+    expect(
+      heads({
+        totals: [team],
+        recent: [{ segment: "canary", metric: "canary_attempts", value: 3 }],
+      }),
+    ).toEqual(["Metric", "Team", "Canary"]);
   });
 
   it("has the rows in the owner's order, zero-filled", () => {
@@ -316,6 +373,19 @@ describe("the unit costs", () => {
       "Hosting and RPC",
     ]);
   });
+
+  it("has a column for each segment the table shows, and none of empty cells for another", () => {
+    const u = usage();
+    const h = html(
+      createElement(UnitCostsCard, { totals: u.totals, price: null, segments: ["team"] }),
+    );
+    expect(cells(h)[0]).toEqual(["Unit cost", "Team"]);
+    expect(cells(h).find((r) => r[0] === "NEAR AI tokens per decision")).toEqual([
+      "NEAR AI tokens per decision",
+      EMPTY,
+    ]);
+    expect(h).toMatch(/<td colSpan="1"[^>]*>price not set yet<\/td>/);
+  });
 });
 
 describe("the pilots", () => {
@@ -324,17 +394,27 @@ describe("the pilots", () => {
       html(createElement(PilotsCard, { pilots: { team: 1, external: 2, canary: 0 }, names })),
     );
 
-  it("counts each cohort, with the names of those who agreed in writing", () => {
+  it("counts each cohort that has a pilot, with the names of those who agreed in writing", () => {
     const t = render(["Acme Design", "Beta Co"]);
     expect(t).toContain("Pilots, by cohort");
-    expect(t).toContain("External 2 · Team 1 · Canary 0");
+    expect(t).toContain("External 2 · Team 1");
+    expect(t).not.toContain("Canary 0");
     expect(t).toContain("Named with written consent: Acme Design, Beta Co");
   });
 
   it("says nothing about names when there are none", () => {
     const t = render([]);
-    expect(t).toContain("External 2 · Team 1 · Canary 0");
+    expect(t).toContain("External 2 · Team 1");
     expect(t).not.toContain("Named with written consent");
+  });
+
+  it("draws no count while no cohort has a pilot: it is the pilot form, under the title Pilots", () => {
+    const h = html(
+      createElement(PilotsCard, { pilots: { team: 0, external: 0, canary: 0 }, names: [] }),
+    );
+    expect(h).toMatch(/<h2[^>]*>Pilots<\/h2>/);
+    expect(visible(h)).not.toMatch(/\b0\b|External|by cohort/);
+    expect(visible(h)).toContain("Run a pilot");
   });
 
   it("offers the pilot form in a new tab, and says the issue it opens is public", () => {
