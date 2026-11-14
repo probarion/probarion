@@ -22,11 +22,18 @@ const ring =
   "focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-gold-small";
 /** A field: 16px text, 44px tall, and the landing page's mute edge, which reads at 3:1 on a white card. */
 export const inputClass = `w-full min-h-11 rounded-xl border border-mute bg-surface px-3 py-2 text-base text-ink ${ring}`;
-const pillButton = `inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-medium transition-colors ${ring}`;
+// The colours transition as transition-colors does, and so does opacity, for a button blocked by a running action.
+const pillButton = `inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-medium transition-[color,background-color,border-color,outline-color,text-decoration-color,fill,stroke,opacity] ${ring}`;
 // A disabled control is exempt from WCAG 1.4.3, and its label still reads at 4.5:1 or more. Ink dims to 65% (about
 // 6:1: the ink pill's label is 5.97:1 over a white card). Red dims to 75% (4.89:1): at 65% it would be 3.8:1.
-const button = `${pillButton} disabled:opacity-65`;
-const redButton = `${pillButton} disabled:opacity-75`;
+// While an action runs (components/pending), its buttons are aria-disabled, not disabled, so they keep the focus. The
+// pressed one holds a busy label ([data-busy]): it stays at full opacity and shows the progress cursor. A button it
+// blocks dims as a disabled one does, after the 200 ms gate. The full opacity is a stacked variant: a plain
+// has-[[data-busy]]:opacity-100 would lose to aria-disabled:opacity-65, which Tailwind writes later at the same weight.
+const busyLook =
+  "aria-disabled:delay-200 aria-disabled:has-[[data-busy]]:opacity-100 has-[[data-busy]]:cursor-progress";
+const button = `${pillButton} disabled:opacity-65 aria-disabled:opacity-65 ${busyLook}`;
+const redButton = `${pillButton} disabled:opacity-75 aria-disabled:opacity-75 ${busyLook}`;
 /** The main button: an ink pill. Its transparent edge shows in forced colours, which drop the fill. */
 export const buttonClass = `${button} border border-transparent bg-ink text-paper hover:bg-ink/85`;
 /** A second choice beside the main one, such as a dialog's Cancel: an ink outline. */
