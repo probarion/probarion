@@ -1280,23 +1280,28 @@ The software is an unaudited beta.
 
 - The console's wallet buttons say who they wait on. A transaction button reads Preparing… while the console builds
   the transaction, Check your wallet… while the wallet is open, Confirming on NEAR… once the wallet has sent it,
-  Finishing… (or the page's own words, such as Registering the vault…) and Updating the page… while the page reads its
-  data again. The line under it says the step in a sentence, with the elapsed time from 5 s. After 20 s in the wallet
-  it adds "Still waiting for your wallet (0:20). If you closed its window, check your wallet's activity before you
-  sign again.", and after 15 s on NEAR "NEAR is slow to confirm (0:15). Do not sign again: this button is still
-  checking the same transaction." Screen readers hear each step and each hint once, not the clock. While it works the
-  button keeps the keyboard focus and ignores another click, also while the page refreshes. It is disabled when it
-  cannot act: the wallet still loading (its label with a spinner, described as "Loading your wallet…"), the wrong
-  account, or a result the chain could not confirm. Its width stays the same through every step. What is sent, how
-  many times, and the lock after an unclear result are unchanged, and the wallet step has no timeout.
+  Finishing… while the page does its own step after the result (a page can give that step its own words) and
+  Updating the page… while the page reads its data again. While the console, the wallet or NEAR works, the line under
+  it says the step in a sentence, with the elapsed time from 5 s. After 20 s in the wallet it adds "Still waiting for
+  your wallet (0:20). If you closed its window, check your wallet's activity before you sign again.", and after 15 s
+  on NEAR "NEAR is slow to confirm (0:15). Do not sign again: this button is still checking the same transaction."
+  From then on the hint's clock is the one that runs. Screen readers hear those lines, each hint once and the result,
+  not the clock; a lock read back after a reload is shown but not read out again. While it works the button keeps
+  the keyboard focus and ignores another click, also while the page refreshes, and a refresh that fails leaves the
+  result on screen. It is disabled when it cannot act: the wallet still loading (its label with a spinner, described
+  as "Loading your wallet…"), the wrong account, or a result the chain could not confirm, and when such a result
+  locks the focused button, the focus moves to its unlock control. Its width stays the same through every step. What
+  is sent, how many times, and the lock after an unclear result are unchanged, and the wallet step has no timeout.
+  The "You sign" line names the contract after a comma, in place of a dash.
   `apps/web/src/lib/near/send.ts` tells the button "confirm" between the wallet's transaction hash and the chain read,
   in a try/catch, so it cannot change the result.
-- Sign-in says its steps: Loading wallets…, Check your wallet…, Checking your signature… and Opening your console….
-  Under the button, "Approve the sign-in message in your wallet. It is not a transaction and costs nothing." and the
-  same 20 s wallet hint. The challenge and verify requests stop waiting after 15 s and say "The server did not answer
-  in 15 s. You are not signed in. Try again." A closed wallet or wallet list reads "You closed the wallet before
-  signing. You are not signed in." in place of "User rejected". The button keeps the focus while it works, and its
-  messages go to one status region.
+- Sign-in's button says each step: Loading wallets…, Check your wallet…, Checking your signature…, then Opening your
+  console… while the console loads. Once the wallet is asked to sign, the line under the button reads "Approve the
+  sign-in message in your wallet. It is not a transaction and costs nothing." and the same 20 s wallet hint follows;
+  the wait for the server's challenge before that does not count as the wallet's. The challenge and verify requests
+  stop waiting after 15 s and say "The server did not answer in 15 s. You are not signed in. Try again." A closed
+  wallet or wallet list reads "You closed the wallet before signing. You are not signed in." in place of "User
+  rejected". The button keeps the focus while it works, and its messages go to one status region.
 - The README, JUDGES.md, `docs/TRACKS.md` and the docs follow the other changes of 2026-11-13. They now say what
   the payee check is: `probarion payee check` and the `/check` page give allow, warn or block with reasons,
   read-only, in this repository and not in npm 0.1.1, and `/check` is live from the deploy that ships it. On
