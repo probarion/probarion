@@ -247,11 +247,15 @@ describe("the live page", () => {
     expect(afterHeader).toMatch(/^<section[^>]*><h2[^>]*>Your attempt<\/h2>/);
   });
 
-  it("puts one line over the form, from the board it reads: 0, 1 and many visitors, the team apart", async () => {
+  it("puts one line over the form, from the board it reads: the team's rehearsals, then 1 and many visitors, the team apart", async () => {
     const cases: [Record<string, number>, string][] = [
       [
         { browsers: 0, addresses: 0, attempts_external: 0, attempts_team: 6, raw_external: 0 },
-        "6 attempts so far, all by the team. Be the first visitor.",
+        "The team has run 6 rehearsal attempts. Your turn: try to get paid.",
+      ],
+      [
+        { browsers: 0, addresses: 0, attempts_external: 0, attempts_team: 0, raw_external: 0 },
+        "Your turn: try to get paid.",
       ],
       [
         { browsers: 1, addresses: 1, attempts_external: 2, attempts_team: 6, raw_external: 1 },
@@ -268,7 +272,7 @@ describe("the live page", () => {
       const at = text.indexOf(line);
       expect(at, line).toBeGreaterThan(text.indexOf("Your attempt"));
       expect(at, line).toBeLessThan(text.indexOf("Try one:"));
-      expect(text, line).not.toMatch(/\b0 visitors\b/);
+      expect(text, line).not.toMatch(/\b0 visitors?\b|Be the first|all by the team/);
       // The form draws it, so that it can drop it once the visitor's own attempt is answered (CanaryForm).
       expect(form.props.at(-1)?.tally, line).toBe(line);
     }
@@ -277,7 +281,7 @@ describe("the live page", () => {
   it("puts no line over the form, and guesses no count, when the board cannot be read", async () => {
     mocks.board.mockResolvedValue(null);
     const text = visible(await page());
-    expect(text).not.toMatch(/so far|Be the first visitor/);
+    expect(text).not.toMatch(/so far|rehearsal attempts?\.|Your turn/);
     expect(text).toContain("Your message to the agent");
     expect(form.props.at(-1)?.tally).toBeNull();
   });
@@ -462,9 +466,11 @@ describe("the live page when something cannot be read", () => {
     expect(text).toContain("Your message to the agent");
   });
 
-  it("says there are no attempts yet when the feed is empty", async () => {
+  it("says where attempts appear when the feed is empty, with no zero", async () => {
     mocks.feed.mockResolvedValue([]);
-    expect(visible(await page())).toContain("No attempts yet. Be the first.");
+    const text = visible(await page());
+    expect(text).toContain("Attempts appear here as they come in.");
+    expect(text).not.toMatch(/No attempts yet|Be the first/);
   });
 });
 
