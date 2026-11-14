@@ -206,9 +206,9 @@ The flags:
     is enough), check e fails and the report adds an `online hint` line: sync the clock and run again.
     The line also goes to stderr as `warning: online hint: ...`; with `--json`, stderr is the only place it
     appears.
-- `--invoice <file>` and `--invoices <dir>` are in the CLI built from this repository; release 0.1.1
-  on npm does not have them. A build from this repository also reports version 0.1.1 until the next
-  release: `probarion verify --help` lists `--invoices` when the build has it. Each names invoice
+- `--invoice <file>` and `--invoices <dir>` are in the CLI built from this repository, from release
+  0.1.2 on; release 0.1.1 on npm does not have them. `probarion --version` prints the version you run,
+  and `probarion verify --help` lists `--invoices` when it has them. Each names invoice
   texts you hold: `--invoice` one file (it can be repeated), `--invoices` every `.txt` file of a
   folder, not its subfolders. With them, check e also runs A8 on each attested decision whose
   `invoice_hash` is the sha256 of a file's bytes: it rebuilds the request the model was sent from

@@ -285,8 +285,15 @@ describe("where to get Probarion (#get-probarion)", () => {
       "@probarion/core",
     ]);
     expect(npm.ids).toEqual(pkgs.map((p) => `\`${p.name}\``));
-    for (const pkg of pkgs) expect(pkg.version, pkg.name).toBe("0.1.1");
-    expect(npm.short).toBe(`${pkgs.length} packages, ${pkgs[0]?.version}`);
+    // The card names the release npm has. While the next one is prepared and not published (0.1.2, which adds
+    // @probarion/near), the packages here share a higher version; the pull request after the publish moves both.
+    const NPM_RELEASE = "0.1.1";
+    const here = pkgs[0]?.version ?? "";
+    for (const pkg of pkgs) expect(pkg.version, pkg.name).toBe(here);
+    expect(here.localeCompare(NPM_RELEASE, "en", { numeric: true })).toBeGreaterThanOrEqual(0);
+    expect(npm.short).toBe(`${pkgs.length} packages, ${NPM_RELEASE}`);
+    expect(npm.meta).toBe(`Version ${NPM_RELEASE}`);
+    expect(mcp.meta).toBe(`Version ${NPM_RELEASE}, from \`@probarion/mcp\``);
     const server = JSON.parse(text(ROOT, "packages", "mcp", "server.json")) as { name: string };
     expect(mcp.short).toBe(`\`${server.name}\``);
     expect(new URL(LINKS.mcpRegistry).searchParams.get("q")).toBe(server.name);

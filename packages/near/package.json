@@ -1,6 +1,6 @@
 {
   "name": "@probarion/near",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Building blocks for NEAR apps: verify light_client_proof outcome proofs, read NEP-297 events bound to the contract that emitted them and to receipts that succeeded, audit an account's access keys and code identity, and check a NEAR Intents POA withdrawal. Pure TypeScript; the online helpers take any JSON-RPC client and sign nothing.",
   "license": "MIT",
   "keywords": [
