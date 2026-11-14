@@ -80,6 +80,27 @@ describe("the mainnet record card", () => {
     expect(rows(record)[0]).toEqual(["What (UTC day)", "Amount"]);
   });
 
+  it("labels the two refusals of the drill as the team's own, and says both spends were over the cap", () => {
+    // docs/evidence/mainnet-v0/drill-2026-11-14: rehearsed by the team, no USDC moved, and the frozen spend was over
+    // mandate 1's cap too, so the freeze did not stop a spend that would have paid.
+    const body = rows(record).slice(1);
+    const drill = (key: string) => {
+      const at = MAINNET_RECORD.rows.findIndex((r) => r.key === key);
+      expect(at, key).toBeGreaterThan(-1);
+      return body[at];
+    };
+    expect(drill("v0_drill_over_cap")?.[0]).toContain(
+      "2026-11-14 Refused on chain with OverPerPayment: the amount was above the mandate's cap per payment. In a drill the team rehearsed: 50 USDC on a mandate of 1 USDC a payment. No USDC moved.",
+    );
+    expect(drill("v0_drill_frozen_refused")?.[0]).toContain(
+      "2026-11-14 Refused on chain with Frozen: the vault was frozen. In a drill the team rehearsed: 2 USDC, also over the 1 USDC cap, so it could not have paid even if the vault had not been frozen. No USDC moved.",
+    );
+    expect(drill("v0_drill_over_cap")?.[1]).toBe("none");
+    expect(drill("v0_drill_frozen_refused")?.[1]).toBe("none");
+    // The refusal of 2026-11-11 was not part of the drill, and its row does not say it was.
+    expect(body[1]?.[0]).not.toContain("drill");
+  });
+
   it("shows no amount for a refusal on chain, even one that recorded the amount it asked for", () => {
     const refused = MAINNET_RECORD.rows.find((r) => r.kind === "refused_on_chain");
     expect(refused).toBeDefined();

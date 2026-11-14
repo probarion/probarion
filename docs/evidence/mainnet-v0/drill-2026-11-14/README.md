@@ -19,9 +19,14 @@ vault's receipt burned 1.43 Tgas for A and 1.34 Tgas for C.
 
 The owner signed all four transactions in their own terminal: A and C with the agent key file, B and D with
 `probarion.near`'s key in the keychain. Claude signed nothing on mainnet. It wrote the runbook, which is kept outside
-this repository, and read the chain before, during and after, with view calls and archival reads. Every value below
-was read again, read-only, from an archival NEAR node (`https://archival-rpc.mainnet.fastnear.com`, method `tx` with
-each transaction's own signer as `sender_account_id`, and `block` for the block times) on 2026-11-14 after the drill.
+this repository, and read the chain before, during and after, with view calls and archival reads. Every transaction
+value below (hashes, signers, keys, nonces, actions, arguments, statuses, logs, gas and block times) was read again,
+read-only, from an archival NEAR node (`https://archival-rpc.mainnet.fastnear.com`, method `tx` with each
+transaction's own signer as `sender_account_id`, and `block` for the block times) on 2026-11-14 after the drill. The
+views (frozen, mandate 1, `check_spend`, the vault's USDC, spends, anchors, and the agent key's nonce and allowance)
+are as read at the times given, with near-cli-rs view calls. Later on 2026-11-14 Claude read the same views again from
+the archival node at four block heights around the drill
+([views-archival-2026-11-14.txt](views-archival-2026-11-14.txt)), and every value that both reads cover matches.
 
 ## What ran, in order
 
@@ -116,12 +121,19 @@ In full, `OverPerPayment` was `{"code":"OverPerPayment","ok":false,"would_hold":
 `{"code":"Frozen","ok":false,"would_hold":false}`, and ok was `{"code":null,"ok":true,"would_hold":false}`. Request
 E is not held, because 1 USDC is not above mandate 1's `approval_above` of 1 USDC.
 
+Claude's later archival read, made after the drill, fills the cells marked "Not read" from the chain's history. It is
+not the owner's check of the runbook's step (b), which was skipped. At block 224443200 (after B's receipt, before C)
+and block 224443450 (after C, before D), requests A, C and E each answered `Frozen`; at block 224442800 (before A) and
+block 224443520 (after D's receipt), A and C answered `OverPerPayment` and E ok
+([views-archival-2026-11-14.txt](views-archival-2026-11-14.txt)).
+
 Request C shows the freeze: the same request answered `Frozen` while the vault was frozen and `OverPerPayment`
 before and after, because the contract checks the freeze before the mandate and its cap
 ([`checks.rs`](../../../../contracts/vault/src/checks.rs)). That request E answers ok again after D shows that a spend
 within the cap would pass again. It does not test what A and C left behind: E has its own invoice and ref, and A and C
-were refused before the invoice and ref checks. While the vault was frozen, E was not read here. A spend within a cap
-answering `Frozen` while frozen, and ok again after `unfreeze`, is what the contract's unit test
+were refused before the invoice and ref checks. During the drill, E was not read while the vault was frozen; the later
+archival read gives `Frozen` for it at both frozen blocks and ok after D. A spend within a cap answering `Frozen` while
+frozen, and ok again after `unfreeze`, is also what the contract's unit test
 `a_frozen_vault_refuses_spends_until_unfrozen` checks ([`admin.rs`](../../../../contracts/vault/src/admin.rs)).
 
 ## The vault before and after
@@ -220,9 +232,12 @@ The four transactions are also in [`docs/mainnet-proof.json`](../../../mainnet-p
 ## What this does not show
 
 - It is a drill the team rehearsed, not an outside attack: the team chose the requests and the owner sent them.
-- Request E was not sent, and it was not read while the vault was frozen.
-- The owner froze the vault with the full-access key of `probarion.near`. A function-call key on the owner's account,
-  as a wallet's sign-in key, can also call `freeze`, which takes no deposit; that path was not used here.
+- Request E was not sent, and during the drill it was not read while the vault was frozen. Its `Frozen` answers at
+  blocks 224443200 and 224443450 come from Claude's later archival read, not from a check made at the time.
+- The owner froze the vault with the full-access key of `probarion.near`. A function-call key on `probarion.near`
+  whose receiver is `v0.probarion.near` (and whose method list allows `freeze`) can also call `freeze`, which takes no
+  deposit; that path was not used here. The NEAR protocol limits a function-call key to its receiver and its methods,
+  so a wallet's sign-in key for another contract cannot call `freeze` on the vault.
 - That 15 Tgas could not carry a payout is a reading of the code (a payout reserves 15 Tgas for `ft_transfer` and
   15 Tgas for its callback, [`lib.rs`](../../../../contracts/vault/src/lib.rs)), not tested on chain. Neither spend got
   that far.
@@ -235,4 +250,5 @@ The four transactions are also in [`docs/mainnet-proof.json`](../../../mainnet-p
 | [`views-before.txt`](views-before.txt) | The views before the drill: the owner's read at 01:04:41 UTC, and Claude's reads of 2026-11-13 |
 | [`views-during.txt`](views-during.txt) | Claude's views while the vault was frozen, at 01:09:44 UTC and about 01:12:30 UTC |
 | [`views-after.txt`](views-after.txt) | The views after the drill: the owner's read at 01:13:17 UTC, and Claude's re-read from 01:16:46 to 01:16:53 UTC |
+| [`views-archival-2026-11-14.txt`](views-archival-2026-11-14.txt) | Claude's later archival read of the same views at blocks 224442800, 224443200, 224443450 and 224443520: before A, frozen before C, frozen after C, and after D |
 | [`gas-2026-11-14.json`](gas-2026-11-14.json) | The gas and NEAR each transaction burned, every outcome summed, from the archival node |

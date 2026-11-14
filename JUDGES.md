@@ -265,4 +265,5 @@ and verifier stay free under the MIT license; the hosted console would be paid, 
   for the owner's own Base address with the SDK, decided rules-only, then 0.25 USDC for the same address, decided by an
   attested model and the code rules; 0.9976 and 0.2476 arrived on Base after the bridge fee. All three payments went
   back to the owner, and Payables has not run on mainnet. On 2026-11-14 the owner froze and unfroze it in a drill the
-  team rehearsed, with two spends refused on chain ([the drill](docs/evidence/mainnet-v0/drill-2026-11-14/README.md)).
+  team rehearsed, with two spends refused on chain, both over mandate 1's 1 USDC cap, so neither could have paid even
+  if the vault had not been frozen ([the drill](docs/evidence/mainnet-v0/drill-2026-11-14/README.md)).

@@ -4,7 +4,7 @@ Probarion's claim: an AI agent can spend only what a human mandated, even if the
 key is stolen, or Probarion's own servers are breached. "TEE protects the data. The contract protects
 the money."
 
-Status on 2026-11-07, and for mainnet on 2026-11-13:
+Status on 2026-11-07, for mainnet on 2026-11-13, and for the mainnet drill of 2026-11-14:
 
 - **Unaudited beta.** No third party has audited the contracts or the packages.
 - Probarion runs on NEAR testnet, with test tokens. The testnet factory is
@@ -21,9 +21,9 @@ Status on 2026-11-07, and for mainnet on 2026-11-13:
   spend 3 ([the run](evidence/mainnet-v0/s2-2026-11-13/README.md)). A later read-only `verify --online` passed O1
   and O2 on those attested decisions ([output](evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt)).
   On 2026-11-14, in a drill the team rehearsed, the contract refused two spends signed with the agent key, one of
-  50 USDC on mandate 1, whose cap is 1 USDC a payment, with `OverPerPayment`, and one of 2 USDC while the owner had
-  frozen the vault, with `Frozen`; the owner then unfroze it, and no USDC moved
-  ([the drill](evidence/mainnet-v0/drill-2026-11-14/README.md)).
+  50 USDC on mandate 1, whose cap is 1 USDC a payment, with `OverPerPayment`, and one of 2 USDC (also over the 1 USDC
+  cap) while the owner had frozen the vault, with `Frozen`; the owner then unfroze it, and no USDC moved. Neither spend
+  could have paid even if the vault had not been frozen ([the drill](evidence/mainnet-v0/drill-2026-11-14/README.md)).
 - How to report a weakness, and what is in scope: [SECURITY.md](../SECURITY.md).
 
 How evidence is named in this file:

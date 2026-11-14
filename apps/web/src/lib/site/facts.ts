@@ -214,7 +214,8 @@ export const MAINNET_TX = {
   // S2, 2026-11-13: spend 3, paid on an attested model's proposal (proof.attested_base_payout_tx).
   attestedPayout: mainnetTx("5amtgb8MujUkiydS5Ht9Ut6AX6pN9SGegHUCHGsX9NGH", "5amtgb8M…9NGH"),
   // The drill of 2026-11-14, rehearsed by the team (docs/evidence/mainnet-v0/drill-2026-11-14): a 50 USDC spend over
-  // mandate 1's 1 USDC cap, refused; the owner's freeze; a 2 USDC spend sent while frozen, refused; the unfreeze.
+  // mandate 1's 1 USDC cap, refused; the owner's freeze; a 2 USDC spend sent while frozen, also over the cap, refused;
+  // the unfreeze.
   drillOverCap: mainnetTx("G6WJcTZA67NBSrLV8zhS7Ay5BQKt6qCSao7dndm1tF1c", "G6WJcTZA…tF1c"),
   drillFreeze: mainnetTx("6oPDe77z5FmendyMQPTeKMdA5jsgpboks9uyUNGLvX6Z", "6oPDe77z…vX6Z"),
   drillFrozenRefused: mainnetTx("DwXRPZHWWKaBcNpvp6F1rsaFzvM5wyi6A4Z6sckF8ifg", "DwXRPZHW…8ifg"),
@@ -1729,6 +1730,12 @@ export type StatusTone = "live" | "work" | "plan";
  */
 export const STATUS_AS_OF = "2026-11-13";
 
+/**
+ * The day of the team's drill on the mainnet vault (docs/evidence/mainnet-v0/drill-2026-11-14). The board's mainnet row
+ * tells it, so the board's eyebrow names it beside STATUS_AS_OF, which stays the day of JUDGES.md's Not yet list.
+ */
+export const MAINNET_DRILL_ON = "2026-11-14";
+
 /** The known gaps' two pinned sentences: no audit, and the smoke run's vault (audit P1-10). */
 const GAP_AUDIT = {
   before: "No third party has audited this code. The ",
@@ -2148,7 +2155,7 @@ const testnetTx = (verb: string, fact: TxFact, note?: string) =>
  * link to its record.
  */
 export const STATUS_BOARD = {
-  eyebrow: `Status as of ${STATUS_AS_OF}`,
+  eyebrow: `Status as of ${STATUS_AS_OF}, with the mainnet drill of ${MAINNET_DRILL_ON}`,
   lede: "Each row says whether it was tried for real, and links the record. What runs is on NEAR testnet, plus one small mainnet vault with real USDC.",
   /** The summary under the lede: how many rows each proof mark holds, and what the others miss (proofSummary). */
   summaryLabel: "In short",
@@ -2197,7 +2204,7 @@ export const STATUS_BOARD = {
           name: "Mainnet vault",
           proof: "verified",
           use: "running",
-          what: "One small standalone vault with real USDC, locked, on the recorded build. It made three test payments to the owner's own addresses: 1 USDC to a NEAR wallet on 2026-11-11, then two Base payouts through NEAR Intents on 2026-11-13. Code rules alone decided the 1.00 USDC Base payout. The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed. It refused mandate 999 on chain. In a drill the team rehearsed on 2026-11-14, it refused a 50 USDC spend over mandate 1's 1 USDC cap, the owner froze it, it refused a 2 USDC spend while frozen, and the owner unfroze it. No USDC moved.",
+          what: "One small standalone vault with real USDC, locked, on the recorded build. It made three test payments to the owner's own addresses: 1 USDC to a NEAR wallet on 2026-11-11, then two Base payouts through NEAR Intents on 2026-11-13. Code rules alone decided the 1.00 USDC Base payout. The 0.25 USDC one was paid on an attested model's proposal, which the code rules allowed. It refused mandate 999 on chain. In a drill the team rehearsed on 2026-11-14, it refused a 50 USDC spend over mandate 1's 1 USDC cap, the owner froze it, it refused a 2 USDC spend while frozen, and the owner unfroze it. Both spends were over the cap, so neither could have paid even if the vault had not been frozen. No USDC moved.",
           limit:
             "No customer payment yet: each one is a test to the owner's own address. Spend 1 was sent without the SDK, with no signed ledger.",
           where: { place: "Mainnet, real USDC" },

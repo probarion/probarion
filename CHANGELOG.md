@@ -22,11 +22,14 @@ The software is an unaudited beta.
   unfroze it. Both spends were over mandate 1's 1 USDC cap, so neither could have paid even if the vault had not been
   frozen, and the 15 Tgas of gas each carried was a safety margin with no part in the refusals.
   `docs/evidence/mainnet-v0/drill-2026-11-14/` holds the four transactions, the vault's views before, during and
-  after, the three requests with their sha256, and the gas of each transaction. `docs/mainnet-proof.json` and its copy
+  after, the three requests with their sha256, and the gas of each transaction, and Claude's later archival read of the
+  same views at four block heights around the drill, which gives request E `Frozen` at both frozen blocks (the owner's
+  check of it while frozen was skipped). `docs/mainnet-proof.json` and its copy
   under `/samples/mainnet/` record the four as `v0_drill_over_cap`, `v0_drill_freeze`, `v0_drill_frozen_refused` and
-  `v0_drill_unfreeze`. The README, `JUDGES.md`, `docs/TRACKS.md`, the threat model, the status board, `/usage` (from
-  the proof file) and four docs pages now tell the drill, and the agent key's allowance, read again at 01:16 UTC, is
-  0.2458808163 NEAR at nonce 224068463000006.
+  `v0_drill_unfreeze`. The README, `JUDGES.md`, `SECURITY.md`, `docs/TRACKS.md`, the threat model, the status board
+  (whose eyebrow now names the drill beside 2026-11-13), `/usage` (from the proof file, with each drill refusal labelled
+  as the team's) and four docs pages now tell the drill, and where they tell the spend refused while frozen they say it
+  was over the cap too. The agent key's allowance, read again at 01:16 UTC, is 0.2458808163 NEAR at nonce 224068463000006.
 - A no-clone check of the mainnet vault. The site serves `v0.probarion.near`'s signed ledger after S2, the recorded
   transactions, spend 1's pre-ledger decision and the two invoice texts under `/samples/mainnet/`, each a byte copy
   of its source in `docs/` (`apps/web/test/samples-mainnet.test.ts` compares them). In an empty folder, one `curl`

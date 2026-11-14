@@ -1,0 +1,102 @@
+v0.probarion.near on NEAR mainnet, read again at four block heights around the drill of 2026-11-14. These are
+Claude's later archival reads, made on 2026-11-14 between 02:15 and 02:17 UTC, after the drill: the archival node
+https://archival-rpc.mainnet.fastnear.com, method `query` with a fixed `block_id` (`call_function` for each view,
+`view_access_key` for the agent key), and method `block` for each block's hash and time. Nothing here was signed or
+sent.
+
+They are not the reads made during the drill (views-before.txt, views-during.txt and views-after.txt keep those, at
+the times they ran), and they are not the owner's check of request E in the runbook's step (b), which the owner
+skipped. An archival `query` at a block gives the state after that block.
+
+What each line reads, with `signer_pk` the agent key ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd for
+check_spend:
+
+get_config       get_config '{}' on the vault, as returned
+get_mandate 1    get_mandate '{"mandate_id":1}', as returned
+check_spend A    check_spend of request A, 50 USDC on mandate 1 (the spend A sent)
+check_spend C    check_spend of request C, 2 USDC on mandate 1 (the spend C sent)
+check_spend E    check_spend of request E, 1 USDC on mandate 1 (checked, not sent)
+ft_balance_of    ft_balance_of the vault on the native USDC contract
+                 17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1, in base units (6 decimals)
+list_spends      the "id" of each spend in list_spends '{"from_index":0,"limit":100}'
+list_anchors     the "seq" of each anchor in list_anchors '{"from_index":0,"limit":100}'
+view_access_key  the agent key on v0.probarion.near, as returned (allowance in yoctoNEAR)
+
+The requests are REQ_A, REQ_C and REQ_E of README.md, "The three requests". Each read below returned the height and
+hash of the block in its section's heading.
+
+
+== Block 224442800, 6im8sBfcWJg4JMvBStLbr1HXy2gtzjHCEoqV5TBkEeMe, 2026-11-14T01:06:22.257Z: before A (block 224442801) ==
+
+get_config      {"owner":"probarion.near","approvers":["probarion-duong.near"],"usdc":"17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1","intents":"intents.near","allowed_assets":["base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near","sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"],"daily_backstop":"500000000","held_ttl_ns":"259200000000000","frozen":false,"factory":null,"version":"0.1.0","ledger_key":"ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK"}
+get_mandate 1   {"id":1,"payee":{"type":"near","account_id":"probarion-duong.near"},"purpose_hash":"3bc57742e1153e0cf14254077ee4fe96569836fa0f49dbdc8bb74ba7cea7c4db","max_per_payment":"1000000","max_total":"2000000","spent":"1000000","reserved":"0","max_uses":2,"uses":1,"expires_at_ns":"1801353600000000000","approval_above":"1000000","agent_pk":"ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd","label":"v0 near payee","status":"active","created_at_ns":"1794401931771650229"}
+check_spend A   {"ok":false,"code":"OverPerPayment","would_hold":false}
+check_spend C   {"ok":false,"code":"OverPerPayment","would_hold":false}
+check_spend E   {"ok":true,"code":null,"would_hold":false}
+ft_balance_of   "2000000"
+list_spends     "id":1 "id":2 "id":3
+list_anchors    "seq":1 "seq":2 "seq":3 "seq":4
+view_access_key {"block_hash":"6im8sBfcWJg4JMvBStLbr1HXy2gtzjHCEoqV5TBkEeMe","block_height":224442800,"nonce":224068463000004,"permission":{"FunctionCall":{"allowance":"246219350238132600000000","method_names":["spend"],"receiver_id":"v0.probarion.near"}}}
+
+
+== Block 224443200, 5KfYZcmK38bC3Gt3gjPQ8w5WkCdVvSkgime9c6qoatJS, 2026-11-14T01:10:07.266Z: frozen, after B's receipt (block 224443056) and before C (block 224443389) ==
+
+get_config      {"owner":"probarion.near","approvers":["probarion-duong.near"],"usdc":"17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1","intents":"intents.near","allowed_assets":["base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near","sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"],"daily_backstop":"500000000","held_ttl_ns":"259200000000000","frozen":true,"factory":null,"version":"0.1.0","ledger_key":"ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK"}
+get_mandate 1   {"id":1,"payee":{"type":"near","account_id":"probarion-duong.near"},"purpose_hash":"3bc57742e1153e0cf14254077ee4fe96569836fa0f49dbdc8bb74ba7cea7c4db","max_per_payment":"1000000","max_total":"2000000","spent":"1000000","reserved":"0","max_uses":2,"uses":1,"expires_at_ns":"1801353600000000000","approval_above":"1000000","agent_pk":"ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd","label":"v0 near payee","status":"active","created_at_ns":"1794401931771650229"}
+check_spend A   {"ok":false,"code":"Frozen","would_hold":false}
+check_spend C   {"ok":false,"code":"Frozen","would_hold":false}
+check_spend E   {"ok":false,"code":"Frozen","would_hold":false}
+ft_balance_of   "2000000"
+list_spends     "id":1 "id":2 "id":3
+list_anchors    "seq":1 "seq":2 "seq":3 "seq":4
+view_access_key {"block_hash":"5KfYZcmK38bC3Gt3gjPQ8w5WkCdVvSkgime9c6qoatJS","block_height":224443200,"nonce":224068463000005,"permission":{"FunctionCall":{"allowance":"246045777095666700000000","method_names":["spend"],"receiver_id":"v0.probarion.near"}}}
+
+
+== Block 224443450, FAwNcTYk7WUE3Vnd7FJNUPHMHVrpamdwiFYuKtSi94HT, 2026-11-14T01:12:28.298Z: still frozen, after C (block 224443389) and before D (block 224443506) ==
+
+get_config      {"owner":"probarion.near","approvers":["probarion-duong.near"],"usdc":"17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1","intents":"intents.near","allowed_assets":["base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near","sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"],"daily_backstop":"500000000","held_ttl_ns":"259200000000000","frozen":true,"factory":null,"version":"0.1.0","ledger_key":"ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK"}
+get_mandate 1   {"id":1,"payee":{"type":"near","account_id":"probarion-duong.near"},"purpose_hash":"3bc57742e1153e0cf14254077ee4fe96569836fa0f49dbdc8bb74ba7cea7c4db","max_per_payment":"1000000","max_total":"2000000","spent":"1000000","reserved":"0","max_uses":2,"uses":1,"expires_at_ns":"1801353600000000000","approval_above":"1000000","agent_pk":"ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd","label":"v0 near payee","status":"active","created_at_ns":"1794401931771650229"}
+check_spend A   {"ok":false,"code":"Frozen","would_hold":false}
+check_spend C   {"ok":false,"code":"Frozen","would_hold":false}
+check_spend E   {"ok":false,"code":"Frozen","would_hold":false}
+ft_balance_of   "2000000"
+list_spends     "id":1 "id":2 "id":3
+list_anchors    "seq":1 "seq":2 "seq":3 "seq":4
+view_access_key {"block_hash":"FAwNcTYk7WUE3Vnd7FJNUPHMHVrpamdwiFYuKtSi94HT","block_height":224443450,"nonce":224068463000006,"permission":{"FunctionCall":{"allowance":"245880816301566700000000","method_names":["spend"],"receiver_id":"v0.probarion.near"}}}
+
+
+== Block 224443520, FeRHRkfarLL6RwMpcsQ6XiqsmnPzv6Z81YhggnpFnr6a, 2026-11-14T01:13:08.105Z: after D's receipt (block 224443507) ==
+
+get_config      {"owner":"probarion.near","approvers":["probarion-duong.near"],"usdc":"17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1","intents":"intents.near","allowed_assets":["base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near","sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"],"daily_backstop":"500000000","held_ttl_ns":"259200000000000","frozen":false,"factory":null,"version":"0.1.0","ledger_key":"ed25519:RY7kjsaRStq4gt27RpNgErr9AjuKuZdzCXd6atSrzKK"}
+get_mandate 1   {"id":1,"payee":{"type":"near","account_id":"probarion-duong.near"},"purpose_hash":"3bc57742e1153e0cf14254077ee4fe96569836fa0f49dbdc8bb74ba7cea7c4db","max_per_payment":"1000000","max_total":"2000000","spent":"1000000","reserved":"0","max_uses":2,"uses":1,"expires_at_ns":"1801353600000000000","approval_above":"1000000","agent_pk":"ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd","label":"v0 near payee","status":"active","created_at_ns":"1794401931771650229"}
+check_spend A   {"ok":false,"code":"OverPerPayment","would_hold":false}
+check_spend C   {"ok":false,"code":"OverPerPayment","would_hold":false}
+check_spend E   {"ok":true,"code":null,"would_hold":false}
+ft_balance_of   "2000000"
+list_spends     "id":1 "id":2 "id":3
+list_anchors    "seq":1 "seq":2 "seq":3 "seq":4
+view_access_key {"block_hash":"FeRHRkfarLL6RwMpcsQ6XiqsmnPzv6Z81YhggnpFnr6a","block_height":224443520,"nonce":224068463000006,"permission":{"FunctionCall":{"allowance":"245880816301566700000000","method_names":["spend"],"receiver_id":"v0.probarion.near"}}}
+
+
+What the four reads show:
+
+- While the vault was frozen (blocks 224443200 and 224443450), check_spend answered Frozen for all three requests,
+  request E (1 USDC, within mandate 1's cap) among them. Before A and after D, requests A and C answered
+  OverPerPayment and request E ok. So the freeze check runs before the cap check, and a spend within the cap passes
+  again once the vault is unfrozen.
+- Mandate 1 read the same at all four blocks: max_per_payment "1000000" (1 USDC), "spent":"1000000",
+  "reserved":"0", "uses":1 of "max_uses":2, "status":"active". The vault held "2000000" (2 USDC) of native USDC, with
+  spends 1 to 3 and anchors seq 1 to 4, at all four blocks. Neither refused spend stored anything.
+- The agent key's nonce and allowance:
+    block 224442800  nonce 224068463000004  allowance 246219350238132600000000 (0.2462193502381326 NEAR)
+    block 224443200  nonce 224068463000005  allowance 246045777095666700000000 (0.2460457770956667 NEAR)
+    block 224443450  nonce 224068463000006  allowance 245880816301566700000000 (0.2458808163015667 NEAR)
+    block 224443520  nonce 224068463000006  allowance 245880816301566700000000 (0.2458808163015667 NEAR)
+  A lowered the allowance by 0.0001735731424659 NEAR and C by 0.0001649607941 NEAR, the NEAR each burned
+  (gas-2026-11-14.json). The values at blocks 224442800 and 224443520 match the owner's reads at 01:04:41 and
+  01:13:17 UTC in views-before.txt and views-after.txt.
+
+To read one again, in Bash with GNU base64 (Git Bash on Windows too) and Node.js to decode the result's bytes:
+
+q() { curl -s https://archival-rpc.mainnet.fastnear.com -H 'Content-Type: application/json' -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"call_function\",\"block_id\":$1,\"account_id\":\"$2\",\"method_name\":\"$3\",\"args_base64\":\"$(printf '%s' "$4" | base64 -w0)\"}}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(Buffer.from(JSON.parse(s).result.result).toString()))'; }
+q 224443200 v0.probarion.near get_config '{}'
