@@ -53,11 +53,16 @@
 .betaNarrow {
   display: none;
 }
+/*
+ * The summary is a tap target of at least 44px, 19.5px of line and 12.5px above and below it: its padding stands in for
+ * the strip's own, which a phone drops.
+ */
 .betaNarrow summary {
   cursor: pointer;
+  padding-block: 12.5px;
 }
 .betaNarrow p {
-  margin: 4px 0 0;
+  margin: 0 0 8px;
 }
 
 /* Skip link */
@@ -470,45 +475,6 @@ a.netPill:hover {
   color: var(--color-ok);
 }
 
-/* The integrate section's code box: the section lays it out in integrate.module.css. */
-.codeBox {
-  border-radius: 16px;
-  background: var(--color-band);
-  color: var(--color-band-fg);
-  border: 1px solid var(--color-band-line);
-  overflow: hidden;
-}
-.codeBox :focus-visible {
-  outline-color: var(--color-band-fg);
-}
-.codeHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-band-line);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  color: var(--color-band-mute);
-}
-/* Every sideways scroller is positioned, so absolutely positioned screen-reader text inside stays inside it. */
-.codeBody {
-  position: relative;
-  overflow-x: auto;
-}
-/* The box clips what is outside it, so the scroller's ring is drawn inside. */
-.codeBody:focus-visible {
-  outline-offset: -3px;
-}
-.codeBody pre {
-  padding: 18px 20px;
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  line-height: 1.65;
-}
-
 /* A panel's lines: the journey lays its panels out in journey.module.css. */
 .panelKey {
   color: var(--color-mute);
@@ -847,114 +813,6 @@ a.netPill:hover {
 .pillLink:hover {
   text-decoration-color: currentColor;
 }
-/* A footnote to the status section, not a chapter: the heading of the integrations it is built on stays small. */
-
-/*
- * Built on: one card with a row for NEAR and one for NEAR AI Cloud (what it is to Probarion, what it does, the
- * evidence). NEAR's logo is NEAR's own file in its own colour, never stretched, and stands in for its name, with clear
- * space above and below it. The stack note, the four places to get Probarion and the trademark footer under the card
- * are in ships.module.css.
- */
-.boCard {
-  border: 1px solid var(--color-line);
-  border-radius: 16px;
-  background: var(--color-surface);
-}
-/*
- * The evidence column keeps at least 232px, room for its longest link on one line ("Entry 13 on the proof page", about
- * 218px in 13px mono), so that no link wraps on a desktop. A fixed floor, not one sized to the links, keeps the two
- * rows' columns lined up.
- */
-.boRow {
-  display: grid;
-  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr) minmax(232px, 3fr);
-  gap: 18px clamp(20px, 3vw, 44px);
-  padding: clamp(22px, 2.6vw, 34px);
-  align-items: start;
-}
-.boRow + .boRow {
-  border-top: 1px solid var(--color-line);
-}
-.boWho,
-.boWhat {
-  min-width: 0;
-}
-.boLabel {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-gold-ink);
-}
-/* As tall as NEAR's logo, so that the logo and the name set in text start their rows at the same height. */
-.boName {
-  display: flex;
-  align-items: center;
-  min-height: 24px;
-  margin-top: 16px;
-  font-size: 22px;
-  font-weight: 400;
-  line-height: 1.1;
-  letter-spacing: -0.015em;
-}
-.nearLogo {
-  display: block;
-  width: 98px;
-  max-width: 100%;
-  height: auto;
-  aspect-ratio: 1440 / 351;
-}
-.boDomain {
-  display: inline-block;
-  margin-top: 14px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--color-mute);
-}
-.boBody {
-  max-width: 34em;
-  font-size: 16px;
-}
-.boChecks {
-  display: grid;
-  gap: 8px;
-  margin-top: 14px;
-  font-size: 15px;
-}
-.boFact {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-.boCheck {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin-top: 0.2em;
-  fill: none;
-  stroke: var(--color-gold-small);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.boNote {
-  margin-top: 12px;
-  font-size: 14px;
-  color: var(--color-mute);
-}
-.boLinks {
-  display: grid;
-  gap: 10px;
-  justify-items: end;
-  min-width: 0;
-  text-align: right;
-  font-family: var(--font-mono);
-  font-size: 13px;
-}
-.boLinks a {
-  overflow-wrap: anywhere;
-}
 
 /*
  * Closing: the page's end statement. Its rule sits halfway down its gap, G under the section before it and G over the
@@ -988,10 +846,45 @@ a.netPill:hover {
 .closeNote code ~ code {
   white-space: normal;
 }
-/* After the two ways out to the evaluation and the spec, the way into the product. */
+/*
+ * After the two ways out to the evaluation and the spec, the way into the product: the page's last link, as an ink
+ * card. The link fills the card, so the whole card is its tap target (WCAG 2.5.5); its words are large and light.
+ */
 .closeNext {
-  margin-top: 28px;
+  margin-top: 36px;
   font-size: 17px;
+}
+.closeNext a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 28px;
+  border-radius: 24px;
+  background: var(--color-band);
+  color: var(--color-band-fg);
+  font-size: clamp(24px, 2.6vw, 34px);
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  text-decoration: none;
+}
+.closeNext a:hover {
+  background: var(--color-code-active);
+}
+/* The arrow, hidden from screen readers, on the paid card's gold: ink on --gradient-metal keeps 7:1. */
+.closeNext a > span {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--gradient-metal);
+  color: var(--color-ink);
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 /* The site footer is in footer.module.css. */
@@ -1124,16 +1017,8 @@ a.netPill:hover {
   .betaNarrow {
     display: block;
   }
-}
-/* Built on: below 1101px the evidence column is too narrow for its links, so they move under the checks. */
-@media (max-width: 1100px) {
-  .boRow {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  }
-  .boLinks {
-    grid-column: 2;
-    justify-items: start;
-    text-align: left;
+  .beta {
+    padding-block: 0;
   }
 }
 @media (max-width: 960px) {
@@ -1153,12 +1038,12 @@ a.netPill:hover {
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
-  .boRow {
-    grid-template-columns: minmax(0, 1fr);
-    padding: 20px 18px;
+  .closeNext a {
+    padding: 20px;
   }
-  .boLinks {
-    grid-column: auto;
+  .closeNext a > span {
+    width: 44px;
+    height: 44px;
   }
   /* The hero's two buttons keep one row on a phone, a little smaller. */
   .cta {
@@ -1240,21 +1125,15 @@ a.netPill:hover {
     background: none;
     color: CanvasText;
   }
-  /* NEAR's black logo and the gold check marks would fade on a dark Canvas: both take the forced text colour. */
-  .nearLogo {
-    fill: currentColor;
-  }
-  .boCheck {
-    stroke: currentColor;
-  }
   /* Forced colours drop the box-shadow that marks a pressed button. */
   .act[aria-pressed="true"] {
     text-decoration: underline;
   }
-  /* A fill is dropped, so the current network, the paid card and the pills get an edge instead. */
+  /* A fill is dropped, so the current network, the paid card, the pills and the closing's card get an edge instead. */
   .netPillCurrent,
   .pill,
-  .payeePanel {
+  .payeePanel,
+  .closeNext a {
     border: 1px solid CanvasText;
   }
   .metal {

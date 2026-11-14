@@ -2600,7 +2600,7 @@ export const STATUS_BOARD = {
           status: "attested-model-run",
           name: "Live attested model run",
           proof: "part",
-          what: "NEAR AI Cloud's private model, in a TEE, proposes a payment, and code decides. 7 attested decisions are published on testnet, and each passes A1 to A7 offline. On mainnet, the 3 of 2026-11-13 pass A1 to A8 offline. Code refused 2 of them and allowed the third, which the vault paid: a 0.25 USDC test to the owner's own Base address.",
+          what: "NEAR AI Cloud's attested model, in a TEE, proposes a payment, and code decides. 7 attested decisions are published on testnet, and each passes A1 to A7 offline. On mainnet, the 3 of 2026-11-13 pass A1 to A8 offline. Code refused 2 of them and allowed the third, which the vault paid: a 0.25 USDC test to the owner's own Base address.",
           limit:
             "The TEE measurement is not pinned, so no check shows which model image ran. A8 was not run on the Canary's 2.",
           where: { place: "NEAR AI Cloud, testnet and mainnet" },
@@ -2867,8 +2867,9 @@ export const BUILT_ON = {
     },
   ] satisfies readonly ShipCard[],
   /**
-   * The section's footer. The lead is the README's License line; each notice names the owner of a mark the section
-   * shows or names. Read in order, the lead and the notices are one text, every sentence kept.
+   * The trademark line. The lead is the README's License line, and the landing's closing shows it alone, as one line of
+   * small print: the landing shows no logos. Each notice names the owner of a mark; they are kept for a page that shows
+   * logos, which must show a mark's notice with it.
    */
   trademark: {
     label: "Trademarks",

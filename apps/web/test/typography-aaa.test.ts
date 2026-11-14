@@ -447,10 +447,9 @@ describe("text contrast at WCAG AAA (1.4.6), from the tokens and the CSS modules
 // --- Visual presentation (1.4.8), sizes and weights ------------------------------------------------------------------
 
 /**
- * Selectors that set a tight line for one line of text, not a block: the logo, a button's label, a one-glyph mark, and
- * `.boName`, the Built on section's `h3` ("NEAR AI Cloud"), set as tall as NEAR's logo beside it.
+ * Selectors that set a tight line for one line of text, not a block: the logo, a button's label and a one-glyph mark.
  */
-const TIGHT_LINE_OK = new Set([".brand", ".scenario", ".pick", ".tipMark", ".boName"]);
+const TIGHT_LINE_OK = new Set([".brand", ".scenario", ".pick", ".tipMark"]);
 const HEADING = /(?:^|[\s>+~])h[1-6]\b|title|Title|\.h[12]\b/;
 
 describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
@@ -722,7 +721,7 @@ describe("text spacing, reflow, focus and colour schemes", () => {
     expect(search.outline).toBe("2px solid var(--color-gold-small)");
     expect(search["box-shadow"]).toBeUndefined();
     // Rings that a clipping box would cut are drawn inside it.
-    for (const s of [".codeBody:focus-visible", ".scroll:focus-visible"]) {
+    for (const s of [".scroll:focus-visible"]) {
       expect(decl("site", s, "outline-offset"), s).toBe("-3px");
     }
     // The console's captures sit in no scroller, so their links keep the ring 3px outside, as every other link does.

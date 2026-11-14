@@ -181,6 +181,14 @@
   font-weight: 500;
   line-height: 1.5;
 }
+/* Two classes and an element: they beat .site code's 0.86em, which in 15px text would set code at 12.9px, under the
+   page's 13px floor for mono. */
+.use .useBody code,
+.use .outcomeText code,
+.ways .waysSub code,
+.way .wayBody code {
+  font-size: 13px;
+}
 
 /* The install line in mono on ink, its copy button inside it, then the quickstart. */
 .install {
@@ -200,6 +208,10 @@
   border-radius: 999px;
   background: var(--color-band);
   color: var(--color-band-fg);
+}
+/* On the ink ground the page's gold focus ring is faint (about 3:1), so the copy button's takes the ground's own ink. */
+.cmd :focus-visible {
+  outline-color: var(--color-band-fg);
 }
 /* Two classes and an element: it beats .site code's 0.86em, so the command reads at 14px. */
 .install .cmd code {

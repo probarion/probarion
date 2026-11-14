@@ -58,6 +58,13 @@
   font-size: 16px;
   line-height: 1.55;
 }
+/* A link on a line of its own, so a 44px tap target (WCAG 2.5.5): 10px over and under its 24.8px lines, which its
+   margin takes back, so that the row's spacing holds. */
+.stackLink a {
+  display: inline-block;
+  padding-block: 10px;
+  margin-block: -10px;
+}
 .tokens {
   display: grid;
   gap: 10px;

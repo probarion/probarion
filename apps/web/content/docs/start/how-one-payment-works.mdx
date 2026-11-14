@@ -1,7 +1,7 @@
 <Flow>
 
 1. **The owner signs a mandate** One payee, the limits, and the one agent key that may use them.
-2. **A private model may advise** Optional. It cannot widen the mandate.
+2. **An attested model may advise** Optional. It cannot widen the mandate.
 3. **Code decides and signs** The decision goes into a signed ledger before anything is sent.
 4. **The contract decides last** It runs 14 checks, then pays, holds or refuses.
 5. **Anyone checks the record** The verifier ties each spend on chain to exactly one decision.
@@ -30,7 +30,7 @@ The example mandate pays `probarion-payee.testnet`: 5 USDC a payment, 20 USDC in
 
 </Callout>
 
-## A private model may advise
+## An attested model may advise
 
 Optional: the model runs on NEAR AI Cloud inside a TEE, a trusted execution environment: isolated hardware that returns a signed report, an [attestation](/docs/resources/glossary#attestation), with each answer. The SDK puts a [nonce](/docs/resources/glossary#nonce) in each request, so that report fits only the next entry of this vault's ledger, for this invoice and this mandate. Without a model, or when its attestation checks fail, code decides alone and the decision entry says `rules-only`.
 

@@ -1371,18 +1371,18 @@
     gap: 14px;
     padding: 16px;
   }
-  /* Seven rows of values make a long page on a phone: each folds behind its line, and a tap opens it. */
+  /*
+   * Seven rows of values make a long page on a phone: each folds behind its line, and a tap opens it. The line is a
+   * 44px tap target (WCAG 2.5.5): 19.5px of text and 12.5px above and below it.
+   */
   .valsSummary {
     display: list-item;
     width: fit-content;
-    padding-block: 3px;
+    padding-block: 12.5px;
     font-size: 13px;
     line-height: 1.5;
     color: var(--color-band-mute);
     cursor: pointer;
-  }
-  .vals[open] > .valsSummary {
-    margin-bottom: 6px;
   }
   /* A narrow column of right-aligned lines reads badly: the Base end aligns left, and its figure keeps right. */
   .endBase .endLine {
