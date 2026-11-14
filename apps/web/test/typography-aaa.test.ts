@@ -290,6 +290,13 @@ const NESTED: readonly [string, string, string][] = [
   ["ink", "soft", "docs: .archLabel and .archDetail on the outside boxes"],
   ["paper", "ink", "docs: .archLabel and .archDetail on the chain boxes"],
   ["ink", "paper", "docs: .archEdgeLabel, painted over a paper stroke"],
+  // The console's invoice board: the labels and the note on the paper behind the sheet, the sheet's text and the
+  // owner's confirm on the white sheet, and its stamps on their tints (integrate.module.css .stampHeld, .stampNone).
+  ["mute", "paper", "console: .doc labels and .docNote, on the paper behind the sheet"],
+  ["mute", "surface", "console: .rows dt, .invIds and .sigMeta on the white sheet"],
+  ["gold-ink", "surface", "console: .sigLabel, the owner's confirm on the white sheet"],
+  ["wait", "wait-bg", "integrate: .stampHeld on its tint"],
+  ["plan", "plan-bg", "integrate: .stampNone on its tint"],
 ];
 
 /**
@@ -533,8 +540,8 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["journey", ".attFoot", "gap", 15, "journey", ".attFoot"],
       // The use cases: the blocks of a use's card.
       ["integrate", ".use", "gap", 15, "site", ".site"],
-      // The console's shot: its record under the caption's sentence.
-      ["console", ".record", "margin-top", 15, "site", ".site"],
+      // The console's invoice board: its caption's record under the caption's sentence, below 900px.
+      ["console", ".cap", "row-gap", 15, "site", ".site"],
       // The live check: the lines of a hijack's invoice text under its quote.
       ["live", ".injLine", "margin-top", 15, "live", ".inj"],
       // The site footer, outside .site: its base row's note over the legal links, once the row stacks at 960px and below.
@@ -582,6 +589,7 @@ describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
       ["integrate", ".useBody"],
       ["integrate", ".waysSub"],
       ["console", ".body"],
+      ["console", ".vtext"],
       ["hero", ".cap"],
       // The payee panel's body, on the ink panel at the end of the problem.
       ["site", ".payeeBody"],

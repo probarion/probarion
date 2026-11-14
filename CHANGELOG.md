@@ -1436,6 +1436,16 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing page's use cases (`/#integrate`) redraw the testnet console's page for one invoice in place of its
+  screenshot, so the page loads no image there. Under the caption "What Probarion did with one invoice", a board shows
+  INV-2004 of 2026-11-09 as a sheet (4.00 test USDC to `probarion-payee.testnet` under PO-1001 and mandate 1, its
+  sha256 and the owner's NEP-413 confirm), then three rows: Model wanted (no model, ledger entry 7), Code allowed (15
+  rules passed, ledger entry 8, the rules in a native fold) and Contract did (held as spend 3, then paid once the
+  approver approved it from their own key, with the held and approved testnet transactions). "Open the screenshot"
+  (formerly "Open full size") opens the capture, and the docs keep all three screenshots. The values are
+  `INVOICE_BOARD` in `apps/web/src/lib/site/facts.ts`, and `apps/web/test/console-shots.test.ts` holds them to
+  entries 7, 8 and 9 of `docs/evidence/demo-vault/ledger-2026-11-11.jsonl`, the deployment record and the shots'
+  transactions. The demo vault's evidence README records the upload time the console showed, 17:33 UTC.
 - Release 0.1.2 is on npm: `@probarion/near`, `@probarion/core`, `@probarion/sdk`, `probarion` and
   `@probarion/mcp` 0.1.2 were published on 2026-11-14 from the tag `sdk-v0.1.2`. The commands a reader runs
   against npm name 0.1.2: the no-clone verify (the README, `JUDGES.md`, the site's block and
@@ -1462,8 +1472,8 @@ The software is an unaudited beta.
     code". The live check under them keeps its scenarios, the mandate select, the amount, the key toggle and the
     mandate as the chain has it in view, and folds the request it sent.
   - The use cases are three cards, each with its network, what the mandate controls, its outcome and one link to
-    its record, then one console screenshot at its own 856px, the four ways in and one install line. The code box,
-    the addresses and the groups of doc links are in the docs.
+    its record, then one invoice from the console redrawn from its record (above), the four ways in and one install
+    line. The code box, the addresses and the groups of doc links are in the docs.
   - On mainnet, spend 3 stays open with "Read the chain now" and folds its decision trail and verdict; spend 2 stays
     folded with its own button. "Ask the mainnet contract" and "Verify the vault yourself" sit side by side from
     961px, the verify commands in a fold under their title, and the transactions of 2026-11-11 are one line.
