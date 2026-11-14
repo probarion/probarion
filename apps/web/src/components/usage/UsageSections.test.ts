@@ -143,7 +143,7 @@ describe("the tiles", () => {
         usage: usage({ external_owners: 0, canary_participants: 12345, team_vaults: 0 }),
       }),
     );
-    const values = [...h.matchAll(/<p class="([^"]*)">([^<]*)<\/p>/g)]
+    const values = [...h.matchAll(/<div class="([^"]*)">([^<]*)<\/div>/g)]
       .filter((m) => /^[\d,]+$/.test(m[2] ?? ""))
       .map((m) => [
         m[2],
