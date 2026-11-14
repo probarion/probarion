@@ -120,7 +120,9 @@ thirteen entries. Entries 10 to 12 hold each model response in full, the inputs 
 only as its sha256, the sha256 of the whole request, and the attestation evidence. Entries 7 to 9 are an invoice from
 the evening of 2026-11-09, `invoice-INV-2004.txt` in the console, that this record does not otherwise cover: 4 test
 USDC, sha256 `366f44db…`, refused while the owner had not confirmed it, then confirmed and held as spend 3, which the
-chain shows paid. The ledger of 2026-11-12, [below](#check-it-again), starts with these thirteen entries, unchanged.
+chain shows paid. The console's page for it, in [the screenshot](../../../apps/web/public/shots/console-invoice.webp)
+that the landing page links, shows it uploaded by the owner at 17:33 UTC and confirmed at 17:37 UTC. The ledger of
+2026-11-12, [below](#check-it-again), starts with these thirteen entries, unchanged.
 
 [`verify-2026-11-11.txt`](verify-2026-11-11.txt) is a live run of release 0.1.1 from npm with that ledger, at
 23:44 UTC, which read the chain itself: checks a to i pass, and check e finds 3 attested decisions that pass A1 to

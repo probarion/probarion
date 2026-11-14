@@ -154,9 +154,9 @@ function Ways() {
 }
 
 /**
- * The use cases, for the jobs an agent does under a mandate: the three uses first, each with its record, then the
- * console's one screenshot (ConsoleShots.tsx), then the four ways in and the install line. The SDK code, the addresses
- * and the outcome statuses are in the docs.
+ * The use cases, for the jobs an agent does under a mandate: the three uses first, each with its record, then one
+ * invoice from the console, redrawn from its record (ConsoleShots.tsx), then the four ways in and the install line.
+ * The SDK code, the addresses and the outcome statuses are in the docs.
  */
 export function Integrate() {
   return (

@@ -1,55 +1,49 @@
 /*
- * The console's one screenshot (ConsoleShots.tsx ConsoleShot), in the use cases after the three uses: the invoice's
- * page, framed (24px radius, a hairline, 10px of white round it) and never drawn wider than its 856px file. From
- * 1100px the caption sits beside it; below, under it. Nothing scrolls sideways and nothing moves. Every colour is a
- * token from app/globals.css.
+ * The console on the landing (ConsoleShots.tsx ConsoleShot), in the use cases after the three uses: INV-2004's page in
+ * Payables, redrawn from its record as one white board (24px radius, a hairline, the soft shadow the page's frames
+ * use). The caption leads, its record and two links beside it from 900px. On the board, the invoice is a sheet of
+ * paper on the page's own paper; beside it from 900px, under it below, the console page's three columns are three
+ * rows, the code's rules in a native fold. Nothing scrolls sideways and nothing moves. Every colour is a token from
+ * app/globals.css, and every mono text is 13px or more.
  */
 
 .figure {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  row-gap: 24px;
+  row-gap: clamp(24px, 3vw, 36px);
   margin-top: var(--space-block);
 }
 
-/* The frame: 856px of capture plus 10px of padding and 1px of border each side, so the image is never drawn larger
-   than the file. A narrower column draws it smaller; "Open full size" opens the file. */
-.frame {
-  max-width: 878px;
-  padding: 10px;
-  border: 1px solid var(--color-line);
-  border-radius: 24px;
-  background: var(--color-surface);
-  box-shadow: 0 40px 80px -40px color-mix(in srgb, var(--color-ink) 25%, transparent);
-}
-.frame img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 16px;
-}
+/* --- The caption: what it is, then the record it rests on and the two links ------------------------------------- */
 
 .cap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 20px;
+  min-width: 0;
+}
+.capText,
+.capSide {
   min-width: 0;
 }
 .title {
   margin-top: 10px;
-  font-size: 24px;
-  font-weight: 400;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
+  font-size: clamp(26px, 2.6vw, 34px);
+  font-weight: 300;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
 }
 .body {
-  margin-top: 10px;
-  max-width: 26em;
+  margin-top: 12px;
+  max-width: var(--container-measure);
   font-size: 15px;
   color: var(--color-mute);
 }
 
-/* What the shot was taken under: a term and its value on each ruled line. */
+/* What the console was captured under: a term and its value on each ruled line. */
 .record {
   display: grid;
-  margin-top: 18px;
   font-size: 14px;
   line-height: 1.5;
 }
@@ -73,12 +67,12 @@
   font-size: 13px;
 }
 
-/* The file and the console, each a 44px tap target (WCAG 2.5.5). */
+/* The screenshot and the console, each a 44px tap target (WCAG 2.5.5). */
 .links {
   display: flex;
   flex-wrap: wrap;
   column-gap: 20px;
-  margin-top: 8px;
+  margin-top: 4px;
 }
 .link {
   padding-block: 11px;
@@ -87,10 +81,337 @@
   line-height: 1.5;
 }
 
-@media (min-width: 1100px) {
-  .figure {
-    grid-template-columns: minmax(0, 878px) minmax(17rem, 1fr);
-    column-gap: clamp(32px, 4vw, 56px);
-    align-items: center;
+@media (min-width: 900px) {
+  .cap {
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+    column-gap: clamp(32px, 5vw, 72px);
+    align-items: end;
   }
+}
+
+/* --- The board ---------------------------------------------------------------------------------------------------- */
+
+.board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border: 1px solid var(--color-line);
+  border-radius: 24px;
+  background: var(--color-surface);
+  overflow: hidden;
+  box-shadow: 0 40px 80px -40px color-mix(in srgb, var(--color-ink) 25%, transparent);
+}
+
+/* The invoice: a sheet on the page's paper, its label over it and the note under it. */
+.doc {
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  min-width: 0;
+  /* Below 900px the hand-off's circle stands 18px up into this pane: 28px or more under the note clears it. */
+  padding: clamp(16px, 3vw, 40px) clamp(16px, 3vw, 40px) max(28px, 3vw);
+  background: var(--color-paper);
+  border-bottom: 1px solid var(--color-line);
+}
+.sheet {
+  min-width: 0;
+  padding: clamp(20px, 2.4vw, 30px);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  box-shadow: 0 18px 36px -24px color-mix(in srgb, var(--color-ink) 14%, transparent);
+}
+.sheetTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.invNo {
+  margin-top: 14px;
+  font-size: clamp(34px, 3.4vw, 44px);
+  font-weight: 300;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+.invIds {
+  display: grid;
+  margin-top: 8px;
+  color: var(--color-mute);
+  line-height: 1.5;
+}
+.due {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-ink);
+}
+.dueAmount {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 10px;
+  margin-top: 2px;
+}
+.dueNum {
+  font-size: clamp(40px, 4vw, 52px);
+  font-weight: 300;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+.dueUnit {
+  font-size: 17px;
+  font-weight: 500;
+}
+/* The recorded fields: a term and its value on each ruled line; a long value goes under its term. */
+.rows {
+  display: grid;
+  margin-top: 18px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.rows > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 14px;
+  padding-block: 9px;
+  border-top: 1px solid var(--color-line);
+}
+.rows dt {
+  flex: none;
+  color: var(--color-mute);
+}
+.rows dd {
+  min-width: 0;
+  margin-left: auto;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+/* The owner's confirm, set like a signature line at the foot of the sheet. */
+.sig {
+  display: grid;
+  gap: 2px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px dashed var(--color-gold-deep);
+  border-radius: 12px;
+}
+.sigLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-gold-ink);
+}
+.sigWho,
+.sigMeta {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.sigMeta {
+  color: var(--color-mute);
+}
+.docNote {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+
+/* What happened to it: three rows, each a short sentence and its proof. Its rows lay out by its own width. */
+.verdicts {
+  position: relative;
+  min-width: 0;
+  padding: clamp(24px, 3vw, 40px) clamp(20px, 3vw, 40px) clamp(8px, 1vw, 12px);
+  container-type: inline-size;
+}
+/* The hand-off from the sheet to the rows: down on a phone, right beside it. */
+.handoff {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-mute);
+}
+.handoff svg {
+  width: 14px;
+  height: 14px;
+  transform: rotate(90deg);
+}
+@media (min-width: 900px) {
+  .board {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+  .doc {
+    padding-bottom: clamp(16px, 3vw, 40px);
+    border-bottom: 0;
+    border-right: 1px solid var(--color-line);
+  }
+  .handoff {
+    top: 50%;
+    left: -18px;
+    margin: -18px 0 0;
+  }
+  .handoff svg {
+    transform: none;
+  }
+}
+
+.vlist {
+  margin-top: 6px;
+}
+.vrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding-block: 22px;
+}
+.vrow + .vrow {
+  border-top: 1px solid var(--color-line);
+}
+.vhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.vbody {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.vtext {
+  max-width: var(--container-measure);
+  font-size: 16px;
+  line-height: 1.55;
+}
+/*
+ * A row's proof links. The row, not each link, takes the -6px under the last line, so a link that wraps onto a
+ * second line keeps its whole 44px and no link covers another.
+ */
+.vlinks {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 20px;
+  margin-bottom: -6px;
+}
+/* A row's proof, a 44px tap target (WCAG 2.5.5): 22.5px of line and 11px above and below. */
+.vlink {
+  padding-block: 11px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+@container (min-width: 520px) {
+  .vrow {
+    grid-template-columns: 9.5rem minmax(0, 1fr);
+    column-gap: 24px;
+  }
+  .vhead {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .rules {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The code's rules, folded: a quiet pill, 44px tall, that opens to the list, two columns where there is room. */
+.rules {
+  min-width: 0;
+}
+.rulesSummary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  list-style: none;
+  cursor: pointer;
+}
+.rulesSummary::-webkit-details-marker {
+  display: none;
+}
+.rulesSummary:hover {
+  border-color: var(--color-mute);
+}
+.rulesSummary svg {
+  width: 12px;
+  height: 12px;
+}
+.whenOpen {
+  display: none;
+}
+.rules[open] .whenOpen {
+  display: inline;
+}
+.rules[open] .whenShut {
+  display: none;
+}
+.ruleList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px 28px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-line);
+}
+.ruleList li {
+  display: grid;
+  grid-template-columns: 11px minmax(0, 1fr);
+  column-gap: 10px;
+  align-content: start;
+  align-items: start;
+  min-width: 0;
+}
+.ruleList li > svg {
+  margin-top: 5px;
+}
+/* The chevron turns up once the fold is open. */
+.rules[open] .rulesSummary svg {
+  transform: rotate(180deg);
+}
+/* 13px, as its code is: a 20.8px line, on which the mark's 5px sits at the middle of the id. */
+.ruleId {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.ruleWhat {
+  grid-column: 2;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-mute);
+}
+@container (min-width: 600px) {
+  .ruleList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/*
+ * Mono text at the page's 13px floor, where .site code's 0.86em of a 14px line would set it at 12px: a class and two
+ * elements, or two classes and an element, each beats .site code. In ascending specificity, as the linter asks.
+ */
+.rows dd code,
+.ruleList li code {
+  font-size: 13px;
+}
+.sheet .invIds code,
+.sig .sigWho code {
+  font-size: 13px;
 }
