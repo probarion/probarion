@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@probarion/core": "workspace:*",
+    "@probarion/near": "workspace:*",
     "@probarion/sdk": "workspace:*",
     "commander": "^15.0.0"
   },

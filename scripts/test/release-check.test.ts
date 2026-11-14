@@ -118,6 +118,7 @@ describe("checkRelease", () => {
 
   it("publishes in dependency order, mcp last", () => {
     expect([...PUBLISHED_DIRS]).toEqual([
+      "packages/near",
       "packages/core",
       "packages/sdk",
       "packages/cli",
