@@ -321,8 +321,9 @@ whether the code is a recorded build. The output names the block it read.
 `tx prove <tx-hash> --signer <account>` reads the head block on one RPC origin and matches its hash,
 height and `block_merkle_root` on another, reads the transaction, then fetches a `light_client_proof`
 for it and for every receipt it led to, and verifies each one under that head. It prints each proven
-outcome (id, executor, block height, status) with the NEP-297 events it logged. A failed receipt is
-proven too, as a failure.
+outcome (id, executor, the block that commits it, status) with the NEP-297 events it logged. A failed
+receipt is proven too, as a failure. A `tx` answer that leaves out a receipt a proven outcome created is
+refused.
 
 - `--head-rpc <urls>` takes URLs on at least two origins (default: `--rpc`, `NEAR_RPC_URLS`, then the
   network defaults); testnet's defaults are on one origin, so give two there.
@@ -337,5 +338,5 @@ proven too, as a failure.
 |---|---|---|
 | 0 | locked, and the policy and the recorded build match when given | proven: the transaction and every receipt it led to |
 | 2 | locked, with a warning to read (a key for any method, an unlimited allowance) | |
-| 1 | not locked, a blocking finding, or the account could not be read (`error:` on stderr) | not proven, the two head providers disagree, or a read failed (`error:` on stderr) |
+| 1 | not locked, a blocking finding, or the account could not be read (`error:` on stderr) | not proven (a proof did not verify, or the `tx` answer left out a receipt), the two head providers disagree, or a read failed (`error:` on stderr) |
 | 64 | usage error: a malformed account or flag, or a `--builds` file that cannot be read | usage error: a malformed hash, account or flag, or head URLs on fewer than two origins |

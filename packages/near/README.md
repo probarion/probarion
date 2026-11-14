@@ -120,6 +120,11 @@ agrees with Probarion's check f. A NEP-330 source metadata check is **Planned**.
   `bridge_record`, `destination_transfer`, `amounts`) across the NEAR transaction or its proven outcomes, the
   POA bridge's `withdrawal_status` record and the Base receipt. It settles both mainnet payouts, in the token's
   smallest unit: 1000000 burned, 997600 received, a fee of 2400; and 250000, 247600, 2400.
+  `expect.maxFee` is required, because the bridge sets the fee. Within that bound, which Base release belongs to
+  a burn is still the bridge's word, so pass the releases you already counted as `expect.countedReleases`. The
+  bridge record must be on Base (`eth:8453`).
+- `poaWithdrawCall` takes the POA tokens named `base-<address>.omft.near` and `sol-<address>.omft.near`. It refuses the native-asset tokens
+  `base.omft.near` and `sol.omft.near`, and settlement reads ERC-20 releases.
 - `readPoaWithdrawalStatus(bridge, burnTxHash)` (**Experimental**) sends `withdrawal_status` to the bridge's
   JSON-RPC at `POA_BRIDGE_RPC_URL`. The method was confirmed by a read of public data on 2026-11-14; statuses
   other than `COMPLETED` are not documented in what was read.

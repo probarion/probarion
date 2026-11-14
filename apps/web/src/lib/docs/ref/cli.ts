@@ -336,7 +336,7 @@ export const TABLES: readonly RefTable[] = [
             "`--archival-rpc <urls>`",
             "`--json`",
           ].join(", "),
-          does: "Proves a transaction and every receipt it led to. It reads the head block on one RPC origin and matches its hash, height and `block_merkle_root` on another, reads the transaction, fetches a `light_client_proof` for it and for each receipt, and verifies each one under that head. It prints each proven outcome (id, executor, block height, status) with the NEP-297 events it logged, and a failed receipt is proven as a failure. `--signer` is the account that signed the transaction. `--head-rpc` takes URLs on at least two origins and falls back to `--rpc`, `NEAR_RPC_URLS`, then the network defaults, which are on one origin on testnet, so give two there. `--archival-rpc` falls back to `NEAR_ARCHIVAL_RPC_URLS`, else FastNEAR's archival node. The head is trusted, not proven: validator signatures are not checked. `--json` prints the head, the origins and the proven outcomes. It runs the outcome proof verifier and the event reader of `@probarion/near`. In this repository, not in npm 0.1.1.",
+          does: "Proves a transaction and every receipt it led to. It reads the head block on one RPC origin and matches its hash, height and `block_merkle_root` on another, reads the transaction, fetches a `light_client_proof` for it and for each receipt, and verifies each one under that head. It prints each proven outcome (id, executor, the block that commits it, status) with the NEP-297 events it logged, and a failed receipt is proven as a failure. A `tx` answer that leaves out a receipt a proven outcome created is refused. `--signer` is the account that signed the transaction. `--head-rpc` takes URLs on at least two origins and falls back to `--rpc`, `NEAR_RPC_URLS`, then the network defaults, which are on one origin on testnet, so give two there. `--archival-rpc` falls back to `NEAR_ARCHIVAL_RPC_URLS`, else FastNEAR's archival node. The head is trusted, not proven: validator signatures are not checked. `--json` prints the head, the origins and the proven outcomes. It runs the outcome proof verifier and the event reader of `@probarion/near`. In this repository, not in npm 0.1.1.",
           signs:
             "Nothing: it reads blocks, the transaction and its proofs, and signs and sends nothing.",
         },
@@ -426,7 +426,7 @@ export const TABLES: readonly RefTable[] = [
           payee: "Block: a reason not to pay, or the check could not run: `error:` on stderr.",
           account:
             "Not locked, a blocking finding (a key outside the policy, code that is not a recorded build), or a failed read: `error:` on stderr.",
-          tx: "Not proven: a proof did not verify, the two head providers disagree, or a read failed: `error:` on stderr.",
+          tx: "Not proven: a proof did not verify, the `tx` answer left out a receipt, the two head providers disagree, or a read failed: `error:` on stderr.",
           verify:
             "A check fails, which always wins over unproven, or verify could not run: `error:` on stderr and no `RESULT` line.",
           other:
