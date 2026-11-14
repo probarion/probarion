@@ -315,6 +315,12 @@ describe("parsePoaWithdrawalStatus", () => {
     expect(() => parsePoaWithdrawalStatus({ withdrawals: [{ status: "", data: {} }] })).toThrow(
       NearFormatError,
     );
+    try {
+      parsePoaWithdrawalStatus({ withdrawals: [7] });
+      throw new Error("expected a refusal");
+    } catch (error) {
+      expect(error).toMatchObject({ name: "NearFormatError", what: "withdrawals[0]" });
+    }
   });
 });
 

@@ -80,9 +80,9 @@ export interface PoaWithdrawCall {
  * The function call that withdraws `amount` of a POA asset from the caller's NEAR Intents balance to `address` on
  * `chain`, as the vault makes it: `ft_withdraw` on the intents contract with `token` and `receiver_id` both the
  * asset (the POA token burns what it receives with a `WITHDRAW_TO:` memo, and the bridge releases it on the other
- * chain), memo `WITHDRAW_TO:<address>`, `msg` null, 1 yoctoNEAR attached and 100 Tgas. A string `msg` would turn
- * the withdrawal into an `ft_transfer_call` (no refund path through the POA token), so the call never sets one. The
- * caller signs and sends it; this builds it and signs nothing.
+ * chain), memo `WITHDRAW_TO:<address>`, `msg` null, 1 yoctoNEAR attached and 100 Tgas. `msg` stays null as in the
+ * vault: a string `msg` makes intents.near call `ft_transfer_call` on the token instead of `ft_transfer`. The caller
+ * signs and sends the call; this builds it and signs nothing.
  *
  * Throws TypeError for a chain other than base or solana; an asset that is not a NEAR account id with the chain's
  * prefix; a Base address that is not `0x` and 40 hex digits (the case is kept, so an EIP-55 checksummed address
@@ -358,8 +358,11 @@ function refuse(what: string, text: string): never {
 }
 
 function parseWithdrawal(item: unknown, at: string): PoaBridgeWithdrawal {
-  const bad = (field: string, text: string): never =>
-    refuse(`${at}${field}`, `${at}${field} ${text}`);
+  const bad = (field: string, text: string): never => {
+    // `at` is "withdrawals[i]." or ""; the item itself is named without the trailing dot.
+    const what = field === "" ? at.slice(0, -1) || "withdrawal_status" : `${at}${field}`;
+    return refuse(what, `${what} ${text}`);
+  };
   if (!isRecord(item)) return bad("", "is not an object");
   const { status, data } = item;
   if (typeof status !== "string" || status.length === 0)
@@ -758,8 +761,12 @@ export function verifyPoaSettlement(input: {
         `the bridge's fee ${record.fee} and released ${record.received} do not add up to the burned ${b.amount}`,
       );
     }
-    if (record.transferTxHash === null)
+    if (record.transferTxHash === null) {
       return no("the bridge's record names no release transaction");
+    }
+    if (!EVM_WORD_RE.test(record.transferTxHash)) {
+      return no(`the bridge's release ${record.transferTxHash} is not a Base transaction hash`);
+    }
     if (
       record.contractAddress !== null &&
       isEvmAddress(expect.erc20) &&

@@ -434,6 +434,13 @@ describe("verifyPoaSettlement", () => {
         bridgeData(r.bridgeAnswer as Record<string, unknown>).data.transfer_tx_hash = null;
       }).first,
     ).toBe("the bridge's record names no release transaction");
+    // A release that is not a Base transaction hash (a Solana signature, say) is refused before Base is read.
+    expect(
+      tamper((r) => {
+        bridgeData(r.bridgeAnswer as Record<string, unknown>).data.transfer_tx_hash =
+          SPENDS[2].near;
+      }).first,
+    ).toMatch(/is not a Base transaction hash/);
     expect(
       tamper((r) => {
         const answer = r.bridgeAnswer as { withdrawals: unknown[] };
