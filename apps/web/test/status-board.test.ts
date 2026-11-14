@@ -663,6 +663,20 @@ describe("the status board's evidence", () => {
     expect(SOURCES.readme).toContain(" ## Status ");
   });
 
+  it("gives the eval's model replay numbers as the committed results give them", () => {
+    const latest = JSON.parse(text(ROOT, "eval", "results", "latest.json")) as {
+      headline: { money_moved_wrongly: { model_replay: string } };
+      runs: { model_replay: { summary?: { model: { attested: string; call_failed: string } } } };
+    };
+    const model = latest.runs.model_replay.summary?.model;
+    expect(model, "the model replay is recorded").toBeDefined();
+    const footer = strings(STATUS_BOARD.footer).join("");
+    expect(footer).not.toMatch(/not recorded/);
+    expect(footer).toContain(
+      `(${model?.attested} attested, ${model?.call_failed} failed calls, money moved wrongly ${latest.headline.money_moved_wrongly.model_replay})`,
+    );
+  });
+
   it("holds every board transaction to the record that names it", () => {
     const proof = JSON.parse(text(ROOT, "docs", "mainnet-proof.json")) as {
       txs: Record<string, { hash: string; network: string; amount_usdc: string | null }>;
