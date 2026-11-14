@@ -4,15 +4,17 @@ import {
   type FormEvent,
   type MouseEvent,
   type ReactElement,
+  type ReactNode,
   type RefObject,
   useActionState,
+  useEffect,
   useRef,
   useState,
 } from "react";
 import { busyLabel } from "@/components/pending/busy-label";
 import { useElapsed } from "@/components/pending/hooks";
 import { hintText } from "@/components/pending/status-line";
-import { lineButtonClass } from "@/components/ui";
+import { blockableLineButtonClass } from "@/components/ui";
 import {
   type SlowHint,
   slowHint,
@@ -24,7 +26,9 @@ import { handFocus } from "@/lib/ui/server-action";
 
 // A console form's run (spec 5.4 and 5.5): one action at a time, the buttons aria-disabled (not disabled, so the one
 // pressed keeps the focus) while it runs, the slow hint added to the form's status region as a line of its own, and a
-// Try again that hands the focus back to the form's button before its notice gives way.
+// Try again that hands the focus back to the form's button before its notice gives way. Each form's region is
+// `aria-atomic="false"`: a role="status" region is atomic by default, and an added hint line would then have a screen
+// reader read the whole region again, the last answer and its Try again included.
 
 /** The button that sent the form: its own, or the Try again in its status region. */
 type Via = "button" | "retry";
@@ -32,6 +36,8 @@ type Via = "button" | "retry";
 export interface FormRun<S> {
   /** The form's last answer, kept while it runs again. */
   state: S;
+  /** How many answers the form has had: the key of the answer's words (answerText). */
+  answer: number;
   /** The form's `action`. */
   action: (formData: FormData) => void;
   /** The form's action runs. */
@@ -66,24 +72,33 @@ export function useFormRun<S>(
   // A ref, not the pending flag: a second press can come before the render that shows the first.
   const own = useRef(false);
   const lock = opts.lock ?? own;
+  // The answer count when this form took the lock, or null: its own next answer lets the lock go.
+  const took = useRef<number | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   const retry = useRef<HTMLButtonElement>(null);
   const [via, setVia] = useState<Via>("button");
-  const [state, action, pending] = useActionState<S, FormData>(
+  const [{ state, answer }, action, pending] = useActionState<Answered<S>, FormData>(
     async (prev, formData) => {
-      try {
-        const next = await run(prev, formData);
-        if (!(opts.retryable?.(next) ?? false)) handFocus(retry.current, button.current);
-        return next;
-      } finally {
-        lock.current = false;
-      }
+      const next = await run(prev.state, formData);
+      if (!(opts.retryable?.(next) ?? false)) handFocus(retry.current, button.current);
+      return { state: next, answer: prev.answer + 1 };
     },
-    initial as Awaited<S>,
+    { state: initial, answer: 0 } as Awaited<Answered<S>>,
   );
+  // The lock goes once the answer's render has committed, not when the action's promise settles: pending stays true
+  // until that commit (with the page's revalidated server render), and the button says it is busy till then, so a press
+  // in between must still do nothing (a second confirmation email, say). Keyed to the answer, not to pending turning
+  // false, so a run whose pending render never showed still lets the lock go.
+  useEffect(() => {
+    if (!pending && took.current !== null && answer > took.current) {
+      took.current = null;
+      lock.current = false;
+    }
+  }, [pending, answer, lock]);
   const elapsed = useElapsed(pending);
   return {
     state,
+    answer,
     action,
     pending,
     busy: { button: pending && via === "button", retry: pending && via === "retry" },
@@ -94,6 +109,7 @@ export function useFormRun<S>(
         return;
       }
       lock.current = true;
+      took.current = answer;
     },
     press: (which) => (e) => {
       if (lock.current) {
@@ -104,6 +120,19 @@ export function useFormRun<S>(
     },
     hint: hintLine(pending ? slowHint(opts.kind, elapsed) : null, elapsed),
   };
+}
+
+/** A form's answer, and how many it has had. */
+type Answered<S> = { state: S; answer: number };
+
+/**
+ * An answer's words, keyed by how many answers the widget has had. A status region reads out what is added to it, and
+ * React keeps a text node whose words have not changed, so an answer that repeats the last one ("Settings saved."
+ * again) would be silence. The key makes each answer's words a new node. Only the words: a Try again beside them stays
+ * mounted, and the focus with it.
+ */
+export function answerText(answer: number, words: ReactNode): ReactElement {
+  return <span key={answer}>{words}</span>;
 }
 
 /** The slow hint as its own line of a status region, under the lines already there, or null. */
@@ -133,7 +162,7 @@ export function tryAgainButton(props: {
       <button
         ref={props.ref}
         type={props.type}
-        className={lineButtonClass}
+        className={blockableLineButtonClass}
         aria-disabled={props.held || undefined}
         onClick={props.onClick}
       >

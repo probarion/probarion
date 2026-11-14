@@ -27,13 +27,17 @@ The software is an unaudited beta.
   a key's Check on-chain status and Keep, and Register existing vault) run one action at a time and keep one status
   line that a screen reader reads. While a form runs again its last answer stays, dimmed; after 5 s a line such as
   "Still reading the chain (0:07). The console finishes one request at a time." is added under it. When a call fails
-  on the way the form says what happened instead of opening an error page: a chain read with no answer in 20 s says
-  "The chain did not answer in 20 s. Nothing was changed." with Try again, and a save that cannot tell says "The
-  console could not tell whether it saved. Reload the page to see." Try again hands the focus back to the form's own
-  button. Check on chain again (the Agent tab), Discard, Remove and Save zero retention show their busy labels too, and
-  a second press while one runs does nothing. With reduced motion the spinner, the bars and the gold bar hold still, and
-  with forced colours the gold bar keeps the system's highlight colour. The timings and the words live in
-  `apps/web/src/lib/ui/pending.ts`, the parts in `apps/web/src/components/pending/` and their CSS in
+  on the way the form says what happened instead of opening an error page: a read the console stopped waiting for
+  after 20 s says "The console did not answer in 20 s. It may still finish: reload the page to see, or try again."
+  with Try again (the read runs on and records what it read, so it does not say that nothing changed), and a save that
+  cannot tell says "The console could not tell whether it saved. Reload the page to see." Try again hands the focus
+  back to the form's own button, and the same answer twice is read out twice. Opened directly, a vault page or a proof
+  page that is not found now shows the not-found page (marked noindex) under HTTP 200, as the page streams behind its
+  loading shell, and `/proof` reaches the demo vault by a redirect in that stream. Check on chain again (the Agent
+  tab), Discard, Remove and Save zero retention show their busy labels too, and a second press while one runs does
+  nothing. With reduced motion the spinner, the bars and the gold bar hold still, and with forced colours the gold bar
+  keeps the system's highlight colour. The timings and the words live in `apps/web/src/lib/ui/pending.ts`, the parts
+  in `apps/web/src/components/pending/` and their CSS in
   `apps/web/src/app/globals.css`. Check: `pnpm --filter @probarion/web exec vitest run src/lib/ui src/components/pending
   src/components/console src/app/loading-boundaries.test.ts`.
 - The record of a drill on the mainnet vault, run on 2026-11-14 between 01:06 and 01:13 UTC. Rehearsed by the team;

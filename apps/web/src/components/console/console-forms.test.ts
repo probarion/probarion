@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TX_PHASE_LABEL } from "@/lib/ui/pending";
 
 // The console's forms as the first render draws them (the server's HTML): each holds its one status region, mounted
-// empty, so what an action answers is read out when it lands; each button's text is its label, with its busy label
+// empty and not atomic, so what an action answers is read out when it lands, and an added hint line alone; each button's text is its label, with its busy label
 // only a sizer (aria-hidden, words in CSS), so the button already has its busy width; and nothing is disabled.
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
 vi.mock("@/app/console/actions", () => ({
@@ -41,6 +41,8 @@ const FORMS: [string, ReactElement, { regions: number; labels: string[]; busy: s
       refresh: never,
     }),
     {
+      // One region per form, under its own button, so each Try again submits its own form. The mockup draws one under
+      // both (spec 5.5, one region per widget): kept at two until the OWNER says which.
       regions: 2,
       labels: ["Save settings", "Re-sync approvers from the chain"],
       busy: ["Saving…", "Reading the chain…"],
@@ -76,8 +78,11 @@ const FORMS: [string, ReactElement, { regions: number; labels: string[]; busy: s
 describe.each(FORMS)("%s's first render", (_name, element, want) => {
   const out = html(element);
 
-  it("holds its status region, mounted and empty, and no other live region", () => {
-    expect(out.split('<div role="status"></div>').length - 1).toBe(want.regions);
+  it("holds its status region, mounted, empty and not atomic, and no other live region", () => {
+    // role="status" is atomic by default: an added hint line would have the whole region read again.
+    expect(out.split('<div role="status" aria-atomic="false"></div>').length - 1).toBe(
+      want.regions,
+    );
     expect(out.match(/role="(?:status|alert)"|aria-live=/g)).toHaveLength(want.regions);
   });
 

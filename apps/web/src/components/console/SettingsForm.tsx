@@ -3,12 +3,12 @@
 import { useRef } from "react";
 import type { SettingsState } from "@/app/console/[vault]/actions";
 import { busyLabel } from "@/components/pending/busy-label";
-import { buttonClass, Notice } from "@/components/ui";
+import { blockableButtonClass, Notice } from "@/components/ui";
 import type { TenantKind } from "@/lib/db/tenants";
-import { chainTimedOut, SAVE_UNCLEAR } from "@/lib/ui/pending";
+import { consoleTimedOut, SAVE_UNCLEAR } from "@/lib/ui/pending";
 import { readAction, saveAction } from "@/lib/ui/server-action";
 import { blockableTextButtonClass, staleNoticeClass } from "./form-look";
-import { type FormRun, tryAgainButton, useFormRun } from "./form-run";
+import { answerText, type FormRun, tryAgainButton, useFormRun } from "./form-run";
 
 type Action = (prev: SettingsState, formData: FormData) => Promise<SettingsState>;
 /** What a form shows: the server's answer, or the console's own when the call gave none, with a Try again. */
@@ -18,19 +18,20 @@ const retryable = (s: Shown) => s !== null && !s.ok && "retry" in s;
 
 /**
  * A form's status region: mounted empty, then its last answer, which stays (dimmed) while the form runs again, and the
- * slow hint under it. `held` is any run of the settings, which blocks both forms.
+ * slow hint under it. `held` is any run of the settings, which blocks both forms. Each form keeps its own region, under
+ * its own button, so its Try again submits that form (the mockup draws one region under both).
  */
 function Result({ run, held }: { run: FormRun<Shown>; held: boolean }) {
   const s = run.state;
   return (
-    <div role="status">
+    <div role="status" aria-atomic="false">
       {s === null ? null : (
         <div className={`mt-2 ${run.pending ? staleNoticeClass : ""}`}>
           {s.ok ? (
-            <Notice tone="good">{s.message}</Notice>
+            <Notice tone="good">{answerText(run.answer, s.message)}</Notice>
           ) : (
             <Notice tone="bad">
-              {s.error}
+              {answerText(run.answer, s.error)}
               {"retry" in s
                 ? tryAgainButton({
                     ref: run.refs.retry,
@@ -51,8 +52,9 @@ function Result({ run, held }: { run: FormRun<Shown>; held: boolean }) {
 
 /**
  * The owner's settings. Both actions re-check the owner role on the server, and one runs at a time. Saving the same
- * settings twice is harmless, so a save that may have gone through offers Try again; Re-sync only re-reads the chain,
- * so the console stops waiting for it after 20 s.
+ * settings twice is harmless, so a save that may have gone through offers Try again. Re-sync re-reads the chain and
+ * records what it read, which is harmless to repeat too: the console stops waiting for it after 20 s, and says it may
+ * still finish.
  */
 export function SettingsForm({
   vault,
@@ -88,7 +90,7 @@ export function SettingsForm({
         (why) => ({
           ok: false,
           error:
-            why === "timeout" ? chainTimedOut() : "The console could not re-read the approvers.",
+            why === "timeout" ? consoleTimedOut() : "The console could not re-read the approvers.",
           retry: true,
         }),
       ),
@@ -115,7 +117,7 @@ export function SettingsForm({
         )}
         <button
           ref={saving.refs.button}
-          className={buttonClass}
+          className={blockableButtonClass}
           type="submit"
           aria-disabled={held || undefined}
           onClick={saving.press("button")}

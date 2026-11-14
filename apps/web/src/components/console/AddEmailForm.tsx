@@ -6,7 +6,7 @@ import { buttonClass, inputClass, Notice } from "@/components/ui";
 import { SAVE_UNCLEAR } from "@/lib/ui/pending";
 import { saveAction } from "@/lib/ui/server-action";
 import { staleNoticeClass } from "./form-look";
-import { useFormRun } from "./form-run";
+import { answerText, useFormRun } from "./form-run";
 
 type Action = (prev: AlertsState, formData: FormData) => Promise<AlertsState>;
 
@@ -45,11 +45,11 @@ export function AddEmailForm({ add }: { add: Action }) {
           {busyLabel("Send confirmation", "Sending…", run.busy.button)}
         </button>
       </div>
-      <div role="status">
+      <div role="status" aria-atomic="false">
         {state === null ? null : (
           <div className={`mt-3 ${run.pending ? staleNoticeClass : ""}`}>
             <Notice tone={state.ok ? "good" : "bad"}>
-              {state.ok ? state.message : state.error}
+              {answerText(run.answer, state.ok ? state.message : state.error)}
             </Notice>
           </div>
         )}

@@ -5,11 +5,11 @@ import { useRef, useState, useTransition } from "react";
 import { registerVaultAction } from "@/app/console/actions";
 import { busyLabel } from "@/components/pending/busy-label";
 import { useElapsed } from "@/components/pending/hooks";
-import { buttonClass, inputClass, Notice } from "@/components/ui";
-import { ACTION_READ_TIMEOUT_MS, slowHint, TX_PHASE_LABEL } from "@/lib/ui/pending";
+import { blockableButtonClass, inputClass, Notice } from "@/components/ui";
+import { consoleTimedOut, slowHint, TX_PHASE_LABEL } from "@/lib/ui/pending";
 import { handFocus, readAction } from "@/lib/ui/server-action";
 import { staleNoticeClass } from "./form-look";
-import { hintLine, tryAgainButton } from "./form-run";
+import { answerText, hintLine, tryAgainButton } from "./form-run";
 
 const CHECKING = "Checking the chain…";
 const REFRESHING = TX_PHASE_LABEL.refresh;
@@ -18,10 +18,11 @@ const REFRESHING = TX_PHASE_LABEL.refresh;
 type Msg = { tone: "good" | "bad"; text: string; retry?: true };
 
 // Registering a vault reads its config from the chain and records it, and registering the same vault again only reads
-// it again, so a call that gave no answer offers Try again. One the console stopped waiting for may still finish, so
-// the timeout line does not say that nothing changed.
-const TIMED_OUT = `The chain did not answer in ${ACTION_READ_TIMEOUT_MS / 1000} s. The vault may still be registered: reload the page to see, or try again.`;
-const FAILED = "The console could not register it right now. Try again.";
+// it again, so a call that gave no answer offers Try again. One the console stopped waiting for may still finish, and
+// one whose call failed on the way may have run, so neither line says that nothing changed.
+const TIMED_OUT = consoleTimedOut();
+const FAILED =
+  "The console got no answer. The vault may be registered: reload the page to see, or try again.";
 
 /** Register a vault that already exists on chain. One attempt at a time; the console waits 20 s at most for it. */
 export function RegisterVaultForm({ placeholder }: { placeholder: string }) {
@@ -30,6 +31,8 @@ export function RegisterVaultForm({ placeholder }: { placeholder: string }) {
   /** The button that started the attempt that runs, or null. */
   const [busy, setBusy] = useState<"button" | "retry" | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
+  /** How many answers the form has had: the key of the answer's words (answerText). */
+  const [answer, setAnswer] = useState(0);
   const [refreshing, startRefresh] = useTransition();
   // A ref, not the state: a second press can come before the render that shows the first.
   const running = useRef(false);
@@ -54,6 +57,7 @@ export function RegisterVaultForm({ placeholder }: { placeholder: string }) {
       );
       if (!next.retry) handFocus(retry.current, button.current);
       setMsg(next);
+      setAnswer((n) => n + 1);
       // The list of vaults is read again in a transition: the button says so until the page has it.
       if (next.tone === "good") startRefresh(() => router.refresh());
     } finally {
@@ -79,7 +83,7 @@ export function RegisterVaultForm({ placeholder }: { placeholder: string }) {
         />
         <button
           ref={button}
-          className={buttonClass}
+          className={blockableButtonClass}
           type="submit"
           aria-disabled={held || undefined}
         >
@@ -91,11 +95,11 @@ export function RegisterVaultForm({ placeholder }: { placeholder: string }) {
           )}
         </button>
       </div>
-      <div role="status">
+      <div role="status" aria-atomic="false">
         {msg ? (
           <div className={`mt-2 ${busy !== null ? staleNoticeClass : ""}`}>
             <Notice tone={msg.tone}>
-              {msg.text}
+              {answerText(answer, msg.text)}
               {msg.retry
                 ? tryAgainButton({
                     ref: retry,

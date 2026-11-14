@@ -57,7 +57,10 @@ describe("TelegramConnect's button", () => {
     });
     await click();
     const text = textOf(view.result);
-    expect(text).toContain("The link could not be made. Try again in a minute.");
+    // It may have made a link all the same, so the sentence says only that no answer came.
+    expect(text).toContain(
+      "The console got no answer. Making another link is harmless: try again.",
+    );
     expect(text).not.toContain("internal.example");
   });
 
@@ -135,5 +138,37 @@ describe("TelegramConnect's button", () => {
     await click();
     expect(textOf(view.result)).toContain("Remove one first.");
     expect(elements(view.result).filter((e) => e.type === "button")).toHaveLength(1);
+  });
+
+  it("hands the focus from Try again to the main button before the notice that holds it gives way", async () => {
+    let calls = 0;
+    const { view, click } = open(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("offline");
+      return { ok: true, link: LINK };
+    });
+    await click();
+    const buttons = () => elements(view.result).filter((e) => e.type === "button");
+    // mini-react attaches no refs: the test puts the two buttons in them, Try again focused.
+    const retry: { ownerDocument?: { activeElement: unknown } } = {};
+    retry.ownerDocument = { activeElement: retry };
+    let seen = "";
+    const main = {
+      focus: vi.fn(() => {
+        // Whatever the button has set by now is drawn: the notice must still be the old one.
+        view.flush();
+        seen = textOf(view.result);
+      }),
+    };
+    (buttons()[0]?.props.ref as { current: unknown }).current = main;
+    (buttons()[1]?.props.ref as { current: unknown }).current = retry;
+    const tryAgain = buttons()[1];
+    if (!tryAgain) throw new Error("no Try again");
+    await (tryAgain.props.onClick as () => Promise<void>)();
+    expect(main.focus).toHaveBeenCalledTimes(1);
+    expect(seen).toContain("The console got no answer.");
+    expect(seen).not.toContain("press Start");
+    view.flush();
+    expect(textOf(view.result)).toContain("press Start");
   });
 });
