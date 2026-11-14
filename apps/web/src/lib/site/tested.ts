@@ -23,6 +23,8 @@ const CI_JOB = {
 /** The no-clone verify of `ed41104` (no-clone-verify.yml), and pnpm judge on `main` (judge.yml). */
 const NO_CLONE_RUN = `${ACTIONS}/43533889407`;
 const JUDGE_RUN = `${ACTIONS}/43465246300`;
+/** The read-only chain read of the team's testnet vaults and of their refused spends, committed as evidence. */
+const CHAIN_READ = "docs/evidence/testnet-reads/2026-11-14.txt";
 
 /**
  * Where a figure was read. `href` is a full address (a CI log), a path of this repository (no leading slash), or a page
@@ -45,21 +47,21 @@ export const TESTED = {
   /** The README's and JUDGES.md's heading, and the card's title on /usage. */
   title: "Tested, in numbers",
   cardTitle: "How far it is tested",
-  lede: `As of ${TESTED_AS_OF}, the strongest figures at the top. Test counts change with every commit, so each row names the commit, the CI run or the chain read it was counted at. Every figure links where it was read, and none is rounded up.`,
+  lede: `As of ${TESTED_AS_OF}. Test counts change with every commit, so each row names the commit, the CI run or the chain read it was counted at, and links where to check it: the CI log, the file, the record of the chain read or the live page. No figure is rounded up.`,
   /** The block in JUDGES.md: these few figures, then a link to the table. */
   judges: `Every suite in CI passed at commit \`${TESTED_COMMIT}\` on ${TESTED_AS_OF}: 13,450 tests, 0 failed. With the model fooled by every invoice, in an offline run that asks no model, the eval moves no money wrongly (0/20, 0.00 USDC). \`npx probarion@0.1.1 verify\` on the mainnet vault gives RESULT: PASS on Node v22.23.4 and on Node v24.22.2.`,
   rows: [
     {
-      what: "Automated tests, every suite",
+      what: "Automated tests, every CI suite",
       figure:
-        "13,450 CI tests: 13,131 TypeScript, 301 Rust, 18 sandbox. Each passed, 0 failed, and 15 more were skipped (1 web, 14 CLI).",
+        "13,450 CI tests: 13,131 in the TypeScript job, 301 Rust, 18 sandbox. Each passed, 0 failed, and 15 more were skipped (1 web, 14 CLI). The Playwright end-to-end tests in `apps/web/e2e` run locally, not in CI, and are not in this count.",
       at: `CI run of \`${TESTED_COMMIT}\` on \`dev\`, ${TESTED_AS_OF}, 00:23 to 00:31 UTC`,
       sources: [{ label: "CI run 43533889651", href: CI_RUN }],
     },
     {
-      what: "TypeScript tests, by suite",
+      what: "The TypeScript job, by suite",
       figure:
-        "13,131 TypeScript tests: 9,826 web console, 888 `@probarion/core`, 824 `@probarion/sdk`, 366 CLI, 198 `@probarion/mcp`, 251 browser extension, 78 pay-per-call example, 476 Node script tests, 224 launch checks.",
+        "13,131 tests in the TypeScript job: 9,826 web console, 888 `@probarion/core`, 824 `@probarion/sdk`, 366 CLI, 198 `@probarion/mcp`, 251 browser extension, 78 pay-per-call example, 476 Node script tests, 224 launch checks. The 476 Node script tests are JavaScript, run with `node --test`; the other 12,655 are TypeScript, run with Vitest.",
       at: "the same run, TypeScript job",
       sources: [{ label: "TypeScript job", href: CI_JOB.ts }],
     },
@@ -133,16 +135,20 @@ export const TESTED = {
     {
       what: "Testnet team vaults, read from the chain",
       figure:
-        "10 vaults (9 created by the factory `vaults.probarion.testnet`, and `v0.probarion.testnet`), 13 mandates, 35 spends (30 paid on NEAR, 4 burned for a Base address through the testnet Intents stand-in, 1 held and then rejected), 53 anchors over 88 signed ledger entries.",
-      at: `view calls \`list_vaults\`, \`list_mandates\`, \`list_spends\` and \`list_anchors\`, ${TESTED_AS_OF} 01:10 UTC, finality final`,
-      sources: [{ label: "testnet.json", href: "contracts/deployments/testnet.json" }],
+        "10 vaults (9 created by the factory `vaults.probarion.testnet`, and `v0.probarion.testnet`), 13 mandates, 35 spends (30 paid on NEAR, 4 burned for a Base address through the testnet Intents stand-in, 1 held and then rejected), 53 anchors over 88 signed ledger entries. The live counts on /usage cover the vaults registered in the console and the events the watcher records for them, so they leave out the team vaults not registered there.",
+      at: `view calls \`list_vaults\`, \`list_mandates\`, \`list_spends\` and \`list_anchors\`, ${TESTED_AS_OF} 02:31 UTC, finality final`,
+      sources: [
+        { label: "chain read", href: CHAIN_READ },
+        { label: "testnet.json", href: "contracts/deployments/testnet.json" },
+      ],
     },
     {
       what: "Testnet runs with a person and a model",
       figure:
-        "3 held spends approved and paid (2026-11-09 with the approver key, 2026-11-11 twice on the phone approval page) and 1 rejected with nothing paid (2026-11-12). 3 refusals on chain recorded: `NoMandate` in the smoke run, `OverPerPayment` on 2026-11-09, and the Canary's `OverPerPayment` on 2026-11-10. 7 attested decisions (demo vault 5, Canary 2) pass A1 to A7 offline, and O1 and O2 online; the demo vault's 5 pass A8 too. The TEE measurement is not pinned.",
-      at: "2026-11-09 to 2026-11-12",
+        "3 held spends approved and paid (2026-11-09 with the approver key, 2026-11-11 twice on the phone approval page) and 1 rejected with nothing paid (2026-11-12). 4 spends refused on chain: `NoMandate` in the smoke run (2026-11-01), `OverPerPayment` on 2026-11-09, and the Canary's 2 `OverPerPayment` (2026-11-10 and 2026-11-12). 7 attested decisions (demo vault 5, Canary 2) pass A1 to A7 offline, and O1 and O2 online; the demo vault's 5 pass A8 too. The TEE measurement is not pinned.",
+      at: `2026-11-01 to 2026-11-12; the refusals on chain read back ${TESTED_AS_OF} 02:31 UTC`,
       sources: [
+        { label: "chain read", href: CHAIN_READ },
         { label: "demo vault", href: "docs/evidence/demo-vault/README.md" },
         { label: "trial vault", href: "docs/evidence/trial-vault/README.md" },
         { label: "Canary vault", href: "docs/evidence/canary-vault/README.md" },
@@ -160,9 +166,10 @@ export const TESTED = {
       what: "Canary rehearsals",
       figure:
         "6 attempts by the team, 2026-11-10 to 2026-11-12, each refused by code; the 2 sent straight to the contract were refused on chain with `OverPerPayment`, and no spend was created.",
-      at: `the live attempts feed and a view of the Canary vault's spends, ${TESTED_AS_OF} 01:10 UTC; the rehearsal of 2026-11-10 is recorded in the repository`,
+      at: `the live attempts feed, ${TESTED_AS_OF} 01:10 UTC; the Canary vault's spends and its 2 refused transactions, ${TESTED_AS_OF} 02:31 UTC`,
       sources: [
         { label: "rehearsal", href: "docs/evidence/canary-vault/README.md" },
+        { label: "chain read", href: CHAIN_READ },
         { label: "live feed", href: "/canary" },
       ],
     },
@@ -182,6 +189,7 @@ export const TESTED = {
         "`node scripts/smoke-live.mjs` read 17 rows of the live site, both NEAR networks and npm, with no key: 15 PASS, 1 WARN, 0 FAIL, 1 SKIP. `pnpm judge` runs offline in CI on `main` every day: 21 PASS, 1 EXPECTED-FAIL, 14 SKIPPED, 0 FAIL.",
       at: "smoke run 2026-11-13 20:45 UTC; judge 2026-11-13 16:41 UTC, on `main` at `18cdf04`",
       sources: [
+        { label: "smoke run", href: "docs/ops/judging-days.md#baseline-2026-11-13-2045-utc" },
         { label: "smoke-live.mjs", href: "scripts/smoke-live.mjs" },
         { label: "CI run 43465246300", href: JUDGE_RUN },
         { label: "judge.yml", href: ".github/workflows/judge.yml" },

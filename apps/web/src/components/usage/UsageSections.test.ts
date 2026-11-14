@@ -21,6 +21,7 @@ const visible = (h: string) =>
   h
     .replace(/<[^>]+>/g, " ")
     .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
     .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ")
     .trim();

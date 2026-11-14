@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Network } from "@/lib/config";
+import { TESTED } from "@/lib/site/tested";
 import {
   definitions,
   deltaText,
@@ -232,7 +233,11 @@ describe("how each number is counted", () => {
           ),
         ),
       ).toBe(true);
-      expect(s).toContain("Vaults: a vault counts on the day it was registered.");
+      expect(s).toContain(
+        'Vaults: a vault counts on the day it was registered in the console. The card "How far it is tested" reads the team\'s testnet vaults from the chain, registered here or not, so its counts differ from these.',
+      );
+      // The card it names is the one on this page, by its title.
+      expect(s.join(" ")).toContain(`"${TESTED.cardTitle}"`);
       expect(
         s.some((x) =>
           x.startsWith("Refused on chain: a spend the contract refused, with its transaction."),

@@ -144,7 +144,10 @@ export function definitions(network: Network): readonly Definition[] {
       lead: "Canary participants:",
       text: "shown as at least that many people. It is the smaller of the distinct browsers and the distinct network addresses of people who are not on the team.",
     },
-    { lead: "Vaults:", text: "a vault counts on the day it was registered." },
+    {
+      lead: "Vaults:",
+      text: 'a vault counts on the day it was registered in the console. The card "How far it is tested" reads the team\'s testnet vaults from the chain, registered here or not, so its counts differ from these.',
+    },
     {
       text: "Payments and mandates come from on-chain events our watcher records. Payments made includes the cross-chain payouts to Base, which are also shown on their own row.",
     },

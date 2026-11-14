@@ -38,12 +38,15 @@ const ALL = [
   ...ROWS.flatMap((r) => [r.what, r.figure, r.at, ...r.sources.map((s) => s.label)]),
 ];
 
-/** "N Word tests: a, b, c." as check-claims' factSums reads it: the total, and the parts. */
+/**
+ * "N Word tests: a, b, c." as check-claims' factSums reads it, or "N tests in the X job: a, b, c.": the total, and the
+ * parts.
+ */
 function sum(figure: string): { total: number; parts: number[] } | null {
-  const m = /\b([\d,]+) ([A-Z]\w*) tests: ([^.]*)\./.exec(figure);
+  const m = /\b([\d,]+) (?:[A-Z]\w* tests|tests in the \w+ job): ([^.]*)\./.exec(figure);
   if (!m) return null;
   const n = (s: string) => Number(s.replaceAll(",", ""));
-  const parts = [...(m[3] ?? "").matchAll(/(?<![\w.@/-])(\d{1,3}(?:,\d{3})+|\d+)(?![\w.,]\d)/g)];
+  const parts = [...(m[2] ?? "").matchAll(/(?<![\w.@/-])(\d{1,3}(?:,\d{3})+|\d+)(?![\w.,]\d)/g)];
   return { total: n(m[1] ?? ""), parts: parts.map((p) => n(p[1] ?? "")) };
 }
 
@@ -119,14 +122,25 @@ describe("every figure is dated and sourced", () => {
           /^https:\/\/github\.com\/probarion\/probarion\/actions\/runs\/\d+(\/job\/\d+)?$/,
         );
       } else if (!s.href.startsWith("/")) {
-        expect(existsSync(join(ROOT, s.href)), s.href).toBe(true);
+        // A file, or a heading of one (check-claims holds the #anchor to the heading's slug).
+        expect(existsSync(join(ROOT, s.href.replace(/#.*$/, ""))), s.href).toBe(true);
       }
     }
   });
 
-  it("adds up: the totals of every suite, of the TypeScript suites and of the contract tests", () => {
-    const all = sum(row("Automated tests, every suite").figure);
-    const ts = sum(row("TypeScript tests, by suite").figure);
+  it("links the smoke run's output, not only its script", () => {
+    const live = row("Live checks");
+    const run = live.sources.find((s) => s.label === "smoke run");
+    expect(run?.href).toBe("docs/ops/judging-days.md#baseline-2026-11-13-2045-utc");
+    const doc = flat(read("docs", "ops", "judging-days.md"));
+    expect(doc).toContain("## Baseline, 2026-11-13 20:45 UTC");
+    expect(doc).toContain("15 PASS, 1 WARN, 0 FAIL, 1 SKIP");
+    expect(live.figure).toContain("15 PASS, 1 WARN, 0 FAIL, 1 SKIP");
+  });
+
+  it("adds up: the totals of every CI suite, of the TypeScript job and of the contract tests", () => {
+    const all = sum(row("Automated tests, every CI suite").figure);
+    const ts = sum(row("The TypeScript job, by suite").figure);
     const rust = sum(row("Contract tests").figure);
     for (const s of [all, ts, rust]) {
       expect(s).not.toBeNull();
@@ -136,6 +150,22 @@ describe("every figure is dated and sourced", () => {
     expect(all?.parts[1]).toBe(rust?.total);
     expect(row("Sandbox integration tests").figure).toMatch(/^18 passed/);
     expect(all?.parts[2]).toBe(18);
+    // The TypeScript job's Node script tests are JavaScript (node:test); the rest are TypeScript (Vitest).
+    const tsRow = row("The TypeScript job, by suite").figure;
+    const node = 476;
+    expect(tsRow).toContain(`${node} Node script tests, `);
+    expect(tsRow).toContain(
+      `The ${node} Node script tests are JavaScript, run with \`node --test\`; the other ${((ts?.total ?? 0) - node).toLocaleString("en-US")} are TypeScript, run with Vitest.`,
+    );
+    expect(read("package.json")).toContain('"test": "node --test \\"scripts/**/*.test.mjs\\"');
+    // The Playwright specs run in no CI workflow, so the CI count leaves them out, and the row says so.
+    const workflows = join(ROOT, ".github", "workflows");
+    for (const f of readdirSync(workflows)) {
+      expect(readFileSync(join(workflows, f), "utf8"), f).not.toMatch(/playwright|test:e2e/i);
+    }
+    expect(row("Automated tests, every CI suite").figure).toContain(
+      "The Playwright end-to-end tests in `apps/web/e2e` run locally, not in CI, and are not in this count.",
+    );
   });
 
   it("keeps the copy rules: no dash, no claim word, and Node named by its exact version", () => {
@@ -258,7 +288,7 @@ describe("the figures this repository can derive", () => {
     expect(REHEARSAL.contractCode).toBe("OverPerPayment");
     const runs = row("Testnet runs with a person and a model").figure;
     expect(runs).toContain("`OverPerPayment` on 2026-11-09");
-    expect(runs).toContain("the Canary's `OverPerPayment` on 2026-11-10");
+    expect(runs).toContain("the Canary's 2 `OverPerPayment` (2026-11-10 and 2026-11-12)");
     const p402 = flat(read("docs", "evidence", "402-vault", "README.md"));
     expect(p402).toContain("Spends 1 to 20 paid 0.01 USDC each");
     expect(p402).toContain("rule `mandate.uses_exhausted`");
@@ -266,5 +296,60 @@ describe("the figures this repository can derive", () => {
     expect(row("Pay per call (HTTP 402)").figure).toContain(
       "20 calls paid 0.01 test USDC each, and the 21st was refused by code (`mandate.uses_exhausted`)",
     );
+  });
+
+  it("the testnet chain read: the vaults' totals, and every refused spend, as the committed record has them", () => {
+    const CHAIN_READ = "docs/evidence/testnet-reads/2026-11-14.txt";
+    const rec = read(...CHAIN_READ.split("/"));
+    const total =
+      /^ {2}total, (\d+) vaults +(\d+) +(\d+) +(\d+) +(\d+) +(\d+) +(\d+) +(\d+)$/m.exec(rec);
+    expect(total).not.toBeNull();
+    const [vaults, mandates, spends, paid, burned, rejected, anchors, entries] = (total ?? [])
+      .slice(1)
+      .map(Number);
+    expect(rec).toContain("other spend statuses: 0");
+    const team = row("Testnet team vaults, read from the chain");
+    expect(team.figure).toContain(
+      `${vaults} vaults (9 created by the factory \`vaults.probarion.testnet\`, and \`v0.probarion.testnet\`), ${mandates} mandates, ${spends} spends (${paid} paid on NEAR, ${burned} burned for a Base address through the testnet Intents stand-in, ${rejected} held and then rejected), ${anchors} anchors over ${entries} signed ledger entries.`,
+    );
+    expect(team.sources.map((s) => s.href)).toContain(CHAIN_READ);
+    // The live counts on /usage are of the vaults registered in the console: the row says why they are smaller.
+    expect(team.figure).toContain(
+      "The live counts on /usage cover the vaults registered in the console and the events the watcher records for them",
+    );
+
+    // Every failed transaction of the 10 vaults, from FastNEAR's index, read back with `tx`.
+    const failed = [
+      ...rec.matchAll(
+        /^ {2}(\d{4}-\d{2}-\d{2})T\S+ +block \d+ +(\S+)\n {4}tx (\S+)\n {4}signer \S+, method spend, failed with PROBARION:(\w+)$/gm,
+      ),
+    ].map((m) => ({ day: m[1], vault: m[2], hash: m[3], code: m[4] }));
+    expect(rec).toContain(`${failed.length} failed transactions across the ${vaults} vaults`);
+    expect(failed.map((f) => [f.day, f.vault, f.code])).toEqual([
+      ["2026-11-01", "v0.probarion.testnet", "NoMandate"],
+      ["2026-11-09", "v0.probarion.testnet", "OverPerPayment"],
+      ["2026-11-10", "canary.vaults.probarion.testnet", "OverPerPayment"],
+      ["2026-11-12", "canary.vaults.probarion.testnet", "OverPerPayment"],
+    ]);
+    // The ones the repository recorded before, by the same hash.
+    const testnet = JSON.parse(read("contracts", "deployments", "testnet.json"));
+    expect(failed[0]?.hash).toBe(testnet.smoke.no_mandate_tx);
+    expect(failed[1]?.hash).toBe(testnet.direct_refusal.over_per_payment_tx);
+    expect(read("docs", "evidence", "canary-vault", "README.md")).toContain(failed[2]?.hash);
+
+    const runs = row("Testnet runs with a person and a model");
+    expect(runs.figure).toContain(
+      `${failed.length} spends refused on chain: \`NoMandate\` in the smoke run (2026-11-01), \`OverPerPayment\` on 2026-11-09, and the Canary's 2 \`OverPerPayment\` (2026-11-10 and 2026-11-12).`,
+    );
+    expect(runs.at).toMatch(/^2026-11-01 to 2026-11-12;/);
+    expect(runs.sources.map((s) => s.href)).toContain(CHAIN_READ);
+    // The Canary row counts the same 2, and its spends are none.
+    const canary = failed.filter((f) => f.vault === "canary.vaults.probarion.testnet");
+    expect(canary).toHaveLength(2);
+    expect(row("Canary rehearsals").figure).toContain(
+      `the ${canary.length} sent straight to the contract were refused on chain with \`OverPerPayment\`, and no spend was created`,
+    );
+    expect(rec).toMatch(/^ {2}canary\.vaults\.probarion\.testnet +1 +0 +0 +0 +0 /m);
+    expect(row("Canary rehearsals").sources.map((s) => s.href)).toContain(CHAIN_READ);
   });
 });
