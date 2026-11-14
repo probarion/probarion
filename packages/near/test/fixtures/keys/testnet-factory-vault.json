@@ -1,0 +1,20 @@
+{
+  "_source": "the smoke vault that the testnet factory vaults.probarion.testnet created, smoke-embedded.vaults.probarion.testnet on NEAR testnet, read on 2026-11-14T05:09:21.020Z from https://rpc.testnet.fastnear.com by packages/near/scripts/record-keys.ts: method query, view_account at finality final, then view_access_key_list and view_access_key of each listed key at block 277612267 (ryto41RAby9twvAcukfVgGBYTvtUE7ssGDXmZPCAoqT), the block of the view_account answer. View queries of public state; nothing was signed or sent.",
+  "network": "testnet",
+  "account_id": "smoke-embedded.vaults.probarion.testnet",
+  "view_account": {
+    "amount": "4000000000000000000000000",
+    "block_hash": "ryto41RAby9twvAcukfVgGBYTvtUE7ssGDXmZPCAoqT",
+    "block_height": 277612267,
+    "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+    "locked": "0",
+    "storage_paid_at": 0,
+    "storage_usage": 249420
+  },
+  "view_access_key_list": {
+    "block_hash": "ryto41RAby9twvAcukfVgGBYTvtUE7ssGDXmZPCAoqT",
+    "block_height": 277612267,
+    "keys": []
+  },
+  "view_access_key": []
+}
