@@ -27,13 +27,14 @@ export type EventLogParse =
 /** Bounds the text of a refused value kept in a problem. */
 const MAX_DETAIL = 80;
 
+/**
+ * A refused value for a problem's text. Lists and objects are named by their shape, not serialized: a contract's
+ * log can nest thousands of levels deep, and stringifying that could overflow the stack.
+ */
 function excerpt(value: unknown): string {
-  let text: string;
-  try {
-    text = String(JSON.stringify(value));
-  } catch {
-    text = String(value); // a bigint or a cycle
-  }
+  if (Array.isArray(value)) return `a list of ${value.length}`;
+  if (typeof value === "object" && value !== null) return "an object";
+  const text = typeof value === "string" ? JSON.stringify(value) : String(value);
   return text.length > MAX_DETAIL ? `${text.slice(0, MAX_DETAIL)}...` : text;
 }
 

@@ -221,7 +221,7 @@ describe("nep245Events and mtDeltas", () => {
 });
 
 describe("schema problems are reported, not counted", () => {
-  const TOKEN = "ft.test.near";
+  const FT = "ft.test.near";
   const transfer = (amount: unknown) => [
     { old_owner_id: "a.near", new_owner_id: "b.near", amount },
   ];
@@ -239,8 +239,8 @@ describe("schema problems are reported, not counted", () => {
     ];
     for (const amount of amounts) {
       const { items, problems } = nep141Events(
-        tree(outcome(TOKEN, [nep141("ft_transfer", transfer(amount))])),
-        TOKEN,
+        tree(outcome(FT, [nep141("ft_transfer", transfer(amount))])),
+        FT,
       );
       expect(items).toEqual([]);
       expect(problems).toHaveLength(1);
@@ -251,11 +251,9 @@ describe("schema problems are reported, not counted", () => {
     // 2^128 - 1 is the largest U128.
     const max = nep141Events(
       tree(
-        outcome(TOKEN, [
-          nep141("ft_transfer", transfer("340282366920938463463374607431768211455")),
-        ]),
+        outcome(FT, [nep141("ft_transfer", transfer("340282366920938463463374607431768211455"))]),
       ),
-      TOKEN,
+      FT,
     );
     expect(max.items[0]?.item).toMatchObject({ amount: (1n << 128n) - 1n });
   });
@@ -269,10 +267,7 @@ describe("schema problems are reported, not counted", () => {
       "not an item",
       { owner_id: "ok.near", amount: "2", memo: "fine", extra: { ignored: true } },
     ];
-    const { items, problems } = nep141Events(
-      tree(outcome(TOKEN, [nep141("ft_mint", data)])),
-      TOKEN,
-    );
+    const { items, problems } = nep141Events(tree(outcome(FT, [nep141("ft_mint", data)])), FT);
     expect(items.map((i) => [i.itemIndex, i.item])).toEqual([
       [5, { event: "ft_mint", ownerId: "ok.near", amount: 2n, memo: "fine" }],
     ]);
@@ -283,12 +278,12 @@ describe("schema problems are reported, not counted", () => {
       "bad_item: ft_mint item 3: owner_id undefined is not a NEAR account id",
       "bad_item: ft_mint item 4 is not an object",
     ]);
-    expect(problems[0]).toMatchObject({ emitter: TOKEN, logIndex: 0 });
+    expect(problems[0]).toMatchObject({ emitter: FT, logIndex: 0 });
   });
 
   it("refuses data that is not a list, and an unsupported major version", () => {
     const source = tree(
-      outcome(TOKEN, [
+      outcome(FT, [
         nep141("ft_burn", { owner_id: "a.near", amount: "1" }),
         nep141("ft_burn", [{ owner_id: "a.near", amount: "1" }], "2.0.0"),
         nep141("ft_burn", [{ owner_id: "a.near", amount: "1" }], "1.0"),
@@ -296,7 +291,7 @@ describe("schema problems are reported, not counted", () => {
         event({ standard: "nep141", version: "1.0.0", event: "ft_burn" }),
       ]),
     );
-    const { items, problems } = nep141Events(source, TOKEN);
+    const { items, problems } = nep141Events(source, FT);
     expect(items.map((i) => i.item)).toEqual([
       { event: "ft_burn", ownerId: "a.near", amount: 3n, memo: null },
     ]);
@@ -310,7 +305,7 @@ describe("schema problems are reported, not counted", () => {
 
   it("skips other events of the standard and reports the token's malformed EVENT_JSON: lines", () => {
     const source = tree(
-      outcome(TOKEN, [
+      outcome(FT, [
         nep141("ft_something_new", [{ any: "shape" }]),
         "EVENT_JSON:{not json",
         "EVENT_JSON:[]",
@@ -318,11 +313,11 @@ describe("schema problems are reported, not counted", () => {
       ]),
       outcome("other.near", ["EVENT_JSON:{not json"]),
     );
-    const { items, problems } = nep141Events(source, TOKEN);
+    const { items, problems } = nep141Events(source, FT);
     expect(items).toEqual([]);
     expect(problems.map((p) => [p.emitter, p.logIndex, p.problem])).toEqual([
-      [TOKEN, 1, "malformed_event: the text after EVENT_JSON: is not JSON"],
-      [TOKEN, 2, "malformed_event: the JSON after EVENT_JSON: is not an object"],
+      [FT, 1, "malformed_event: the text after EVENT_JSON: is not JSON"],
+      [FT, 2, "malformed_event: the JSON after EVENT_JSON: is not an object"],
     ]);
   });
 
@@ -357,11 +352,11 @@ describe("schema problems are reported, not counted", () => {
 
   it("reports a malformed or repeated outcome in the problems, without throwing", () => {
     const source = {
-      receipts_outcome: [{ id: "r", outcome: { executor_id: TOKEN } }],
+      receipts_outcome: [{ id: "r", outcome: { executor_id: FT } }],
     } as unknown as OutcomeSource;
-    expect(codes(nep141Events(source, TOKEN).problems)).toEqual(["malformed_outcome"]);
-    const once = outcome(TOKEN, [nep141("ft_mint", [{ owner_id: "a.near", amount: "5" }])]);
-    const { deltas, problems } = ftDeltas(tree(once, once), TOKEN);
+    expect(codes(nep141Events(source, FT).problems)).toEqual(["malformed_outcome"]);
+    const once = outcome(FT, [nep141("ft_mint", [{ owner_id: "a.near", amount: "5" }])]);
+    const { deltas, problems } = ftDeltas(tree(once, once), FT);
     expect([...deltas]).toEqual([["a.near", 5n]]); // counted once
     expect(codes(problems)).toEqual(["duplicate_outcome"]);
   });
@@ -378,14 +373,14 @@ describe("ft_transfer_call refund (synthetic, labelled)", () => {
   // The shape near-contract-standards 5.29.1 writes (src/fungible_token/core_impl.rs): ft_transfer_call logs a
   // transfer, the receiver's ft_on_transfer returns the unused amount, and ft_resolve_transfer logs a second
   // ft_transfer back from the receiver with memo "refund". Account names and amounts are made up.
-  const TOKEN = "ft.test.near";
+  const FT = "ft.test.near";
   const SENDER = "alice.test.near";
   const RECEIVER = "dex.test.near";
 
   it("nets the refund: the sender pays 60 of 100, the receiver keeps 60", () => {
     const source = tree(
       outcome(SENDER, []),
-      outcome(TOKEN, [
+      outcome(FT, [
         nep141("ft_transfer", [{ old_owner_id: SENDER, new_owner_id: RECEIVER, amount: "100" }]),
       ]),
       outcome(
@@ -397,13 +392,13 @@ describe("ft_transfer_call refund (synthetic, labelled)", () => {
         ],
         { SuccessValue: "IjQwIg==" },
       ),
-      outcome(TOKEN, [
+      outcome(FT, [
         nep141("ft_transfer", [
           { old_owner_id: RECEIVER, new_owner_id: SENDER, amount: "40", memo: "refund" },
         ]),
       ]),
     );
-    const { deltas, problems } = ftDeltas(source, TOKEN);
+    const { deltas, problems } = ftDeltas(source, FT);
     expect(problems).toEqual([]);
     expect([...deltas]).toEqual([
       [SENDER, -60n],
@@ -413,16 +408,16 @@ describe("ft_transfer_call refund (synthetic, labelled)", () => {
 
   it("keeps an account that nets to zero, as 0n", () => {
     const source = tree(
-      outcome(TOKEN, [
+      outcome(FT, [
         nep141("ft_transfer", [{ old_owner_id: SENDER, new_owner_id: RECEIVER, amount: "100" }]),
       ]),
-      outcome(TOKEN, [
+      outcome(FT, [
         nep141("ft_transfer", [
           { old_owner_id: RECEIVER, new_owner_id: SENDER, amount: "100", memo: "refund" },
         ]),
       ]),
     );
-    expect([...ftDeltas(source, TOKEN).deltas]).toEqual([
+    expect([...ftDeltas(source, FT).deltas]).toEqual([
       [SENDER, 0n],
       [RECEIVER, 0n],
     ]);
@@ -538,11 +533,8 @@ describe("nep171Events on the reference logs of near-contract-standards 5.29.1",
 
 describe("ftDeltas on the reference logs of near-contract-standards 5.29.1", () => {
   it("adds mints, subtracts burns and moves transfers", () => {
-    const TOKEN = "ft.test.near";
-    const { deltas, problems } = ftDeltas(
-      tree(outcome(TOKEN, Object.values(REFERENCE.nep141))),
-      TOKEN,
-    );
+    const FT = "ft.test.near";
+    const { deltas, problems } = ftDeltas(tree(outcome(FT, Object.values(REFERENCE.nep141))), FT);
     expect(problems).toEqual([]);
     // mints: bob +100, bob +100, alice +200; burns: bob -100, alice -200, bob -100;
     // transfers: bob -> alice 100, alice -> bob 200, bob -> alice 100.
