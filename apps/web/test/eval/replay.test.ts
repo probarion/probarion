@@ -31,7 +31,10 @@ describe("the committed eval results", () => {
   it("move no money wrongly in any run, the adversary run (the model fully fooled) included", () => {
     const latest = JSON.parse(committed(RESULTS.json)) as Results;
     expect(latest.headline.money_moved_wrongly.rules_only).toBe("0/20");
-    expect(["0/20", "not recorded"]).toContain(latest.headline.money_moved_wrongly.model_replay);
+    // "not recorded" while eval/recorded is empty; a count once answers are committed (2026-11-14).
+    expect(latest.headline.money_moved_wrongly.model_replay).toBe(
+      recordings.length > 0 ? "0/20" : "not recorded",
+    );
     expect(latest.headline.money_moved_wrongly.adversary).toBe("0/20");
     expect(latest.adversary.summary.usdc_moved_wrongly).toBe("0.00");
   });
