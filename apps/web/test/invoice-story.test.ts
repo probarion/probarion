@@ -1,36 +1,32 @@
-// The journey's record on NEAR testnet (audit P1-5): the four real invoices, the attested decisions and their
-// evidence links. Every row is held to the demo vault's evidence in docs/evidence/demo-vault, the Canary's in
-// docs/evidence/canary-vault and the record in contracts/deployments/testnet.json, so the record cannot drift from
-// what the chain and the signed ledgers show.
+// The demo vault's record on NEAR testnet (audit P1-5), in the docs since the landing's journey handed it over on
+// 2026-11-14: the four real invoices under "The demo vault's four invoices" on start/how-one-payment-works, and the
+// attested decisions under "Attested decisions on record" on trust/verifier-checks. Each row is held to STORY and
+// ATTESTED in lib/site/facts.ts, and those to the evidence: the demo vault's in docs/evidence/demo-vault, the Canary's
+// in docs/evidence/canary-vault, the mainnet vault's in docs/evidence/mainnet-v0 and the record in
+// contracts/deployments/testnet.json, so the record cannot drift from what the chain and the signed ledgers show.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import Home from "@/app/page";
-import j from "@/components/site/journey.module.css";
-import p from "@/components/site/parts.module.css";
 import { explorerTxUrl } from "@/lib/config";
-import { findPage } from "@/lib/docs/registry";
+import { headingsOf } from "@/lib/docs/headings";
 import { REPO_URL } from "@/lib/proof/cli";
 import {
   ATTESTED,
   type AttestedCell,
   type CopyPart,
+  type EvidenceLink,
   type EvidenceSlot,
-  JOURNEY,
-  JOURNEY_IDS,
   STORY,
 } from "@/lib/site/facts";
+import { fileOf, ROOT, readMdx } from "./docs-helpers";
 
-const WEB = fileURLToPath(new URL("..", import.meta.url));
-const ROOT = join(WEB, "..", "..");
 const EVIDENCE = "docs/evidence/demo-vault";
 const LEDGER = `${EVIDENCE}/ledger-2026-11-09.jsonl`;
+const MAINNET = "docs/evidence/mainnet-v0/s2-2026-11-13";
 const read = (path: string) => readFileSync(join(ROOT, path));
 const sha256 = (path: string) => createHash("sha256").update(read(path)).digest("hex");
+const blob = (path: string) => `${REPO_URL}/blob/main/${path}`;
 
 type Rule = { id: string; outcome: string };
 type Body = {
@@ -71,19 +67,48 @@ const snapshot = JSON.parse(read(`${EVIDENCE}/snapshot-2026-11-09.json`).toStrin
   };
 };
 const [mandate] = snapshot.chain.mandates;
-const html = renderToStaticMarkup(createElement(Home));
 
-const text = (markup: string) =>
-  markup
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&#x27;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/\s+/g, " ");
-/** The invoices' table, as rendered. */
-const invoiceTable = () => {
-  const at = html.indexOf(`<table class="${j.inv}"`);
-  return html.slice(at, html.indexOf("</table>", at));
-};
+const INVOICES_PAGE = "start/how-one-payment-works";
+const ATTESTED_PAGE = "trust/verifier-checks";
+
+/** A page's lines under `heading`, up to the next heading of the same depth or higher. */
+function sectionOf(path: string, heading: string): string {
+  const lines = readMdx(path).split("\n");
+  const at = lines.indexOf(heading);
+  if (at < 0) throw new Error(`${fileOf(path)}: no "${heading}"`);
+  const depth = heading.indexOf(" ");
+  const end = lines.findIndex((l, i) => i > at && /^#{2,3} /.test(l) && l.indexOf(" ") <= depth);
+  return lines.slice(at + 1, end < 0 ? undefined : end).join("\n");
+}
+const invoices = sectionOf(INVOICES_PAGE, "### The demo vault's four invoices");
+const attested = sectionOf(ATTESTED_PAGE, "## Attested decisions on record");
+/** Whitespace folded, so a sentence reads as one line. */
+const flat = (s: string) => s.replace(/\s+/g, " ");
+/** The rows of a section's Markdown table, its header row first, each as its lines. */
+const rowLines = (section: string) =>
+  section.split("\n").filter((l) => l.startsWith("| ") && !l.startsWith("| --- "));
+/** The same rows, each as its cells. No cell of these tables holds a pipe. */
+const tableRows = (section: string) =>
+  rowLines(section).map((l) =>
+    l
+      .slice(2, -2)
+      .split(" | ")
+      .map((c) => c.trim()),
+  );
+/** A Markdown heading of a repository file, by GitHub's slug. */
+const slugsOf = (path: string) =>
+  read(path)
+    .toString("utf8")
+    .split("\n")
+    .filter((l) => /^#{1,6} /.test(l))
+    .map((l) =>
+      l
+        .replace(/^#+ /, "")
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, "")
+        .replace(/\s/g, "-"),
+    );
+
 type Card = (typeof STORY.invoices)[number];
 const linksOf = (slot: EvidenceSlot) => (typeof slot === "string" ? [] : slot);
 const card = (invoice: string, again = false) => {
@@ -91,7 +116,20 @@ const card = (invoice: string, again = false) => {
   if (found === undefined) throw new Error(`no row ${invoice}${again ? " again" : ""}`);
   return found;
 };
-const name = (c: Card) => ("again" in c ? `${c.invoice} ${c.again}` : c.invoice);
+const name = (c: Card) => ("again" in c ? `${c.invoice}, ${c.again}` : c.invoice);
+/** A link as the page writes it: the verb, then the label, in code for a file name or a hash. */
+const linkMd = (l: EvidenceLink, code: boolean) =>
+  `${l.verb === undefined ? "" : `${l.verb} `}[${code ? `\`${l.label}\`` : l.label}](${l.url})`;
+const slotMd = (slot: EvidenceSlot, code: boolean) =>
+  typeof slot === "string" ? slot : slot.map((l) => linkMd(l, code)).join(", ");
+/** An invoice's row of the page's table, from STORY: its name, what it asked, the outcome with its body, the slots. */
+const rowOf = (c: Card) =>
+  [
+    `| ${name(c)} | ${c.asks} | **${c.outcome}.** ${c.body} |`,
+    `${STORY.slots.invoice}: ${slotMd(c.evidence.invoice, true)}.`,
+    `${STORY.slots.tx}: ${slotMd(c.evidence.tx, true)}.`,
+    `${STORY.slots.ledger}: ${slotMd(c.evidence.ledger, false)}. |`,
+  ].join(" ");
 /** The ledger lines a link points at (`#L4` or `#L1-L3`), as the entries' seq numbers. */
 const seqsOf = (url: string) => {
   const m = url.match(/#L(\d+)(?:-L(\d+))?$/);
@@ -100,90 +138,51 @@ const seqsOf = (url: string) => {
   const to = m[2] === undefined ? from : Number(m[2]);
   return Array.from({ length: to - from + 1 }, (_, i) => ledger[from - 1 + i]?.seq);
 };
-/** Every link the record names: the invoices' evidence, the attested table, the notes and the closing row. */
 const hrefsOf = (parts: readonly CopyPart[]) =>
   parts.flatMap((p) => (typeof p === "string" ? [] : [p.href]));
+/**
+ * Every file and transaction the record links, from STORY and ATTESTED. A ledger's name links the Canary's page on
+ * the landing, which the docs do not link (docs-helpers.ts NOT_LINKED), so the names are left out.
+ */
 const RECORD_LINKS = [
   ...STORY.invoices.flatMap((c) =>
     [c.evidence.invoice, c.evidence.tx, c.evidence.ledger].flatMap(linksOf).map((l) => l.url),
   ),
-  ...ATTESTED.ledgers.flatMap((l) => [...hrefsOf(l.name), ...hrefsOf(l.sub)]),
+  ...ATTESTED.ledgers.flatMap((l) => hrefsOf(l.sub)),
   ...ATTESTED.rows.flatMap((r) =>
     r.cells.flatMap((c: AttestedCell) => [...hrefsOf(c.detail), ...hrefsOf(c.more ?? [])]),
   ),
   ...ATTESTED.paid.txs.map((t) => t.tx.url),
-  ATTESTED.more.route,
-  ...JOURNEY.steps.flatMap((s) => s.note?.lines.flatMap((l) => hrefsOf(l.parts)) ?? []),
-  ...JOURNEY.steps.flatMap((s) => (s.tryIt === undefined ? [] : [s.tryIt.href])),
   STORY.proof.href,
   STORY.files.url,
 ];
 
-describe("the journey's four invoices on the testnet demo vault (audit P1-5)", () => {
-  it("says who sent them, in the words the audit asks for", () => {
-    expect(STORY.caption).toBe("Invoices we sent to our own demo vault on NEAR testnet.");
-    expect(STORY.title).toBe("Four invoices on the testnet demo vault");
-    expect(STORY.eyebrow).toBe("As it ran on NEAR testnet");
+describe("the demo vault's four invoices, on the one-payment page (audit P1-5)", () => {
+  it("sit under See it on testnet, right after the smoke run", () => {
+    const heads = headingsOf(readMdx(INVOICES_PAGE));
+    const see = heads.findIndex((h) => h.id === "see-it-on-testnet");
+    const four = heads.findIndex((h) => h.id === "the-demo-vaults-four-invoices");
+    expect(heads[see]?.depth).toBe(2);
+    expect(heads[four]?.depth).toBe(3);
+    expect(four).toBe(see + 1);
   });
 
-  it("closes the journey section, after its five steps, with the proof page link", () => {
-    // The journey nests the steps' scroll regions, which are sections too, so it ends where Integrate begins.
-    const section = html.slice(html.indexOf('id="payment"'), html.indexOf('id="integrate"'));
-    expect(html.indexOf('id="integrate"')).toBeGreaterThan(html.indexOf('id="payment"'));
-    const lastStep = text(section).lastIndexOf(JOURNEY.steps[4]?.title ?? "missing");
-    const story = text(section).indexOf(STORY.title);
-    expect(lastStep).toBeGreaterThan(0);
-    expect(story).toBeGreaterThan(lastStep);
-    for (const words of [
-      STORY.eyebrow,
-      STORY.caption,
-      ...STORY.invoices.flatMap((c) => [name(c), c.outcome]),
-    ]) {
-      expect(text(section)).toContain(words);
-    }
-    expect(section).toContain(`href="${STORY.proof.href}"`);
-    expect(STORY.proof.href).toBe(`/proof/${demo.account}`);
-    expect(STORY.proof.text).toBe(
-      "The demo vault's proof page runs checks a to i on its ledger and the chain.",
-    );
-  });
-
-  it("is one record in two tables, each named by its heading, in the order of the page", () => {
-    const record = html.indexOf(`id="${JOURNEY_IDS.record}"`);
-    const invoices = html.indexOf(
-      `<table class="${j.inv}" aria-labelledby="${JOURNEY_IDS.invoices}"`,
-    );
-    const attested = html.indexOf(
-      `<table class="${j.matrix}" aria-labelledby="${JOURNEY_IDS.attested}-title"`,
-    );
-    expect(record).toBeGreaterThan(0);
-    expect(invoices).toBeGreaterThan(record);
-    expect(attested).toBeGreaterThan(invoices);
-    // Each table opens as every part of the page does (bits.tsx PartHead): the record's label over its title.
-    expect(html).toContain(
-      `<hgroup><p class="${p.partLabel}">${STORY.eyebrow}</p><h3 class="${p.partTitle}" id="${JOURNEY_IDS.invoices}">${STORY.title}</h3></hgroup>`,
-    );
-    expect(html).toContain(
-      `<h3 class="${p.partTitle}" id="${JOURNEY_IDS.attested}-title">${ATTESTED.title}</h3>`,
-    );
-    // Both tables keep their semantics when the stylesheet turns them into blocks on a phone.
-    for (const role of ["table", "rowgroup", "row", "columnheader", "rowheader", "cell"]) {
-      expect(html, role).toContain(`role="${role}"`);
-    }
-    // The steps keep theirs too, with list-style none.
-    expect(html).toMatch(new RegExp(`<ol class="${j.steps}" role="list">`));
-  });
-
-  it("states the mandate as the chain has it, and the one payee whatever an invoice says", () => {
+  it("say who sent them, and state the mandate as the chain has it", () => {
     expect(mandate?.payee.account_id).toBe(demo.payee);
     expect(mandate?.max_per_payment).toBe("5000000");
     expect(mandate?.approval_above).toBe("3000000");
-    expect(STORY.intro).toBe(
-      "Its mandate pays `probarion-payee.testnet`, at most 5 test USDC a payment, and holds anything above 3 for an approver. Whatever an invoice says, the money can only go to that payee. No model read these invoices: the code read each amount, and nothing was sent until the owner confirmed it in their wallet.",
+    const intro = flat(invoices);
+    expect(intro).toContain(
+      `we sent four invoices to our own demo vault, \`${demo.account}\`, on NEAR testnet.`,
     );
+    expect(intro).toContain(
+      `Its mandate pays \`${demo.payee}\`, at most 5 test USDC a payment, and holds anything above 3 for an approver.`,
+    );
+    expect(intro).toContain("Whatever an invoice says, the money goes to that payee");
   });
 
-  it("says no model read them, as every first decision in the ledger shows", () => {
+  it("say no model read them, as every first decision in the ledger shows", () => {
+    expect(flat(invoices)).toContain("No model read these invoices");
     expect(ledger.every((e) => e.proposal === null)).toBe(true);
     for (const id of ["INV-2001", "INV-2002", "INV-2003"]) {
       const first = ledger.find((e) => e.invoice_hash === sha256(`${EVIDENCE}/invoice-${id}.txt`));
@@ -194,31 +193,27 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
     }
   });
 
-  it("gives every row the same three evidence slots, in the same order, each a link or the reason there is none", () => {
+  it("are STORY's four rows, in its order, each with the same three evidence slots", () => {
     expect(STORY.slots).toEqual({ invoice: "Invoice", tx: "Transaction", ledger: "Ledger" });
+    const rows = rowLines(invoices);
+    expect(rows[0]).toBe(
+      `| Invoice | ${STORY.head.asks} | ${STORY.head.happened} | ${STORY.head.evidence} |`,
+    );
+    expect(rows.slice(1)).toEqual(STORY.invoices.map(rowOf));
     for (const c of STORY.invoices) {
       expect(Object.keys(c.evidence), name(c)).toEqual(["invoice", "tx", "ledger"]);
-    }
-    const out = text(html);
-    for (const c of STORY.invoices) {
       for (const slot of [c.evidence.invoice, c.evidence.tx, c.evidence.ledger]) {
-        if (typeof slot === "string") expect(out, name(c)).toContain(slot);
-        else expect(slot.length, name(c)).toBeGreaterThan(0);
+        if (typeof slot !== "string") expect(slot.length, name(c)).toBeGreaterThan(0);
       }
     }
-    const tbody = invoiceTable();
-    expect(tbody.split(`<dl class="${j.evl}">`).length - 1).toBe(STORY.invoices.length);
-    expect(tbody.split("<dt>Invoice</dt>").length - 1).toBe(STORY.invoices.length);
-    expect(tbody.split("<dt>Transaction</dt>").length - 1).toBe(STORY.invoices.length);
-    expect(tbody.split("<dt>Ledger</dt>").length - 1).toBe(STORY.invoices.length);
   });
 
-  it("links each invoice row to the exact file the chain hashed, by the file's own name", () => {
+  it("link each invoice row to the exact file the chain hashed, by the file's own name", () => {
     for (const c of STORY.invoices) {
       if ("again" in c) continue;
       const path = `${EVIDENCE}/invoice-${c.invoice}.txt`;
       expect(linksOf(c.evidence.invoice), c.invoice).toEqual([
-        { label: `invoice-${c.invoice}.txt`, url: `${REPO_URL}/blob/main/${path}` },
+        { label: `invoice-${c.invoice}.txt`, url: blob(path) },
       ]);
       expect(read(path).toString("utf8"), c.invoice).toContain(`Invoice ${c.invoice}`);
     }
@@ -227,11 +222,11 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
     );
   });
 
-  it("links every ledger entry of an invoice, and only that invoice's entries", () => {
+  it("link every ledger entry of an invoice, and only that invoice's entries", () => {
     for (const c of STORY.invoices) {
       const [ledgerLink] = linksOf(c.evidence.ledger);
       if (ledgerLink === undefined) continue;
-      expect(ledgerLink.url.startsWith(`${REPO_URL}/blob/main/${LEDGER}#L`), name(c)).toBe(true);
+      expect(ledgerLink.url.startsWith(`${blob(LEDGER)}#L`), name(c)).toBe(true);
       const hash = sha256(`${EVIDENCE}/invoice-${c.invoice}.txt`);
       expect(seqsOf(ledgerLink.url), name(c)).toEqual(
         ledger.filter((e) => e.invoice_hash === hash).map((e) => e.seq),
@@ -242,7 +237,7 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
     }
   });
 
-  it("pays INV-2001 with spend 1, the transaction the deployment record names", () => {
+  it("pay INV-2001 with spend 1, the transaction the deployment record names", () => {
     const paid = card("INV-2001");
     const spend = demo.spends.find((s) => s.id === 1);
     expect(spend?.invoice).toBe("INV-2001");
@@ -255,7 +250,7 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
     ]);
   });
 
-  it("refuses the same file again on upload, in the console's own words, with nothing in the ledger", () => {
+  it("refuse the same file again on upload, in the console's own words, with nothing in the ledger", () => {
     const again = card("INV-2001", true);
     expect("again" in again ? again.again : undefined).toBe("sent again");
     expect(again.outcome).toBe("Refused on upload");
@@ -264,10 +259,7 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
       tx: "None, nothing was sent",
       ledger: "No entry",
     });
-    const route = readFileSync(
-      join(WEB, "src", "app", "api", "console", "[vault]", "invoices", "route.ts"),
-      "utf8",
-    );
+    const route = read("apps/web/src/app/api/console/[vault]/invoices/route.ts").toString("utf8");
     expect(route).toContain('"This invoice was already processed."');
     expect(again.body).toContain('"This invoice was already processed."');
     // Spend 1's three entries are all the ledger holds for that file: the second upload added none.
@@ -279,7 +271,7 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
     ]);
   });
 
-  it("refuses the changed-bank invoice by code, with the rule the signed ledger records", () => {
+  it("refuse the changed-bank invoice by code, with the rule the signed ledger records", () => {
     const changed = card("INV-2002");
     expect(changed.outcome).toBe("Refused by code");
     expect(demo.refusals).toEqual([
@@ -298,7 +290,7 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
     expect(changed.evidence.tx).toBe("None, nothing was sent");
   });
 
-  it("holds INV-2003 above the approval limit, then pays it on the approver's approval", () => {
+  it("hold INV-2003 above the approval limit, then pay it on the approver's approval", () => {
     const held = card("INV-2003");
     const spend = demo.spends.find((s) => s.id === 2);
     expect(spend?.invoice).toBe("INV-2003");
@@ -320,16 +312,7 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
     ]);
   });
 
-  it("marks each outcome with a quiet label and its own mark, not a status pill", () => {
-    expect(STORY.invoices.map((c) => c.tone)).toEqual(["paid", "refused", "refused", "held"]);
-    const table = invoiceTable();
-    for (const tone of [p.outPaid, p.outRefused, p.outHeld]) {
-      expect(table).toContain(`<span class="${p.out} ${tone} ${j.invOut}"><svg class="${p.mark}"`);
-    }
-    expect(table).not.toMatch(/pill/i);
-  });
-
-  it("shortens each transaction hash to its first 8 and last 4 characters", () => {
+  it("shorten each transaction hash to its first 8 and last 4 characters", () => {
     const txs = [
       ...STORY.invoices.flatMap((c) => linksOf(c.evidence.tx)),
       ...ATTESTED.paid.txs.map((t) => ({ label: t.tx.label, url: t.tx.url })),
@@ -341,48 +324,125 @@ describe("the journey's four invoices on the testnet demo vault (audit P1-5)", (
       expect(l.label).toBe(`${hash?.slice(0, 8)}…${hash?.slice(-4)}`);
     }
   });
+
+  it("close with the vault's proof page and its record, at the heading of its four invoices", () => {
+    expect(STORY.proof.href).toBe(`/proof/${demo.account}`);
+    expect(invoices).toContain(`[proof page](${STORY.proof.href})`);
+    expect(STORY.files.url).toBe(blob(`${EVIDENCE}/README.md`));
+    expect(invoices).toContain(`](${STORY.files.url}#the-four-invoices)`);
+    expect(slugsOf(`${EVIDENCE}/README.md`)).toContain("the-four-invoices");
+  });
 });
 
-describe("the journey's attested decisions on testnet", () => {
-  it("names the demo vault's five: later runs on the same vault, not the four invoices above", () => {
-    expect(ATTESTED.caption).toBe(
-      "The demo vault's five came later, from Payables runs on 2026-11-11 and 2026-11-12: invoices INV-2006 to INV-2010, ledger entries 10 to 13 and 15, not the four invoices above. The Canary is a separate vault.",
-    );
+describe("the attested decisions on record, on the verifier checks page", () => {
+  const rows = tableRows(attested);
+  const rowFor = (check: string) => {
+    const found = rows.find((r) => r[0] === check);
+    if (found === undefined) throw new Error(`${fileOf(ATTESTED_PAGE)}: no row "${check}"`);
+    return found;
+  };
+  /** The mainnet vault's column, which ATTESTED does not have: its results, from the runs checked below. */
+  const MAINNET_RESULT: Readonly<Record<string, string>> = {
+    "A1 to A7 (offline checks)": "Pass",
+    "O1 and O2 (online checks)": "Pass",
+    A8: "Pass",
+  };
+
+  it("give each ledger a column, the Canary's named and not linked", () => {
+    expect(rows.map((r) => r[0])).toEqual([
+      "Check",
+      "Attested decisions",
+      ...ATTESTED.rows.map((r) => r.check),
+    ]);
+    expect(rows[0]).toEqual([
+      "Check",
+      "The Canary's ledger",
+      "The demo vault's ledger",
+      "The mainnet vault's ledger",
+    ]);
+    expect(ATTESTED.ledgers.map((l) => l.short)).toEqual(["Canary", "Demo vault"]);
+    expect(attested).not.toContain("](/canary");
+  });
+
+  it("are ATTESTED's checks, each cell starting with its result word and linking its output", () => {
+    for (const r of ATTESTED.rows) {
+      const own: readonly AttestedCell[] = r.cells;
+      const cells = rowFor(r.check).slice(1);
+      expect(cells, r.check).toHaveLength(3);
+      // A row with one cell spans every ledger, the mainnet vault's too.
+      const words =
+        own.length === 1
+          ? cells.map(() => own[0]?.result)
+          : [...own.map((c) => c.result), MAINNET_RESULT[r.check]];
+      for (const [i, c] of cells.entries()) {
+        const word = words[i];
+        expect(word, `${r.check}, column ${i + 1}`).toBeDefined();
+        expect(c.startsWith(word ?? "?"), `${r.check}, column ${i + 1}: ${c}`).toBe(true);
+      }
+      for (const href of own.flatMap((c) => [...hrefsOf(c.detail), ...hrefsOf(c.more ?? [])])) {
+        expect(attested, `${r.check}: ${href}`).toContain(`](${href})`);
+      }
+    }
+  });
+
+  it("name the demo vault's five: later runs on the same vault, not its four invoices", () => {
     // The attested decisions of the demo vault's ledger are entries 10 to 13 and 15, one per invoice INV-2006 to 2010.
-    const attested = video.filter((e) => e.kind === "decision" && Boolean(e.evidence));
-    expect(attested.map((e) => e.seq)).toEqual([10, 11, 12, 13, 15]);
-    expect(attested.map((e) => e.decided_by)).toEqual(Array(5).fill("model+rules"));
+    const five = video.filter((e) => e.kind === "decision" && Boolean(e.evidence));
+    expect(five.map((e) => e.seq)).toEqual([10, 11, 12, 13, 15]);
+    expect(five.map((e) => e.decided_by)).toEqual(Array(5).fill("model+rules"));
     const ids = ["INV-2006", "INV-2007", "INV-2008", "INV-2009", "INV-2010"];
-    expect(attested.map((e) => e.invoice_hash)).toEqual(
+    expect(five.map((e) => e.invoice_hash)).toEqual(
       ids.map((id) => sha256(`${EVIDENCE}/invoice-${id}.txt`)),
     );
-    // None of them is one of the four invoices of the table above.
+    // None of them is one of the four invoices on the one-payment page.
     const four = ["INV-2001", "INV-2002", "INV-2003"].map((id) =>
       sha256(`${EVIDENCE}/invoice-${id}.txt`),
     );
-    for (const e of attested) expect(four).not.toContain(e.invoice_hash);
+    for (const e of five) expect(four).not.toContain(e.invoice_hash);
+    expect(rowFor("Attested decisions")[2]).toMatch(
+      /^5, of 2026-11-11 and 2026-11-12: entries 10 to 13 and 15 /,
+    );
+    expect(flat(attested)).toContain(
+      "The demo vault's five came after [its four invoices](/docs/start/how-one-payment-works#the-demo-vaults-four-invoices), on invoices INV-2006 to INV-2010.",
+    );
     // The Canary's two are in its own ledger, of another vault.
     const canary = ledgerOf("docs/evidence/canary-vault/ledger-2026-11-10.jsonl");
     expect(
       canary.filter((e) => e.kind === "decision" && Boolean(e.evidence)).map((e) => e.seq),
     ).toEqual([1, 2]);
-    // The caption is the note under the table's title, its dates and ranges each kept on one line.
-    const note = html.indexOf(
-      `<p class="${p.partNote}">`,
-      html.indexOf(`id="${JOURNEY_IDS.attested}-title"`),
-    );
-    expect(note).toBeGreaterThan(0);
-    const words = html
-      .slice(note, html.indexOf("</p>", note))
-      .replace(/<[^>]+>/g, "")
-      .replace(/&#x27;/g, "'");
-    expect(words).toBe(ATTESTED.caption);
+    expect(rowFor("Attested decisions")[1]).toMatch(/^2, of 2026-11-10 /);
   });
 
-  it("pays spends 4 and 5 on the two of the five the code allowed, as the ledger records them", () => {
-    expect(ATTESTED.paid.text).toBe(
-      "On 2026-11-12 the code allowed two of the five, entries 13 and 15 (INV-2009 and INV-2010), and the vault paid each invoice, 2.00 test USDC, on testnet.",
+  it("count the mainnet vault's three as its signed ledger records them, and rest them on its own runs", () => {
+    const three = ledgerOf(`${MAINNET}/ledger-2026-11-13.jsonl`).filter(
+      (e) => e.kind === "decision" && Boolean(e.evidence),
     );
+    expect(three.map((e) => e.seq)).toEqual([0, 1, 4]);
+    expect(three.map((e) => e.verdict)).toEqual(["refuse", "refuse", "allow"]);
+    const mainnet = rowFor("Attested decisions")[3] ?? "";
+    expect(mainnet).toMatch(/^3, of 2026-11-13: entries 0, 1 and 4 /);
+    expect(mainnet).toContain(`](${blob(`${MAINNET}/ledger-2026-11-13.jsonl`)})`);
+    const offline = read(`${MAINNET}/verify-2026-11-13.txt`).toString("utf8");
+    expect(offline).toMatch(/3 attested decisions pass A1.A7;/);
+    expect(offline).toContain("passes for 3 of 3 attested decisions (seq 0, 1, 4)");
+    expect(offline).toContain("RESULT: PASS");
+    const online = read(`${MAINNET}/verify-online-2026-11-13.txt`).toString("utf8");
+    expect(online).toContain("generated 2026-11-13T17:52");
+    expect(online).toContain("3 DCAP-genuine TDX quotes bound to this request");
+    expect(online).toContain("verified by NRAS (O2)");
+    expect(online).toContain("RESULT: PASS");
+    for (const check of ["A1 to A7 (offline checks)", "A8"]) {
+      expect(rowFor(check)[3], check).toContain(`](${blob(`${MAINNET}/verify-2026-11-13.txt`)})`);
+    }
+    const o = rowFor("O1 and O2 (online checks)")[3];
+    expect(o).toContain("2026-11-13 at 17:52 UTC");
+    expect(o).toContain(`](${blob(`${MAINNET}/verify-online-2026-11-13.txt`)})`);
+    expect(flat(attested)).toContain(
+      "On mainnet, code refused the decisions of entries 0 and 1, and entry 4, by `z-ai/glm-5.3-flash`, led to spend 3, a 0.25 USDC test to the owner's own Base address",
+    );
+  });
+
+  it("pay spends 4 and 5 on the two of the five the code allowed, as the ledger records them", () => {
     const allowed = video.filter(
       (e) => e.kind === "decision" && Boolean(e.evidence) && e.verdict === "allow",
     );
@@ -391,6 +451,9 @@ describe("the journey's attested decisions on testnet", () => {
       ["INV-2009", "INV-2010"].map((id) => sha256(`${EVIDENCE}/invoice-${id}.txt`)),
     );
     expect(allowed.map((e) => e.amount)).toEqual(["2000000", "2000000"]);
+    expect(flat(attested)).toContain(
+      "On 2026-11-12 the code allowed two of them, entries 13 and 15 (INV-2009 and INV-2010), and the vault paid each invoice, 2.00 test USDC, on testnet",
+    );
     const [four, five] = ATTESTED.paid.txs;
     expect([four?.label, five?.label]).toEqual(["Spend 4", "Spend 5"]);
     // Each spend's payment result names its transaction, paid, right after its decision.
@@ -407,70 +470,35 @@ describe("the journey's attested decisions on testnet", () => {
       });
       expect(entry?.invoice_hash).toBe(video.find((e) => e.seq === seq - 1)?.invoice_hash);
       expect(t?.tx.url).toBe(explorerTxUrl("testnet", t?.tx.hash ?? ""));
+      expect(attested).toContain(`spend ${spend}, [\`${t?.tx.label}\`](${t?.tx.url})`);
     }
     const readme = read(`${EVIDENCE}/README.md`).toString("utf8");
     expect(readme).toContain(`[\`EA7MbLts…\`](${four?.tx.url})`);
     expect(readme).toContain(`[\`3YEGw5Qd…\`](${five?.tx.url})`);
-    for (const t of ATTESTED.paid.txs) expect(html).toContain(`href="${t.tx.url}"`);
   });
 });
 
-describe("the journey's links", () => {
-  it("point only at files, headings, anchors and pages that exist", () => {
+describe("the record's links", () => {
+  it("are all on the two docs sections, and point only at files, headings and transactions that exist", () => {
+    const docs = `${invoices}\n${attested}`;
     expect(RECORD_LINKS.length).toBeGreaterThan(20);
     for (const href of RECORD_LINKS) {
-      expect(html, href).toContain(`href="${href}"`);
+      expect(docs, href).toContain(`](${href}`);
       if (href.startsWith(`${REPO_URL}/blob/main/`)) {
         const [path = "", anchor] = href.slice(`${REPO_URL}/blob/main/`.length).split("#");
         expect(existsSync(join(ROOT, ...path.split("/"))), href).toBe(true);
         if (anchor !== undefined && !/^L\d+(-L\d+)?$/.test(anchor)) {
-          // A Markdown heading, by GitHub's slug.
-          const slugs = read(path)
-            .toString("utf8")
-            .split("\n")
-            .filter((l) => /^#{1,6} /.test(l))
-            .map((l) =>
-              l
-                .replace(/^#+ /, "")
-                .toLowerCase()
-                .replace(/[^\w\s-]/g, "")
-                .replace(/\s/g, "-"),
-            );
-          expect(slugs, href).toContain(anchor);
+          expect(slugsOf(path), href).toContain(anchor);
         }
       } else if (href.startsWith("https://testnet.nearblocks.io/txns/")) {
         expect(href).toMatch(
           /^https:\/\/testnet\.nearblocks\.io\/txns\/[1-9A-HJ-NP-Za-km-z]{43,44}$/,
         );
-      } else if (href.startsWith("#")) {
-        expect(html, href).toContain(`id="${href.slice(1)}"`);
-      } else if (href.startsWith("/docs/")) {
-        expect(findPage(href.slice("/docs/".length)), href).toBeDefined();
-      } else if (href.startsWith("/canary")) {
-        expect(existsSync(join(WEB, "src", "app", "canary", "page.tsx")), href).toBe(true);
       } else if (href.startsWith("/proof/")) {
         expect(href).toBe(`/proof/${demo.account}`);
       } else {
         throw new Error(`a link the test does not know: ${href}`);
       }
     }
-  });
-
-  it("opens a file or a transaction in a new tab, and a page of the site in this one", () => {
-    for (const href of RECORD_LINKS) {
-      const tags =
-        html.match(
-          new RegExp(`<a[^>]*href="${href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*>`, "g"),
-        ) ?? [];
-      expect(tags.length, href).toBeGreaterThan(0);
-      for (const tag of tags) {
-        if (href.startsWith("https://")) expect(tag, href).toContain('target="_blank"');
-        else expect(tag, href).not.toContain("target=");
-      }
-    }
-    // The proof page is the site's own button, in this tab.
-    expect(html).toMatch(
-      /<a class="[^"]*"[^>]*href="\/proof\/demo\.vaults\.probarion\.testnet">Open the proof page <span aria-hidden="true">→<\/span><\/a>/,
-    );
   });
 });

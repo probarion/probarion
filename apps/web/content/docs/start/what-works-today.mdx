@@ -4,15 +4,37 @@ NEAR testnet is live. Where a Live part runs on a chain, it runs on NEAR testnet
 
 <StatusTable />
 
-The Detail column is each row's pill, as the comparison and the integrate cards on the landing page show it. Each row's id is its anchor here, and on the landing page too. The landing's status section groups these rows, gives each a proof mark (Verified, In part or Not tried yet) and, where it applies, a use mark (Running or Released), gives the web console one row with its parts, adds the Chrome extension, and closes with Known gaps. In the order of the rows, the ids are `vault-contract`, `offline-verifier`, `reproducible-builds`, `vault-factory`, `web-console`, `web-console-not-tried`, `public-proof-page`, `sdk-and-cli`, `payables-agent`, `attested-model-run`, `canary`, `mcp-server` and `mainnet-vault`, so [`#mainnet-vault`](#mainnet-vault) links the last row. Here the web console has two rows: what was tried on testnet with a real wallet, and the console actions that are built but not tried yet, adding an email alert and the Base top-up through 1Click, which is mainnet only. Reject on a held spend, revoking a mandate, Withdraw and removing an agent key moved to the first row on 2026-11-12, when the owner of a testnet vault tried each with a real wallet (Meteor), in a desktop browser ([the record](https://github.com/probarion/probarion/blob/main/docs/evidence/trial-vault/README.md#2026-11-12-reject-revoke-a-spare-agent-key-and-withdraw-all)).
+The Detail column is each row's pill, as the landing page shows it beside each way in to Probarion, and as the [comparison](/docs/start/what-is-probarion#why-not-a-spending-limit-contract) on What is Probarion shows it. Each row's id is its anchor here, and on the landing page too. The landing's status section groups these rows, gives each a proof mark (Verified, In part or Not tried yet) and, where it applies, a use mark (Running or Released), gives the web console one row with its parts, adds the Chrome extension, and closes with Known gaps. In the order of the rows, the ids are `vault-contract`, `offline-verifier`, `reproducible-builds`, `vault-factory`, `web-console`, `web-console-not-tried`, `public-proof-page`, `sdk-and-cli`, `payables-agent`, `attested-model-run`, `canary`, `mcp-server` and `mainnet-vault`, so [`#mainnet-vault`](#mainnet-vault) links the last row. Here the web console has two rows: what was tried on testnet with a real wallet, and the console actions that are built but not tried yet, adding an email alert and the Base top-up through 1Click, which works on mainnet alone. Reject on a held spend, revoking a mandate, Withdraw and removing an agent key moved to the first row on 2026-11-12, when the owner of a testnet vault tried each with a real wallet (Meteor), in a desktop browser ([the record](https://github.com/probarion/probarion/blob/main/docs/evidence/trial-vault/README.md#2026-11-12-reject-revoke-a-spare-agent-key-and-withdraw-all)).
 
-At the end of its status section, the landing page lists its known gaps, and the beta strip on every page links them. One is the contract build: "It also runs a build from before the 2026-11-03 `set_ledger_key` fix. The vaults the testnet factory creates, the demo vault among them, run the fixed build recorded in `contracts/code-hashes.json`." The vault source changed after `v0.probarion.testnet` was deployed, with a `set_ledger_key` fix on 2026-11-03. On the older build, replacing the ledger key could fail in a way that left the vault unable to anchor again. Every vault the testnet factory creates, the console's included, runs the fixed build. [`contracts/code-hashes.json`](https://github.com/probarion/probarion/blob/main/contracts/code-hashes.json) records the hash of each reproducible build, and [verify a vault](/docs/trust/verify-a-vault) shows how to run the verifier on a vault yourself.
+On the landing page the status section is a compact board: each row is one line that keeps its id and opens to its record, with where it runs, its evidence and what it does not do yet. Under the board, the landing page lists the [known gaps](#known-gaps) in the same three lists as this page, and the beta strip on every page links them. One is the build of the smoke-run vault. The vault source changed after `v0.probarion.testnet` was deployed, with a `set_ledger_key` fix on 2026-11-03. On the older build, replacing the ledger key could fail in a way that left the vault unable to anchor again. Every vault the testnet factory creates, the console's included, runs the fixed build. [`contracts/code-hashes.json`](https://github.com/probarion/probarion/blob/main/contracts/code-hashes.json) records the hash of each reproducible build, and [verify a vault](/docs/trust/verify-a-vault) shows how to run the verifier on a vault yourself.
 
 <Callout kind="note" title="Unaudited beta.">
 
 No third party has audited this code. [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#what-is-not-proven-yet) lists what `verify` does not prove yet, and the [security model](/docs/trust/security-model) covers the rest.
 
 </Callout>
+
+## Known gaps
+
+What is not proven, not done or not built yet across the product. Each row of [the status list](#the-status-list) says its own limits. These are the known gaps under the landing page's status board, from `STATUS.gaps` in [`apps/web/src/lib/site/facts.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/site/facts.ts).
+
+### Not proven yet
+
+- **No outside review yet.** No third party has audited this code. The [threat model](https://github.com/probarion/probarion/blob/main/SECURITY.md#what-is-not-proven-yet) says what `verify` does not prove yet.
+- **No end-to-end encryption.** The request to NEAR AI Cloud is plain JSON over HTTPS, the hosted console reads each invoice, and the signed ledger keeps the model's answer, which can restate it.
+
+### In the code
+
+- **No Content-Security-Policy yet.** Owner and approver actions still need a 1 yoctoNEAR wallet prompt, so a script in the page cannot approve or withdraw.
+- **An unmaintained allocator.** The contracts link near-sdk's default `wee_alloc` allocator. Changing it needs a new vault version.
+- **No dependency scan in CI.** CI has no job that checks dependencies for known flaws. Dependabot alerts are triaged in the review log.
+- **The smoke-run vault.** `v0.probarion.testnet`, the vault of the 2026-11-01 smoke run, sent its spends with the agent key alone, without a ledger, so a live `verify --vault` on it fails checks d and h. It also runs a build from before the 2026-11-03 `set_ledger_key` fix. The vaults the testnet factory creates, the demo vault among them, run the fixed build recorded in `contracts/code-hashes.json`.
+
+### Not built yet
+
+- **No outbound webhooks.** The code has no webhook that calls a server of yours. [Outbound webhooks](#outbound-webhooks) below says how to follow a vault instead.
+- **No public HTTP API for agents.** An agent pays through the SDK or the MCP server, in its own process. [A public HTTP API for agents](#a-public-http-api-for-agents) below has more.
+- **No pricing.** There is no price list and no paid plan. [Pricing](#pricing) below says what your wallet pays for.
 
 ## Also in the source
 
@@ -124,7 +146,7 @@ There is no price list and no paid plan. The [terms](/terms) say "Probarion char
 
 ### A third-party audit
 
-No third party has audited this code, as the Known gaps at the end of the landing's status section say. [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#reporting-a-vulnerability) says how to report a vulnerability.
+No third party has audited this code, as the [known gaps](#known-gaps) say, on this page and under the landing page's status board. [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#reporting-a-vulnerability) says how to report a vulnerability.
 
 ## How this list stays true
 
@@ -136,7 +158,7 @@ Tests hold the list to the repository:
 - [`apps/web/test/docs-reference.test.ts`](https://github.com/probarion/probarion/blob/main/apps/web/test/docs-reference.test.ts) checks that every row maps to Live, Preview or Planned and has a stable id, the anchor of its row on this page.
 - [`apps/web/test/docs-pages.test.ts`](https://github.com/probarion/probarion/blob/main/apps/web/test/docs-pages.test.ts) checks that this page renders the table.
 
-The sections under [also in the source](#also-in-the-source) and [what does not exist](#what-does-not-exist) are written by hand, so no test holds them to the README. Where the two differ, the README Status table and the code it links are the record.
+The sections under [also in the source](#also-in-the-source) and [what does not exist](#what-does-not-exist) are written by hand, so no test holds them to the README. Where the two differ, the README Status table and the code it links are the record. The [known gaps](#known-gaps) are written by hand too, and [`apps/web/test/docs-pages.test.ts`](https://github.com/probarion/probarion/blob/main/apps/web/test/docs-pages.test.ts) holds each one to `STATUS.gaps`, the lists the landing page renders.
 
 ## Related pages
 
