@@ -21,6 +21,13 @@ export interface CliIo {
   payeeDeps?: {
     fetch?: typeof fetch;
   };
+  /**
+   * Tests and hosts only: the fetch `account audit` and `tx prove` read the chain with. The `probarion` binary
+   * passes nothing.
+   */
+  nearDeps?: {
+    fetch?: typeof fetch;
+  };
 }
 
 export function processIo(): CliIo {
