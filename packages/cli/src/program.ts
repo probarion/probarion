@@ -1,11 +1,12 @@
 import { Command, CommanderError } from "commander";
+import { registerAccount } from "./commands/account.js";
 import { registerAgent } from "./commands/agent.js";
 import { registerCheck } from "./commands/check.js";
 import { registerLedger } from "./commands/ledger.js";
 import { registerMandate } from "./commands/mandate.js";
-import { registerNear } from "./commands/near.js";
 import { registerOwnerCalls } from "./commands/owner-calls.js";
 import { registerPayee } from "./commands/payee.js";
+import { registerTx } from "./commands/tx.js";
 import { registerVault } from "./commands/vault.js";
 import { registerVerify } from "./commands/verify.js";
 import { CliError } from "./errors.js";
@@ -32,7 +33,8 @@ export function buildProgram(io: CliIo): Command {
   registerOwnerCalls(program, io);
   registerCheck(program, io);
   registerPayee(program, io);
-  registerNear(program, io);
+  registerAccount(program, io);
+  registerTx(program, io);
   registerVerify(program, io);
   return program;
 }

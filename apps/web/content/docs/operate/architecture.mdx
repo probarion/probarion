@@ -24,12 +24,13 @@ An approver signs `approve` and `reject` from their own wallet, with exactly 1 y
 
 </Callout>
 
-The code for these parts is in four packages, all on npm at 0.1.1:
+The code for these parts is in five packages. Four of them, core, sdk, cli and mcp, are on npm at 0.1.1; `packages/near` is in this repository and reaches npm with the next release:
 
 - `packages/core`, `@probarion/core`: `decide()`, the ledger, the attestation checks and the verifier's checks a to i. No network, no file system.
 - `packages/sdk`, `@probarion/sdk`: the `Probarion` class, the vault, factory and intents clients, the NEAR AI Cloud adapter, the ledger stores, `snapshot()` and `verify()`.
-- `packages/cli`, the `probarion` CLI: it prints owner and approver transactions as near-cli-rs commands and signs none of them. It also makes keys with `agent keygen`, runs the `check_spend` dry run with `check`, exports a ledger and runs the verifier.
+- `packages/cli`, the `probarion` CLI: it prints owner and approver transactions as near-cli-rs commands and signs none of them. It also makes keys with `agent keygen`, runs the `check_spend` dry run with `check`, exports a ledger and runs the verifier. In this repository, `account audit` and `tx prove` also run `@probarion/near` on any NEAR account or transaction.
 - `packages/mcp`, `@probarion/mcp` (Live): an MCP server over stdio with five tools, `list_mandates`, `check_spend`, `request_spend`, `get_spend_status` and `verify`, none of which takes an address. It calls `@probarion/sdk` with the vault's agent and ledger keys and holds no owner key.
+- `packages/near`, `@probarion/near`: building blocks for any NEAR app, which the CLI runs: a verifier of `light_client_proof` outcome proofs, a reader of NEP-297 events bound to the contract that emitted them and to receipts that succeeded, an audit of an account's access keys and code identity, and a check of a NEAR Intents POA withdrawal. Its pure functions use no network; its online helpers read over JSON-RPC and sign nothing.
 
 [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) covers each role and key, and [SDK reference](/docs/build/sdk-reference) and [CLI reference](/docs/build/cli-reference) list the packages' parts.
 

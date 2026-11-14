@@ -1,195 +1,42 @@
-// The NEAR builder primitives of @probarion/near, run by the CLI: `account audit` (N3, the account lock audit) and
-// `tx prove` (N1, the outcome proof verifier, with N2's receipt-bound event reader on the proven outcomes). Both
-// read views and proofs over JSON-RPC and sign nothing.
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { isNearTxHash, KNOWN_VAULT_CODE_HASHES } from "@probarion/core";
+// `probarion tx prove`: N1 of @probarion/near, the outcome proof verifier, with N2's receipt-bound event reader on
+// the proven outcomes. It reads a head on two providers, the transaction and a light_client_proof for it and for each
+// receipt over JSON-RPC, and signs nothing.
+import { isNearTxHash } from "@probarion/core";
 import {
-  type AccountLockReport,
   type BoundEvent,
   type EventProblem,
   HeadMismatchError,
-  type KeyPolicy,
-  matchRecordedBuild,
-  type NearRpc,
-  NearRpcError,
   type OutcomeTreeResult,
   type ProvenOutcome,
   type ProvenStatus,
   proveTransaction,
-  type RecordedBuild,
-  readAccountLock,
   readCrossCheckedHead,
   scanAllEvents,
 } from "@probarion/near";
-import { RpcClient, resolveArchivalRpcUrls } from "@probarion/sdk";
+import { resolveArchivalRpcUrls } from "@probarion/sdk";
 import type { Command } from "commander";
 import { type GlobalOpts, resolveNetwork, rpcUrlsFor, splitList } from "../context.js";
 import { asUsage, CliError, UsageError, usageExitCodes } from "../errors.js";
 import type { CliIo } from "../io.js";
-import { NEAR_ACCOUNT_RE } from "../payee.js";
+import { checkedAccount, messageOf, nearRpc, toJson } from "../near.js";
 import { printable } from "../report.js";
 
-type AccountAuditOpts = GlobalOpts & { vaultPolicy?: boolean; builds?: string; json?: boolean };
 type TxProveOpts = GlobalOpts & {
   signer: string;
   headRpc?: string;
   archivalRpc?: string;
   json?: boolean;
 };
-type Builds = readonly RecordedBuild[] | { entries: readonly RecordedBuild[] };
-
-const ACCOUNT_AUDIT_EXIT_CODES = `
-Exit codes:
-  0   locked: no key acts as full access, and the key policy and the recorded build match when given
-  2   locked, with a warning to read (a key that can call any method, an unlimited allowance)
-  1   not locked, a blocking finding (a key outside the policy, code that is not a recorded build), or the
-      account could not be read (error: on stderr)
-  64  usage error: a malformed account or flag, or a --builds file that cannot be read
-`;
 
 const TX_PROVE_EXIT_CODES = `
 Exit codes:
-  0   proven: the transaction and every receipt it led to are committed under the head (a failed receipt is
-      reported, and still proven: the proof shows it ran and failed)
+  0   proven: the transaction and every receipt it led to are committed under the head (a failed receipt is proven as a failure)
   1   not proven: a proof did not verify, the two head providers disagree, or a read failed (error: on stderr)
   64  usage error: a malformed hash, account or flag, or head URLs on fewer than two origins
 `;
 
-/** Bounds the node's `result.error` text kept in a message; the whole answer stays in `rpcError`. */
-const MAX_DETAIL = 300;
 /** A success value longer than this is printed as its length; `--json` carries all of it. */
 const MAX_VALUE_TEXT = 120;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/**
- * The SDK's RpcClient (failover across `urls`, retries) as a NearRpc. RpcClient hands a legacy `query` failure
- * (HTTP 200 with a `result.error` text, which older nodes send for a missing account) back as a result; here it
- * throws a NearRpcError, as `httpJsonRpc` does, so such an answer does not pass for a view.
- */
-function nearRpc(urls: readonly string[], io: CliIo): NearRpc {
-  const fetchImpl = io.nearDeps?.fetch;
-  const client = new RpcClient({ urls, ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }) });
-  return {
-    async call<T = unknown>(method: string, params: unknown): Promise<T> {
-      const result = await client.call<unknown>(method, params);
-      if (isRecord(result) && typeof result.error === "string") {
-        const text =
-          result.error.length > MAX_DETAIL
-            ? `${result.error.slice(0, MAX_DETAIL)}...`
-            : result.error;
-        throw new NearRpcError(method, result, `${method}: ${text}`);
-      }
-      return result as T;
-    },
-  };
-}
-
-/** JSON with every bigint as its decimal string and every byte array as base64 (a success value). */
-function toJson(value: unknown): string {
-  return JSON.stringify(
-    value,
-    (_key, v: unknown) => {
-      if (typeof v === "bigint") return v.toString();
-      if (v instanceof Uint8Array) return Buffer.from(v).toString("base64");
-      return v;
-    },
-    2,
-  );
-}
-
-function checkedAccount(value: string, what: string): string {
-  if (!NEAR_ACCOUNT_RE.test(value))
-    throw new UsageError(`${what} ${value} is not a valid NEAR account id`);
-  return value;
-}
-
-/**
- * The key policy of a Probarion vault: every key is a function-call key on the vault itself for `spend` (an agent
- * key) or for `anchor` (the ledger key), with a limited allowance (the vault refuses a zero, unlimited one) and no
- * gas key. No full-access key. The anchor rule names no public key: pinning it to the vault's current ledger key
- * (`get_config`) is check f of `probarion verify`.
- */
-export function vaultKeyPolicy(vault: string): KeyPolicy {
-  return {
-    fullAccess: "forbid",
-    rules: [
-      { receiverId: vault, methods: ["spend"] },
-      { receiverId: vault, methods: ["anchor"] },
-    ],
-  };
-}
-
-/** core's KNOWN_VAULT_CODE_HASHES (the recorded reproducible vault builds) as recorded builds. */
-function knownVaultBuilds(): readonly RecordedBuild[] {
-  return KNOWN_VAULT_CODE_HASHES.map((codeHash) => ({
-    code_hash: codeHash,
-    crate: "probarion-vault",
-  }));
-}
-
-/**
- * A `--builds` file: a list of recorded builds, or a code-hashes record (`{ "entries": [...] }`, the shape of
- * contracts/code-hashes.json). Each entry needs a `code_hash` in base58 or hex; anything else is a usage error
- * (64), found before the chain is read.
- */
-async function readBuilds(io: CliIo, file: string): Promise<Builds> {
-  let text: string;
-  try {
-    text = await readFile(resolve(io.cwd, file), "utf8");
-  } catch {
-    throw new UsageError(`--builds ${file} is not a readable file`);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new UsageError(`--builds ${file} is not JSON`);
-  }
-  const builds = parsed as Builds;
-  try {
-    // The library reads the list as the audit will: a list or an entry it cannot read is a TypeError.
-    matchRecordedBuild({ kind: "none" }, builds);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new UsageError(
-        `--builds ${file} is not a list of builds nor a code-hashes record ({ "entries": [{ "code_hash": ... }] }): ${error.message}`,
-      );
-    }
-    throw error;
-  }
-  return builds;
-}
-
-/**
- * The exit code of `account audit`: 1 when the account is not locked, a finding blocks, or the report is not ok
- * (a key outside the policy, code that is not a recorded build); else 2 when a finding warns; else 0.
- */
-export function accountAuditExitCode(report: AccountLockReport): number {
-  const findings = report.keys.findings;
-  if (!report.locked || !report.ok || findings.some((f) => f.severity === "block")) return 1;
-  return findings.some((f) => f.severity === "warn") ? 2 : 0;
-}
-
-/** The report's own sentences, then where and when the views were read. */
-export function formatAccountAudit(report: AccountLockReport, network: string): string {
-  const lines = report.lines.map((line) => printable(line));
-  const at =
-    report.keys.blockHeight === null
-      ? "at a final block"
-      : `at block ${report.keys.blockHeight}${report.keys.blockHash === null ? "" : ` (${printable(report.keys.blockHash)})`}`;
-  lines.push(
-    `Views read on NEAR ${network} ${at}: view_account and view_access_key_list. Nothing was signed or sent.`,
-  );
-  return `${lines.join("\n")}\n`;
-}
 
 /** The URLs grouped by origin, in the order each origin is named. A URL that is not http(s) is a usage error. */
 function byOrigin(urls: readonly string[], flag: string): string[][] {
@@ -317,62 +164,7 @@ function provenJson(ctx: ProveContext, result: OutcomeTreeResult): unknown {
   };
 }
 
-export function registerNear(program: Command, io: CliIo): void {
-  const account = program
-    .command("account")
-    .description("account commands (views over JSON-RPC: nothing is signed or sent)");
-  const audit = account
-    .command("audit")
-    .description(
-      "audit what each access key of an account can do if it leaks (full access, receiver and methods, allowance, gas keys) and whether its code is a recorded build, read at one block",
-    )
-    .argument("<account>", "the NEAR account to audit")
-    .option(
-      "--vault-policy",
-      "hold the keys to a Probarion vault's policy (function-call keys on the account itself for spend or anchor, a limited allowance, no gas key) and the code to the recorded vault builds",
-    )
-    .option(
-      "--builds <file>",
-      "a code-hashes record file ({ entries: [{ code_hash, ... }] }, as contracts/code-hashes.json) or a list of builds the code must match (default with --vault-policy: the recorded vault builds)",
-    )
-    .option("--json", "print the report as JSON (amounts as decimal strings)")
-    .addHelpText("after", ACCOUNT_AUDIT_EXIT_CODES);
-  usageExitCodes(audit).action(async (arg: string, _options: unknown, command: Command) => {
-    const o = command.optsWithGlobals<AccountAuditOpts>();
-    const parsed = asUsage(() => {
-      const network = resolveNetwork(o, io.env);
-      return {
-        network,
-        accountId: checkedAccount(arg, "account"),
-        rpcUrls: rpcUrlsFor(o, io.env, network),
-      };
-    });
-    const vaultPolicy = o.vaultPolicy === true;
-    const builds =
-      o.builds !== undefined
-        ? await readBuilds(io, o.builds)
-        : vaultPolicy
-          ? knownVaultBuilds()
-          : undefined;
-    const report = await readAccountLock(nearRpc(parsed.rpcUrls, io), parsed.accountId, {
-      ...(vaultPolicy ? { policy: vaultKeyPolicy(parsed.accountId) } : {}),
-      ...(builds === undefined ? {} : { builds }),
-    }).catch((error: unknown) => {
-      throw new CliError(`account audit could not read ${parsed.accountId}: ${messageOf(error)}`);
-    });
-    if (o.json === true) {
-      io.out(`${toJson(report)}\n`);
-    } else {
-      io.out(formatAccountAudit(report, parsed.network));
-      if (vaultPolicy) {
-        io.out(
-          "The vault policy does not pin the anchor key to the vault's current ledger key: probarion verify (check f) does.\n",
-        );
-      }
-    }
-    io.setExitCode(accountAuditExitCode(report));
-  });
-
+export function registerTx(program: Command, io: CliIo): void {
   const tx = program
     .command("tx")
     .description("transaction commands (proofs over JSON-RPC: nothing is signed or sent)");

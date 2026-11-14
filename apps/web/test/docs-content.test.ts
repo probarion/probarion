@@ -327,6 +327,8 @@ const CLI_TREE: Readonly<Record<string, readonly string[]>> = {
   spend: ["approve", "reject"],
   check: [],
   payee: ["check"],
+  account: ["audit"],
+  tx: ["prove"],
   verify: [],
 };
 

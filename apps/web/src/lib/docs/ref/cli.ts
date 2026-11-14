@@ -6,7 +6,8 @@ import type { RefColumn, RefTable } from "./types";
  * the program and pins these rows to it: the command paths, each option's flags as commander spells
  * them, which options are required (marked by commander, or refused at run time), each default, who
  * signs, the gas and deposit of each printed call, the `help` command that commander adds, the exit
- * codes that `check --help`, `payee check --help` and `verify --help` list, and the number ranges and
+ * codes that `check --help`, `payee check --help`, `account audit --help`, `tx prove --help` and
+ * `verify --help` list, and the number ranges and
  * caps that the "What it does" cells of `vault create`, `mandate create`, `agent add` and `check`
  * state, read from the CLI's source and the vault's constants.
  *
@@ -305,6 +306,44 @@ export const TABLES: readonly RefTable[] = [
     ],
   },
   {
+    id: "cli-commands-account",
+    label: "Account commands",
+    columns: COMMAND_COLUMNS,
+    rows: [
+      {
+        id: "cli-account-audit",
+        cells: {
+          command: "`account audit <account>`",
+          options: ["`--vault-policy`", "`--builds <file>`", "`--json`"].join(", "),
+          does: "Audits any NEAR account at one block. It reads `view_account` at the final block and `view_access_key_list` at that block, and says what each access key can do if it leaks (full access, receiver and methods, the allowance for gas, gas keys) and what code the account runs (its own code, or a NEP-591 global contract by hash or by publisher account). A permission it cannot read counts as full access. `--vault-policy` holds the keys to a Probarion vault's (function-call keys on the account itself for `spend` or `anchor`, each with a limited allowance and no gas key) and the code to the recorded vault builds. It does not pin the anchor key to the vault's ledger key, which `verify` check f does. `--builds` names the builds the code must match: a code-hashes record such as `contracts/code-hashes.json`, or a list. `--json` prints the report, with amounts as decimal strings. It runs the account lock audit of `@probarion/near`. In this repository, not in npm 0.1.1.",
+          signs: "Nothing: it reads two views, and signs and sends nothing.",
+        },
+      },
+    ],
+  },
+  {
+    id: "cli-commands-tx",
+    label: "Transaction commands",
+    columns: COMMAND_COLUMNS,
+    rows: [
+      {
+        id: "cli-tx-prove",
+        cells: {
+          command: "`tx prove <tx-hash>`",
+          options: [
+            "`--signer <account>` (required)",
+            "`--head-rpc <urls>`",
+            "`--archival-rpc <urls>`",
+            "`--json`",
+          ].join(", "),
+          does: "Proves a transaction and every receipt it led to. It reads the head block on one RPC origin and matches its hash, height and `block_merkle_root` on another, reads the transaction, fetches a `light_client_proof` for it and for each receipt, and verifies each one under that head. It prints each proven outcome (id, executor, block height, status) with the NEP-297 events it logged, and a failed receipt is proven as a failure. `--signer` is the account that signed the transaction. `--head-rpc` takes URLs on at least two origins and falls back to `--rpc`, `NEAR_RPC_URLS`, then the network defaults, which are on one origin on testnet, so give two there. `--archival-rpc` falls back to `NEAR_ARCHIVAL_RPC_URLS`, else FastNEAR's archival node. The head is trusted, not proven: validator signatures are not checked. `--json` prints the head, the origins and the proven outcomes. It runs the outcome proof verifier and the event reader of `@probarion/near`. In this repository, not in npm 0.1.1.",
+          signs:
+            "Nothing: it reads blocks, the transaction and its proofs, and signs and sends nothing.",
+        },
+      },
+    ],
+  },
+  {
     id: "cli-commands-verify",
     label: "The verify command",
     columns: COMMAND_COLUMNS,
@@ -344,7 +383,7 @@ export const TABLES: readonly RefTable[] = [
         cells: {
           command: "`help [command]`",
           options: "None",
-          does: "Prints the help of the command it names, or of the program when it names none, as `--help` does: `help verify` prints what `verify --help` prints. Each group has its own for the commands in it: `vault help`, `mandate help`, `agent help`, `ledger help`, `spend help` and `payee help`, so `vault help create` prints the help of `vault create`.",
+          does: "Prints the help of the command it names, or of the program when it names none, as `--help` does: `help verify` prints what `verify --help` prints. Each group has its own for the commands in it: `vault help`, `mandate help`, `agent help`, `ledger help`, `spend help`, `payee help`, `account help` and `tx help`, so `vault help create` prints the help of `vault create`.",
           signs: "Nothing: no transaction.",
         },
       },
@@ -357,6 +396,8 @@ export const TABLES: readonly RefTable[] = [
       { key: "code", label: "Code" },
       { key: "check", label: "check" },
       { key: "payee", label: "payee check" },
+      { key: "account", label: "account audit" },
+      { key: "tx", label: "tx prove" },
       { key: "verify", label: "verify" },
       { key: "other", label: "Every other command" },
     ],
@@ -367,6 +408,9 @@ export const TABLES: readonly RefTable[] = [
           code: "`0`",
           check: "The vault would accept the spend. It may hold it for an approver.",
           payee: "Allow: every check ran and passed.",
+          account:
+            "Locked: no key acts as full access, and the key policy and the recorded build match when given.",
+          tx: "Proven: the transaction and every receipt it led to are committed under the head. A failed receipt is proven as a failure.",
           verify:
             "No check fails or is UNPROVEN. A skipped check still exits 0: check i skips a vault that names no factory.",
           other:
@@ -380,6 +424,9 @@ export const TABLES: readonly RefTable[] = [
           check:
             "The vault would refuse the spend, or the check could not run: `error:` on stderr.",
           payee: "Block: a reason not to pay, or the check could not run: `error:` on stderr.",
+          account:
+            "Not locked, a blocking finding (a key outside the policy, code that is not a recorded build), or a failed read: `error:` on stderr.",
+          tx: "Not proven: a proof did not verify, the two head providers disagree, or a read failed: `error:` on stderr.",
           verify:
             "A check fails, which always wins over unproven, or verify could not run: `error:` on stderr and no `RESULT` line.",
           other:
@@ -393,6 +440,9 @@ export const TABLES: readonly RefTable[] = [
           check: "None",
           payee:
             "Warn: something to confirm with the payee first, a read it could not make, or no vault given.",
+          account:
+            "Locked, with a warning to read: a key that can call any method, or an unlimited allowance.",
+          tx: "None",
           verify:
             "No check fails, but at least one is UNPROVEN: its row names the spends and what to supply.",
           other: "None",
@@ -406,6 +456,9 @@ export const TABLES: readonly RefTable[] = [
             "A usage error: a missing, malformed or conflicting flag, an `--invoice` file that is not UTF-8 text, or a `PROBARION_AGENT_KEY` that is not an ed25519 secret key.",
           payee:
             "A usage error: a missing or malformed payee, a `--vault` or `PROBARION_VAULT_ID` that is not a NEAR account id, an empty URL list, or an unknown or malformed flag.",
+          account:
+            "A usage error: a missing or malformed account, an unknown or malformed flag, or a `--builds` file that cannot be read.",
+          tx: "A usage error: a missing or malformed hash or `--signer`, an unknown or malformed flag, or head URLs on fewer than two origins.",
           verify:
             "A usage error: a missing, malformed or conflicting flag, a `--snapshot` file that exists or is the ledger, an `--offline` snapshot whose `vault`, `network` or `taken_at` is malformed, an `--invoices` folder that cannot be read or holds no `.txt` file, or an invoice or `--system-prompt` file that cannot be read or is not UTF-8 text.",
           other: "None",
