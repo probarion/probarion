@@ -29,8 +29,9 @@ refusal is a code (`malformed`, `path_too_long`, `outcome_root_mismatch`, `block
 `head_mismatch`, `id_mismatch`, `executor_mismatch`, `status_mismatch`) and a detail.
 
 - `verifyTransactionOutcomes(proofs, head, { txHash, signerId })` proves a transaction and its receipts under
-  one head. It refuses a receipt the transaction did not lead to (`not_linked`), a duplicate, an empty list and
-  a list of more than 256 proofs.
+  one head. It refuses a receipt the transaction did not lead to (`not_linked`), a tree that leaves out a receipt
+  a proven outcome created (`incomplete`), a duplicate, an empty list and a list of more than 256 proofs.
+  `complete: false` proves a linked subset instead, with no claim about the receipts it leaves out.
 - `proveTransaction(rpc, { txHash, senderId, head })` reads the `tx` answer for the receipt ids, fetches a
   proof for the transaction and each receipt, and verifies the tree. `fetchOutcomeProof` sends one
   `light_client_proof` with nearcore's params.
@@ -39,9 +40,9 @@ refusal is a code (`malformed`, `path_too_long`, `outcome_root_mismatch`, `block
 - `merkleRootFromPath`, `lightBlockHash` and `outcomeLeafHash` are the low-level pieces.
 
 What it does not prove: the head you pass in. Reading it from two providers run by different operators lowers
-the trust in it; it does not remove it. Checking the head by validator signatures is **Planned**. It proves
-the outcomes in the list and that each one descends from the transaction; a receipt that the `tx` answer
-leaves out is not detected.
+the trust in it; it does not remove it. Checking the head by validator signatures is **Planned**. The set of
+receipts does not rest on the `tx` answer: a receipt it leaves out leaves a proven receipt id without a proof
+(`incomplete`), and a receipt it invents does not link (`not_linked`).
 
 Tested on recorded mainnet proofs of Probarion's payout spend 2 (transaction
 `BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9`, all 11 outcomes of its tree) and of the spend refused in the

@@ -78,11 +78,13 @@ The software is an unaudited beta.
 
   The package's other 68 tests cover its JSON-RPC client, its encoding helpers, the no-network and browser-safe
   guards, and its exports (`packages/near/test/exports.test.ts` pins the 42 values and 50 types of the API):
-  369 tests in all, offline, from `pnpm --filter @probarion/near test`. The fixtures were recorded on
+  400 tests in all, offline, from `pnpm --filter @probarion/near test`. The fixtures were recorded on
   2026-11-14 by opt-in scripts (`pnpm --filter @probarion/near run record:proofs`, `record:keys` and
   `record:poa`) that read public RPC and sign nothing. Planned, not in this package: Probarion's verifier, its
   settlement watcher and the console moving onto these modules, an MCP tool that proves a receipt, and a NEP-641
-  resolver.
+  resolver. The root README's new section [Primitives for NEAR Builders](README.md#primitives-for-near-builders)
+  lists each primitive with its NEAR area, status, a usage snippet and links to its source, tests and example, and
+  the areas researched and not built, with the reason.
 - `probarion account audit <account> [--vault-policy] [--builds <file>] [--json]` and
   `probarion tx prove <tx-hash> --signer <account> [--head-rpc <urls>] [--archival-rpc <urls>] [--json]`
   (`packages/cli/src/commands/account.ts` and `tx.ts`), in the CLI built from this repository and not in release

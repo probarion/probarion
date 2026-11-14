@@ -203,6 +203,7 @@ are in [Libraries, templates and AI-assisted code](#libraries-templates-and-ai-a
 - [Why it is different](#why-it-is-different)
 - [Privacy & Private AI](#privacy--private-ai)
 - [How a payment works](#how-a-payment-works)
+- [Primitives for NEAR Builders](#primitives-for-near-builders)
 - [Safety architecture](#safety-architecture)
 - [On-chain proof](#on-chain-proof)
 - [Where things are in this repository](#where-things-are-in-this-repository)
@@ -476,6 +477,7 @@ What exists at this commit, and what does not yet.
 | `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped**, on npm as `probarion` 0.1.1. `vault create` reads the testnet factory and prints its `create_vault` call for the owner to sign | [`packages/cli`](packages/cli) |
 | CLI `check`, `verify` and `ledger export` | **Shipped**, in the same 0.1.1 package. `verify` exits 0 when every check passes, 1 when one fails or verify cannot run, 2 when a burn is unproven | [`packages/cli`](packages/cli) |
 | Payee check: `probarion payee check` and the `/check` page | **Built** and tested, in this repository, not in npm 0.1.1; `/check` is live on probarion.xyz from the deploy that ships this commit. Before a mandate names a payee, it answers allow, warn or block with one reason per check: the account exists, Probarion's seed blocklist (two testnet names from Probarion's own eval cases and test fixtures, which Probarion does not hold, with no report of wrongdoing), a lookalike of the vault's payees, contract code, new or code changed in about 7 days (on Base, nonce 0, a weaker sign) and past payments. A read it could not make warns, and so does a check with no vault. It is read-only and signs nothing; the exit code is 0 for allow, 2 for warn, and 1 for block or a check that could not run. `/check` runs the same check in the browser through `@probarion/sdk/payee`, and shows each read with its host. On 2026-11-13 at 20:44:51 UTC, `node packages/cli/dist/bin.js payee check near:probarion-payee.testnet --network testnet --vault v0.probarion.testnet` printed ALLOW, and again at 22:26 UTC. At 22:26 UTC the owner's mainnet payees printed WARN: `probarion-duong.near` was new within about 7 days, and the Base payee of S1 and S2 has sent no transaction (nonce 0). At 23:10 UTC, `near:probarion-duonq.near` on mainnet, one letter off mandate 1's payee, printed BLOCK (`lookalike`, `not_found`) and exited 1 ([runs](docs/evidence/payee-check/2026-11-13.txt)). Two real payees of one vault 1 or 2 edits apart block each other. Offline: `pnpm --filter @probarion/core exec vitest run test/payee-check.test.ts` | [`packages/core/src/payee-check.ts`](packages/core/src/payee-check.ts), [`packages/sdk/src/payee-signals.ts`](packages/sdk/src/payee-signals.ts), [`packages/cli/src/commands/payee.ts`](packages/cli/src/commands/payee.ts), [`apps/web/src/app/check`](apps/web/src/app/check) |
+| `@probarion/near`: outcome proof verifier, receipt-bound events, account lock audit, NEAR Intents POA withdrawal check; CLI `account audit` and `tx prove` | **Built** and tested, in this repository, not on npm yet: it reaches npm with the next release, and npm 0.1.1 has neither the package nor the two commands. `pnpm --filter @probarion/near test` runs 400 tests offline on fixtures recorded from public RPC, among them mainnet proofs of spend 2 and of the drill's refused spend. The POA bridge status reader is Experimental, and checking the trusted head by validator signatures is Planned ([the section](#primitives-for-near-builders)) | [`packages/near`](packages/near), [`packages/cli/src/commands/account.ts`](packages/cli/src/commands/account.ts), [`packages/cli/src/commands/tx.ts`](packages/cli/src/commands/tx.ts) |
 | npm release 0.1.0 of the packages | **Shipped** on 2026-11-09: `@probarion/core`, `@probarion/sdk` and `probarion` 0.1.0, published from the tag `sdk-v0.1.0` on `main` by the release pipeline, with npm provenance. ESM only, Node 24 or newer | [`.github/workflows/release.yml`](.github/workflows/release.yml), [npm](https://www.npmjs.com/package/@probarion/sdk) |
 | npm release 0.1.1, the first with `@probarion/mcp` | **Shipped** on 2026-11-11: `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` 0.1.1, published from the tag `sdk-v0.1.1` on `main` by the release pipeline, with npm provenance, under npm's `latest` tag. The official MCP registry lists the server as `io.github.probarion/probarion`, from its entry [`packages/mcp/server.json`](packages/mcp/server.json). Install with `npm install @probarion/sdk @probarion/core`, or `npm install -g probarion` for the CLI, and run the MCP server with `npx -y @probarion/mcp@0.1.1`. ESM only, Node 24 or newer | [`.github/workflows/release.yml`](.github/workflows/release.yml), [`docs/RUNBOOK.md`](docs/RUNBOOK.md#release-011), [npm](https://www.npmjs.com/package/@probarion/mcp), [MCP registry](https://registry.modelcontextprotocol.io/?q=io.github.probarion/probarion) |
 | Web console (Next.js 16 and Supabase): the public site, wallet sign-in, vault overview, freeze, approvals, keys, mandates, top-up, Payables, the public proof page | **Live on NEAR testnet** for the parts tried there with a real wallet, as this row says below; adding an email alert and the 1Click top-up of Base USDC are not tried yet. Deployed at [probarion.xyz](https://probarion.xyz) on testnet, from `main`. What this row says of the landing page and the footer is live on probarion.xyz from the deploy that ships this commit. The landing page leads with mainnet: the hero's first card is S2 of 2026-11-13, 0.25 USDC burned on NEAR and 0.2476 USDC arrived on Base after the POA bridge's 0.0024 fee, on an attested model's proposal, with the TEE image not pinned. Then the landing page asks the testnet vault live: a visitor picks what the agent tries (a normal invoice, a hijacked prompt, an inflated invoice, a made-up mandate, someone else's key) and the browser calls the vault's `check_spend` view on `v0.probarion.testnet` through public testnet RPC, whatever network the page is on. It shows the contract's answer and the mandate as the chain has it, falls back to answers recorded from the chain when no RPC host answers, and shows those answers as a table without JavaScript. Right under it, the mainnet section shows the two Base payouts, "Ask the mainnet contract", which sends one read-only `check_spend` view of the mainnet vault a click from the browser, and "Verify the vault yourself", the no-clone Bash and PowerShell blocks of [Re-check every decision](#re-check-every-decision) (probarion.xyz serves their files under `/samples/mainnet` from the same deploy). The landing page also compares Probarion with a limit contract you write, and shows the SDK call an agent makes. Its payment journey shows the five steps of one invoice, then the demo vault's four invoices as one table: each row says what the invoice asked and what the vault did, and links the invoice file, its transaction and its ledger lines. A second table, "Attested decisions on testnet", gives the result of each check (A1 to A7 offline, O1 and O2 online, and A8) on the Canary's 2 attested decisions and the demo vault's 5, and says that these checks do not show which model image ran. Further down, "The console" shows three screenshots of the testnet console from 2026-11-09: a held spend, the invoice's page in Payables, and the vault's spends once paid. Its head says once that every shot is of the testnet demo vault on that date, and each step links its transaction where it has one. The landing's status section, "What works" in the header, opens with a summary of what is verified and what is not, sorts its rows into four groups and gives each row a proof mark (Verified, In part or Not tried yet) and, where it applies, a use mark (Running or Released), with links to the transactions, packages and run records behind them; the console's row lists its parts, what was tried on testnet and what is not tried yet, and the section ends with the site's known gaps, which the beta strip on every page links. After it, "Built on NEAR, with NEAR AI Cloud" says what NEAR and NEAR AI Cloud each do for Probarion and links the evidence of each, ends its card with "Also in the stack" (NEAR Intents and the Intel TDX and NVIDIA NRAS checks of `verify --online`), then shows "Where to get Probarion": four cards for npm, the official MCP Registry, GitHub and the Chrome Web Store, each with what you get, the exact package, server, repository or listing name and its version, and one link. Three cards sit under their owner's unmodified logo and the store card under Probarion's own mark. The trademark notices close the section in a small footer. The site's footer lists the payee check (`/check`) with the product pages and links a "Run a pilot" issue form (`.github/ISSUE_TEMPLATE/pilot.yml`) with the developers' links. The top-up tab sends USDC on NEAR from the owner's wallet. On testnet it also has a faucet button that adds 25 test USDC straight into the vault, once a UTC day per vault and for up to 3 vaults per owner account, with no wallet: built and tested, and its key is set on probarion.xyz; on 2026-11-09 it added 25 test USDC to `demo.vaults.probarion.testnet` ([runbook](docs/RUNBOOK.md#testnet-faucet)). The 1Click top-up of the vault's Base USDC inside NEAR Intents is mainnet only and has not been tried with a live quote yet. Sign-in and Create a vault have been tried there with a real wallet (Meteor, on testnet: `trial.vaults.probarion.testnet`). On 2026-11-09 the testnet demo vault `demo.vaults.probarion.testnet` went further with a real wallet: Create a vault, the agent and ledger keys, the faucet, a mandate, four Payables invoices and a public proof page ([evidence](docs/evidence/demo-vault)); its approver approved the held spend with near-cli. A fifth invoice, INV-2004 (4 test USDC), ran the same day for those screenshots: the vault held it as spend 3, and the approver approved it with near-cli too. Payables reads a held spend from the chain each time its list or the invoice's page opens, so an invoice whose spend an approver approved reads "Approved and paid on NEAR", and one rejected or whose hold expired says nothing was paid. On 2026-11-11 more of the console was tried with the owner's real wallet (Meteor, on testnet; Claude drove the console and the owner signed): Freeze and Unfreeze on the demo vault, and on `trial.vaults.probarion.testnet` the Top-up tab's USDC transfer on NEAR, the Agent (MCP) tab and approving two held spends on the console's approval page ([evidence](docs/evidence/trial-vault/README.md)). On 2026-11-12, on the same vault and in the same way, the owner rejected a held spend on the approval page, revoked a mandate on the Mandates tab, added a spare agent key on the Keys tab and then removed it there, and withdrew the vault's whole balance, 1 test USDC, with Withdraw all on the Overview ([evidence](docs/evidence/trial-vault/README.md#2026-11-12-reject-revoke-a-spare-agent-key-and-withdraw-all)). Later on 2026-11-12 the owner froze and unfroze the demo vault again from the console, signed in Meteor ([evidence](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)). Adding an email alert has not been tried with a real wallet yet. The sign-in page says what a vault takes (on testnet, a testnet account and about 3.3 test NEAR; on mainnet, vaults cannot be created yet) and links the ledger test for visitors with no wallet. The console uses the landing page's brand: 44px ink pills, a red-outlined Reject beside Approve on a held payment, 16px fields, text at 7:1 contrast or more with a line height of 1.5 on every console page, and tabs that mark the open one. The site targets WCAG 2.2 AA on every page and the AAA text criteria (1.4.6 contrast, 1.4.8 presentation) in the landing copy, the docs, the console and the proof page; it does not claim AAA conformance for the whole site. It has no dark theme: it declares `color-scheme: only light`, which also turns off a browser's own automatic dark mode, and Windows contrast themes still apply. `apps/web/test/typography-aaa.test.ts` reads the CSS and checks each text colour pair (7:1, or 4.5:1 at 24px and up), line height, the 12px floor and light weights, and paragraph spacing and line length for the rules it lists. `apps/web/e2e/a11y.spec.ts` runs axe-core's WCAG A and AA rules and its AAA contrast rule over six public pages, checks reflow at 320px, and lays out every docs article and the public reading pages at 1440px to check that each line of reading text has 80 characters or fewer and each paragraph break is 2.5em or more. It is a local run with test settings only, in which the proof page shows its unavailable view, and it does not reach the signed-in console pages. Create a vault opens the new vault's page, where a checklist shows its owner the five steps to the first agent payment (keys, USDC, a mandate, an invoice paid) and links each to its tab; on testnet, Mandates and Payables fill themselves from a sample purchase order and invoice in one click. The Agent (MCP) tab connects the owner's own AI agent through the MCP server: the agent makes its two keys on its own machine, the owner pastes their public keys and signs `add_agent` and `set_ledger_key` in their wallet, and the tab gives the settings for Claude Code, Claude Desktop, Cursor and Codex, which carry only the vault id; it withholds the ledger key from a vault whose ledger hosted Payables or another key's anchors keep, and the Keys tab lists keys held outside Probarion and asks before a new ledger key replaces one. The Agent (MCP) tab's paste-and-sign path was tried on testnet on 2026-11-11, with the two keys that `npx -y @probarion/mcp@0.1.1 init` made on the owner's machine: the tab then showed "Ready on chain."; that run does not show the withholding or the Keys tab's ask, and the run of 2026-11-12 added and removed only an agent key, so it does not show the ask either. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
@@ -645,6 +647,183 @@ In words, as `Probarion.process()` runs it:
    bridge then releases the USDC on Base; on testnet the stub records the burn and nothing leaves NEAR.
 6. **The ledger records and anchors.** The outcome becomes a ledger entry, and the ledger key anchors
    the new root on the vault. `verify` later ties each on-chain spend to exactly one decision.
+
+## Primitives for NEAR Builders
+
+Probarion's checks on a payment are made of parts that work for any NEAR app. They are in
+[`@probarion/near`](packages/near/README.md) (`packages/near`), with two dependencies (`@noble/hashes`, `bs58`).
+Its pure functions use no network and no Node built-in, so they run the same in Node and in a browser; its
+online helpers take any JSON-RPC client and sign nothing.
+
+**Not on npm yet.** The package and the two CLI commands below are in the repository at this commit. They reach
+npm with the next release; npm 0.1.1 does not have them. To use them from a clone, build the package and import
+it by its workspace name, as the CLI does (`"@probarion/near": "workspace:*"` in
+[`packages/cli/package.json`](packages/cli/package.json)):
+
+```sh
+git clone https://github.com/probarion/probarion.git && cd probarion
+pnpm install --frozen-lockfile
+pnpm --filter @probarion/near build    # then: import { verifyOutcomeProof } from "@probarion/near"
+pnpm --filter @probarion/near test     # 400 tests, offline, on fixtures recorded from public RPC
+```
+
+Status words in this section: **Implemented** is implemented and tested in this repository at this commit;
+**used by Probarion** means Probarion's CLI runs it; **Experimental** works on what was recorded but rests on
+behaviour that is not documented; **Planned** is not built.
+
+| Primitive | NEAR area | What it does | Status | Source, tests, example |
+| --- | --- | --- | --- | --- |
+| Outcome proof verifier | On-chain Data and Verification | Checks a `light_client_proof` answer against a block you trust, so a receipt's logs, status, gas and receipt ids rest on that block and not on the RPC node that served them. Proves a transaction and every receipt it led to under one head, and refuses a tree with a receipt left out | **Implemented, used by Probarion** (`probarion tx prove`) | [`outcome-proof.ts`](packages/near/src/outcome-proof.ts), [`proof-rpc.ts`](packages/near/src/proof-rpc.ts); [tests](packages/near/test/outcome-proof.test.ts), [tamper tests](packages/near/test/outcome-proof-tamper.test.ts); [example](packages/near/examples/prove-receipt.ts) |
+| Receipt-bound events | On-chain Data and Verification; NFT Standards (NEP-171 events) | Reads NEP-297 events from the contracts you name and, by default, from receipts that succeeded, so a line another contract logs, or one a failed receipt left, does not count. Types NEP-141, NEP-245 and NEP-171 data with exact amounts, and gives each account's net token change | **Implemented, used by Probarion** (`probarion tx prove`) | [`events.ts`](packages/near/src/events.ts); [tests](packages/near/test/events.test.ts), [standards tests](packages/near/test/events-standards.test.ts); [example](packages/near/examples/read-events.ts) |
+| Account lock audit | Account and Wallet; Smart Contracts (code identity) | States what each access key of an account can do if it leaks (full access, receiver and methods, allowance, NEP-611 gas keys), checks the keys against a policy, and matches the account's code, NEP-591 global contracts included, against a code-hashes record. Both views are read at one block | **Implemented, used by Probarion** (`probarion account audit`) | [`access-keys.ts`](packages/near/src/access-keys.ts), [`code-identity.ts`](packages/near/src/code-identity.ts), [`account-rpc.ts`](packages/near/src/account-rpc.ts); [tests](packages/near/test/access-keys.test.ts), [agreement with check f](packages/cli/test/near-lock-agreement.test.ts); [example](packages/near/examples/audit-account.ts) |
+| NEAR Intents POA withdrawal check | NEAR Intents | Builds the `ft_withdraw` call with its `WITHDRAW_TO:` memo, pairs `intents.near`'s `mt_burn` with the POA token's `ft_burn` by receipt, and gives one verdict across the NEAR receipts, the POA bridge's record and the ERC-20 `Transfer` on Base | **Implemented, new**; the bridge status reader `readPoaWithdrawalStatus` is **Experimental** | [`poa.ts`](packages/near/src/poa.ts), [`poa-rpc.ts`](packages/near/src/poa-rpc.ts); [tests](packages/near/test/poa.test.ts), [settlement tests](packages/near/test/poa-settlement.test.ts); [example](packages/near/examples/check-payout.ts) |
+| CLI `account audit` and `tx prove` | Developer Tooling | `probarion account audit <account>` runs the account lock audit on any NEAR account; `probarion tx prove <tx-hash> --signer <account>` reads the head on two RPC origins, proves the transaction's tree and lists the events of the proven outcomes | **Implemented, new** (in the CLI built from this repository, not in npm 0.1.1) | [`account.ts`](packages/cli/src/commands/account.ts), [`tx.ts`](packages/cli/src/commands/tx.ts); [audit tests](packages/cli/test/near-account-audit.test.ts), [prove tests](packages/cli/test/near-tx-prove.test.ts) |
+
+The counts, from `pnpm --filter @probarion/near test` and `pnpm --filter probarion test` at this commit, on
+Windows: 400 tests in `@probarion/near` (167 for the proof verifier, 64 for the events, 53 for the lock audit, 48
+for the POA check, and 68 for the JSON-RPC client, the encoding helpers, the no-network and browser-safe guards
+and the exports), and in the CLI 26 for `account audit`, 15 for `tx prove` and 16 that check the lock audit
+against check f. The fixtures were recorded by opt-in scripts (`pnpm --filter @probarion/near run
+record:proofs`, `record:keys` and `record:poa`) that read public RPC and sign nothing.
+
+### Outcome proof verifier
+
+`verifyOutcomeProof(proof, head, expect?)` recomputes the outcome's Merkle leaf (the Borsh outcome and the hash
+of each log), the chunk and block outcome roots, the block hash from `block_header_lite`, and that block's path
+to the head's `block_merkle_root`. It does not throw: a refusal is a code such as `outcome_root_mismatch` or
+`head_mismatch`, and a detail. `verifyTransactionOutcomes` and `proveTransaction` refuse a receipt the
+transaction did not lead to (`not_linked`) and a tree that leaves out a receipt a proven outcome created
+(`incomplete`), so the set of receipts does not rest on one node's `tx` answer either.
+
+```ts
+import { httpJsonRpc, proveTransaction, readCrossCheckedHead } from "@probarion/near";
+
+const head = await readCrossCheckedHead(
+  httpJsonRpc("https://rpc.mainnet.fastnear.com"),
+  httpJsonRpc("https://rpc.intea.rs"),
+);
+const tree = await proveTransaction(httpJsonRpc("https://archival-rpc.mainnet.fastnear.com"), {
+  txHash: "BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9",
+  senderId: "v0.probarion.near",
+  head,
+});
+if (!tree.ok) throw new Error(`not proven: ${tree.code} at ${tree.index}: ${tree.detail}`);
+for (const o of tree.outcomes) console.log(o.id, o.executorId, o.status.kind, o.block.height);
+```
+
+It is tested on recorded mainnet proofs of two transactions this README records: Probarion's payout spend 2
+(all 11 outcomes of its tree; [the run](#near-mainnet-2026-11-13-s1-a-base-payout)) and the spend refused in
+the drill, whose failed receipt is proven as a failure ([the run](#near-mainnet-2026-11-14-a-drill-the-team-rehearsed)).
+The tests change each committed field of a proof and check the refusal, and run a seeded mutation loop of 500
+runs. Do this, see that: change one digit of a log in the `proofs` of
+[`mainnet-spend-2.json`](packages/near/test/fixtures/proofs/mainnet-spend-2.json), run
+`pnpm --filter @probarion/near test`, and the proof tests fail with `outcome_root_mismatch`.
+
+What it does not prove: the head you pass in. `readCrossCheckedHead` reads the final block on one provider and
+matches its hash, height and `block_merkle_root` on another; that lowers the trust in the head, it does not
+remove it. The block it reports for an outcome is the block that commits it, a block or more after the one the
+receipt ran in.
+
+### Receipt-bound events
+
+`eventsOf(source, { emitters, standard?, event?, status? })` requires the list of emitters. Each event carries
+its receipt id, emitter, log index, status and `proven`, which is true when the source is the verifier's
+proven outcomes. `nep141Events`, `nep245Events` and `nep171Events` give amounts as exact `bigint` values from
+canonical U128 strings, and report each refused event or item as a problem with a stable code instead of
+skipping it. A receipt that an outcome lists as created and the source lacks, such as a refund an RPC leaves
+out, is a `missing_outcome` problem.
+
+```ts
+import { eventsOf, ftDeltas } from "@probarion/near";
+
+// tree.outcomes from the verifier above: each event then says proven: true
+const burns = eventsOf(tree.outcomes, { emitters: ["intents.near"], standard: "nep245", event: "mt_burn" });
+for (const e of burns) console.log(e.receiptId, e.emitter, e.event, e.proven);
+
+// an RPC `tx` answer works too; deltas maps each account to its net change, refunds netted out
+const { deltas, problems } = ftDeltas(tx, token);
+```
+
+Tested on Probarion's recorded testnet spends, its two mainnet payouts and the expected logs in the unit tests
+of `near-contract-standards` 5.29.1, with seeded property tests.
+
+### Account lock audit
+
+`readAccountLock(rpc, accountId, { policy?, builds? })` reads `view_account` at the final block and
+`view_access_key_list` at that block's hash, and returns `locked`, `ok` and lines to print. A permission it cannot
+read counts as full access, a key outside the policy is a blocking finding, and code that follows a publisher
+account (`global_by_account`) is flagged as changeable.
+
+```ts
+import { httpJsonRpc, readAccountLock } from "@probarion/near";
+
+const vault = "v0.probarion.near";
+const report = await readAccountLock(httpJsonRpc("https://rpc.mainnet.fastnear.com"), vault, {
+  policy: { rules: [{ receiverId: vault, methods: ["spend"] }, { receiverId: vault, methods: ["anchor"] }] },
+});
+for (const line of report.lines) console.log(line);
+```
+
+Tested on `v0.probarion.near` ([the mainnet vault](#near-mainnet-2026-11-11)) and a testnet factory vault,
+recorded from public RPC, and on the drill's recorded `view_access_key` answers. On the 13 recorded verifier
+snapshots in `docs/evidence`, and on changed copies of them, it agrees with the verifier's check f; the test also
+names the two gas key cases where the audit is stricter than check f. Gas keys are tested on the near-api-js
+7.4.0 shape, as no gas key is in the recorded evidence.
+
+### NEAR Intents POA withdrawal check
+
+`poaWithdrawCall` builds the call; its `argsJson` is, byte for byte, what Probarion's vault sent in its mainnet
+spends 2 and 3. `verifyPoaSettlement` returns five named checks (`near_burn`, `memo_address`, `bridge_record`,
+`destination_transfer`, `amounts`), with a required `maxFee`.
+
+```ts
+import { poaWithdrawCall, verifyPoaSettlement } from "@probarion/near";
+
+const call = poaWithdrawCall({
+  asset: "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+  chain: "base",
+  address: "0xB22EAcDf11177d6D635E8956BBbBdd54B3E6EB27",
+  amount: 1_000_000n,
+}); // intents.near ft_withdraw, 1 yoctoNEAR, 100 Tgas: sign it with your own wallet or near-api-js
+
+// tx, bridgeAnswer and destinationReceipt: the three reads in packages/near/examples/check-payout.ts
+const verdict = verifyPoaSettlement({ near: tx, nearTxHash, bridgeAnswer, destinationReceipt, expect });
+for (const check of verdict.checks) console.log(check.ok ? "pass" : "FAIL", check.id, check.detail);
+```
+
+It settles both of Probarion's mainnet payouts, in USDC's smallest unit: 1000000 burned, 997600 received, a fee of
+2400 ([S1](#near-mainnet-2026-11-13-s1-a-base-payout)); and 250000, 247600, 2400
+([S2](#near-mainnet-2026-11-13-s2-an-attested-base-payout)). Which Base transaction is the burn's release, and the
+fee, are the bridge's word; the verdict bounds them with `maxFee`, the release's sender when `releaseFrom` names
+it, the Base block time against the burn's NEAR block when both are known, and the releases already counted. The
+Base receipt is what the Base RPC answered, bound by hash to the bridge record; it is not proven.
+
+### CLI
+
+Both commands read over JSON-RPC and sign nothing. From a clone, after
+`pnpm --filter @probarion/core build`, `pnpm --filter @probarion/sdk build`, `pnpm --filter @probarion/near build`
+and `pnpm --filter probarion build`:
+
+```sh
+node packages/cli/dist/bin.js --network mainnet account audit v0.probarion.near --vault-policy
+node packages/cli/dist/bin.js --network mainnet tx prove BdN7oB76hAv1o5iAGsyszQx6S5NwEuerYDsWguRbrSQ9 --signer v0.probarion.near
+```
+
+`account audit` exits 0 when the account is locked, 2 with warnings to read, and 1 when it is not locked or has
+a blocking finding; `tx prove` exits 0 when the tree is proven and 1 when it is not. The tests run both commands
+on the recorded fixtures, with a scripted fetch and no network.
+
+### Planned, and not built
+
+- **Planned:** checking the trusted head itself by validator signatures; a typed schema for the NEAR Intents
+  `dip4` events (`eventsOf` already returns them by name); Solana settlement in the POA check; a NEP-330 source
+  metadata check; a NEP-641 resolver, for which we found no test vectors; an MCP tool that proves a receipt; and
+  Probarion's verifier, settlement watcher and console moving onto these modules.
+- **Not built, by choice:** a new contract, as the vault and factory are deployed with recorded code hashes and
+  this work leaves them as they are; NFT standards beyond the NEP-171 events above, as NFTs are not part of
+  Probarion's payments and there is no NFT in its records to test against; a NEP-413 sign-in kit, RPC failover
+  and storage-aware token transfers, which near-api-js 7 already has; and a re-wrap of NEAR AI Cloud
+  attestation, which would overlap with `@nearai/inference-sdk`.
 
 ## Safety architecture
 
@@ -1224,7 +1403,8 @@ and how to check each transaction, is in
 | [`contracts/deployments`](contracts/deployments), [`contracts/code-hashes.json`](contracts/code-hashes.json) | The testnet accounts and smoke transactions, the mainnet record of `v0.probarion.near` (its runs of 2026-11-11 and 2026-11-13), and the recorded reproducible code hashes |
 | [`packages/core`](packages/core) | `@probarion/core`: types, canonical hashing, keys, the ledger, the policy engine, the attestation checks and the verifier. No network, no file system |
 | [`packages/sdk`](packages/sdk) | `@probarion/sdk`: the RPC client, the vault, intents and factory clients, the NEAR AI Cloud adapter, the ledger stores, the `Probarion` class, `snapshot()` and `verify()`, and test doubles |
-| [`packages/cli`](packages/cli) | `probarion`: owner and approver transaction printers and key generation |
+| [`packages/cli`](packages/cli) | `probarion`: owner and approver transaction printers and key generation, and the `account audit` and `tx prove` commands |
+| [`packages/near`](packages/near) | `@probarion/near`: the [primitives for NEAR builders](#primitives-for-near-builders) (outcome proof verifier, receipt-bound events, account lock audit, NEAR Intents POA withdrawal check), with fixtures recorded from public RPC and an example for each. Not on npm yet |
 | [`packages/mcp`](packages/mcp) | `@probarion/mcp`: the MCP server, five tools over `@probarion/sdk`, none of which takes an address |
 | [`examples/402`](examples/402) | The pay-per-call example: an endpoint that answers `402` with a price, and an agent that pays it through `@probarion/mcp` under a mandate. When the price is above the mandate's cap per payment the agent counters once at that cap and pays the seller's new quote or walks away with no payment, checks the data it bought and writes a receipt line, and `pnpm --filter @probarion/example-402 run demo` shows a walk-away, a negotiated sale and a refusal offline in about a second, and on testnet only with `--testnet` (run on testnet on 2026-11-11: spend 21 paid a price countered from 0.012 to 0.01, [evidence](docs/evidence/402-vault)) |
 | [`apps/web`](apps/web) | The web console (Next.js 16, Supabase with row-level security), live on NEAR testnet |
@@ -1315,7 +1495,7 @@ You see `test/pay-per-call.test.ts` pass: 20 calls paid at 0.01 test USDC and th
 | --- | --- |
 | **Docs Center** | [Docs home](https://probarion.xyz/docs) · [Evaluate in 5 minutes](https://probarion.xyz/docs/start/evaluate-in-5-minutes) · [Mainnet payouts, step by step](https://probarion.xyz/docs/start/mainnet-payout) · [Owner quickstart](https://probarion.xyz/docs/start/owner-quickstart) · [Developer quickstart](https://probarion.xyz/docs/start/developer-quickstart) · [Errors](https://probarion.xyz/docs/build/errors) · [For AI agents](https://probarion.xyz/docs/resources/for-ai-agents) · [llms.txt](https://probarion.xyz/llms.txt) |
 | **Design** | [Design spec](docs/specs/2026-10-21-probarion-design.md) · [Interfaces: ABI, ledger, attestation checks, verifier](docs/specs/2026-10-21-probarion-interfaces.md) · [Security policy](SECURITY.md) · [Threat model](docs/THREAT_MODEL.md) |
-| **Packages** | [`@probarion/core`](packages/core/README.md) · [`@probarion/sdk`](packages/sdk/README.md) · [`probarion` CLI](packages/cli/README.md) · [`intents-stub`](contracts/intents-stub/README.md) |
+| **Packages** | [`@probarion/core`](packages/core/README.md) · [`@probarion/sdk`](packages/sdk/README.md) · [`probarion` CLI](packages/cli/README.md) · [`@probarion/near`](packages/near/README.md) · [`intents-stub`](contracts/intents-stub/README.md) |
 | **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Web deploy runbook](docs/runbooks/web-deploy.md) · [Key rotation](docs/ops/key-rotation.md) · [Usage numbers](docs/ops/metrics.md) · [Watcher](docs/ops/watcher.md) · [Alerts](docs/ops/alerts.md) · [Incident runbook](docs/RUNBOOK.md) · [Monitoring](docs/ops/MONITORING.md) |
 | **This repository** | [AGENTS.md](AGENTS.md), for AI agents and humans who build here · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Changelog](CHANGELOG.md) · [CI runs](https://github.com/probarion/probarion/actions/workflows/ci.yml) |
 
