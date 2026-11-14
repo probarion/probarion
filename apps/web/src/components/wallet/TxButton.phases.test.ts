@@ -57,6 +57,7 @@ vi.mock("./WalletProvider", () => ({
   }),
 }));
 
+import { actionKey, type KeyValueStore, writeLock } from "@/lib/near/lock";
 import { freezeTx } from "@/lib/near/tx";
 import { TX_PHASE_LABELS, TX_PHASE_LINE } from "@/lib/ui/pending";
 import { TxButton, type TxButtonBaseProps } from "./TxButton";
@@ -128,9 +129,28 @@ describe("TxButton's source", () => {
     expect(run.indexOf(guard, answered)).toBeGreaterThan(answered);
     expect(run.indexOf(guard, answered)).toBeLessThan(run.indexOf("inflight.current = true"));
     // the refresh runs in a transition, and the guard is up before the render that shows it
-    expect(run.indexOf("refreshingNow.current = true;")).toBeLessThan(
-      run.indexOf("startRefresh(() => router.refresh());"),
+    const refresh = run.indexOf("startRefresh(() => {");
+    expect(refresh).toBeGreaterThan(-1);
+    expect(run.indexOf("refreshingNow.current = true;")).toBeLessThan(refresh);
+  });
+
+  it("lowers the refreshing guard after a commit, not in a render that may not commit", () => {
+    expect(source).toContain("useEffect(() => {\n    refreshingNow.current = refreshing;\n  });");
+    expect(source).not.toMatch(/\n {2}refreshingNow\.current = refreshing;/);
+  });
+
+  it("catches a refresh that throws inside the transition, so the result stays on screen", () => {
+    const refresh = run.slice(run.indexOf("startRefresh(() => {"));
+    expect(refresh).toMatch(
+      /^startRefresh\(\(\) => \{\s*(\/\/[^\n]*\s*)?try \{\s*router\.refresh\(\);\s*\} catch/,
     );
+  });
+
+  it("reads the focus for the unlock control after the lock is written and the result set", () => {
+    const read = run.indexOf("focusUnlock.current =");
+    expect(read).toBeGreaterThan(run.indexOf("writeLock("));
+    expect(read).toBeGreaterThan(run.indexOf("setResult(r);"));
+    expect(source).toContain("ref={unlockControl}");
   });
 
   it("signs once per click: one sendTx, and the lock written from its result", () => {
@@ -268,6 +288,43 @@ describe("TxButton's phases", () => {
     await click();
     expect(h.sends).toHaveLength(1);
   });
+
+  it("a lock read back on load is shown beside the region, not read out; a click's result is read out", async () => {
+    const saved = new Map<string, string>();
+    const store: KeyValueStore = {
+      getItem: (k) => saved.get(k) ?? null,
+      setItem: (k, v) => void saved.set(k, v),
+      removeItem: (k) => void saved.delete(k),
+    };
+    writeLock(store, actionKey(freezeTx(VAULT)), noHash);
+    vi.stubGlobal("window", { sessionStorage: store });
+    try {
+      const { view, tree, main, region, click } = open();
+      view.flush();
+      const notes = (within: unknown) => elements(within).filter((e) => "result" in e.props);
+      expect(main().props.disabled).toBe(true);
+      expect(notes(view.result).map((e) => (e.props.result as TxResult).status)).toEqual([
+        "unknown",
+      ]);
+      expect(notes(region().props.children)).toEqual([]);
+
+      const unlock = tree().find((e) => textOf(e) === "I checked the explorer: unlock this button");
+      if (!unlock) throw new Error("no unlock control");
+      (unlock.props.onClick as () => void)();
+      view.flush();
+      expect(main().props.disabled).toBe(false);
+      expect(notes(view.result)).toEqual([]);
+
+      const done = click();
+      h.sends[0]?.answer(noHash);
+      await done;
+      view.flush();
+      expect(notes(view.result)).toHaveLength(1);
+      expect(notes(region().props.children)[0]?.props.result).toBe(noHash);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("TxButton's clock and hints", () => {
@@ -282,7 +339,7 @@ describe("TxButton's clock and hints", () => {
     view.flush();
   };
 
-  it("adds the wallet's hint at 20 s as a new line under the phase line, with the clocks hidden", () => {
+  it("adds the wallet's hint at 20 s as a new line under the phase line, and the hint's clock is the one that runs", () => {
     const { view, region, lines, click } = open();
     void click();
     wait(view, 4_000);
@@ -293,14 +350,14 @@ describe("TxButton's clock and hints", () => {
     expect(lines()).toHaveLength(1);
     wait(view, 1_000);
     expect(lines()).toEqual([
-      `${TX_PHASE_LINE.wallet} 0:20`,
+      TX_PHASE_LINE.wallet,
       "Still waiting for your wallet (0:20). If you closed its window, check your wallet's activity before you sign again.",
     ]);
-    // every clock is aria-hidden, so the region does not read out each second
+    // one clock, aria-hidden, so the region does not read out each second
     const clocks = elements(region().props.children).filter((e) =>
       /^ \(?\d+:\d\d\)?$/.test(textOf(e)),
     );
-    expect(clocks.length).toBe(2);
+    expect(clocks.length).toBe(1);
     for (const c of clocks) expect(c.props["aria-hidden"]).toBe("true");
   });
 
@@ -324,7 +381,7 @@ describe("TxButton's clock and hints", () => {
     expect(lines()).toEqual([`${TX_PHASE_LINE.confirm} 0:14`]);
     wait(view, 1_000);
     expect(lines()).toEqual([
-      `${TX_PHASE_LINE.confirm} 0:15`,
+      TX_PHASE_LINE.confirm,
       "NEAR is slow to confirm (0:15). Do not sign again: this button is still checking the same transaction.",
     ]);
   });

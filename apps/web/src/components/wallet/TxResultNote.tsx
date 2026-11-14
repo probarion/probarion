@@ -17,7 +17,8 @@ import {
  * reload; it cannot change the tone or the link. If it throws, our words are shown.
  *
  * On its own it is a status region. `inRegion` drops that role, for a note inside a widget's own region (TxButton's),
- * which already reads it out: a live region inside another would be read twice.
+ * which already reads it out: a live region inside another would be read twice. TxButton also sets it on a lock read
+ * back after a reload, which it shows beside its region: that note is not news, so nothing reads it out.
  */
 export function TxResultNote({
   result,
@@ -31,7 +32,7 @@ export function TxResultNote({
   /** The account that signed, for the explorer link when there is no transaction hash. */
   account?: string | null;
   describe?: DescribeResult;
-  /** The note sits in its widget's own status region, so it has no role of its own. */
+  /** The note sits in its widget's own status region (or is not to be read out), so it has no role of its own. */
   inRegion?: boolean;
 }) {
   let words: ReturnType<DescribeResult>;

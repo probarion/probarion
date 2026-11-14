@@ -36,9 +36,10 @@ type Prepared = WalletTx | { error: string };
  *
  * While a click runs, the button says who it waits on (lib/ui/pending.ts): the console ("Preparing…"), the wallet
  * ("Check your wallet…"), NEAR ("Confirming on NEAR…"), the page's own finish, then "Updating the page…". Its one
- * status region, mounted from the first render, carries the line under it, the one slow hint and the result. While
- * busy it stays focusable (aria-disabled) and a click does nothing; `disabled` is only for a button that cannot act:
- * the wallet still loading, the wrong account, the lock. The wallet step never times out and is never reset here.
+ * status region, mounted from the first render, carries the line under it, the one slow hint and the result (a lock
+ * read back after a reload is shown beside it, not read out). While busy it stays focusable (aria-disabled) and a
+ * click does nothing; `disabled` is only for a button that cannot act: the wallet still loading, the wrong account,
+ * the lock. The wallet step never times out and is never reset here.
  */
 export interface TxButtonBaseProps {
   label: string;
@@ -86,11 +87,17 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
   const [phase, setPhase] = useState<TxPhase>("wallet");
   // After a result the page reads its data again. Until it has, the button says so and a click does nothing.
   const [refreshing, startRefresh] = useTransition();
-  const refreshingNow = useRef(refreshing); // set again before the refresh starts, ahead of the render that shows it
-  refreshingNow.current = refreshing;
+  // The guard is raised before the refresh starts and follows `refreshing` only once a render has committed: the
+  // transition's own render reads `refreshing` as false before it commits, while the button still says it is updating.
+  const refreshingNow = useRef(false);
+  useEffect(() => {
+    refreshingNow.current = refreshing;
+  });
   const [prepared, setPrepared] = useState<WalletTx | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TxResult | null>(null);
+  // The lock read back on load. It is shown, but beside the status region, so a reload does not read it out again.
+  const [readBack, setReadBack] = useState<TxResult | null>(null);
   const { ask, dialog } = useConfirm();
   const preview = props.tx ?? prepared;
   const locked = sendLocked(result);
@@ -102,8 +109,11 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
   // A reload must not undo the lock: pick it up again (after hydration, so server and client agree).
   useEffect(() => {
     // (also when the action changes, e.g. another vault name: its result is not this one's)
-    setResult(readLock(browserStore(), key));
+    const back = readLock(browserStore(), key);
+    setResult(back);
+    setReadBack(back);
   }, [key]);
+  const quiet = result !== null && result === readBack;
 
   const onBusyChange = useRef(props.onBusyChange);
   onBusyChange.current = props.onBusyChange;
@@ -118,6 +128,14 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
     if (locked || !unlocking.current) return;
     unlocking.current = false;
     button.current?.focus();
+  }, [locked]);
+  // And the other way: the lock disables the button, so if a click's lock finds it focused, the unlock control takes it.
+  const unlockControl = useRef<HTMLButtonElement>(null);
+  const focusUnlock = useRef(false);
+  useEffect(() => {
+    if (!locked || !focusUnlock.current) return;
+    focusUnlock.current = false;
+    unlockControl.current?.focus();
   }, [locked]);
 
   // The phase's clock (aria-hidden, from 5 s) and its one hint: the wallet's at 20 s, NEAR's at 15 s. Neither ends
@@ -167,6 +185,9 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
       const r = await sendTx(next, props.expectedSigner, { onPhase: setPhase });
       writeLock(browserStore(), key ?? actionKey(next), r);
       setResult(r);
+      // Read before the render that disables a locked button (the lock is already written, and this cannot throw).
+      focusUnlock.current =
+        sendLocked(r) && button.current?.ownerDocument.activeElement === button.current;
       if (props.onResult) setPhase("finish");
       try {
         await props.onResult?.(r);
@@ -174,7 +195,14 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
         console.error("TxButton onResult failed", e);
       }
       refreshingNow.current = true;
-      startRefresh(() => router.refresh());
+      startRefresh(() => {
+        // A throw here would reach the route's error page and take the result off the screen.
+        try {
+          router.refresh();
+        } catch (e) {
+          console.error("TxButton refresh failed", e);
+        }
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -205,7 +233,7 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
       ) : null}
       {preview && !props.hidePreview ? (
         <p className="mt-1 text-xs text-mute wrap-anywhere">
-          You sign: {preview.summary} — {preview.receiverId}.
+          You sign: {preview.summary}, on {preview.receiverId}.
           {preview.actions.map(actionLabel).join(" + ")}
         </p>
       ) : null}
@@ -214,7 +242,8 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
         {line ? (
           <p className="mt-1 animate-pending-in text-xs text-mute wrap-anywhere">
             {line}
-            {elapsedClock(elapsed)}
+            {/* once the hint is there, its clock is the one that runs */}
+            {hint ? null : elapsedClock(elapsed)}
           </p>
         ) : null}
         {hint ? (
@@ -223,7 +252,7 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
           </p>
         ) : null}
         {error ? <p className="mt-1 text-xs text-bad">{error}</p> : null}
-        {result ? (
+        {result && !quiet ? (
           <TxResultNote
             result={result}
             network={props.network}
@@ -233,8 +262,19 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
           />
         ) : null}
       </div>
+      {/* A lock read back on load sits where the result would, out of the region: not news, so not read out. */}
+      {result && quiet ? (
+        <TxResultNote
+          result={result}
+          network={props.network}
+          account={accountId}
+          describe={props.describe}
+          inRegion
+        />
+      ) : null}
       {locked ? (
         <button
+          ref={unlockControl}
           type="button"
           className="mt-1 text-xs text-mute underline"
           onClick={() => {
