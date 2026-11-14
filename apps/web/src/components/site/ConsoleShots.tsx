@@ -1,90 +1,62 @@
 import Image from "next/image";
 import Link from "next/link";
-import { CONSOLE_SHOTS, type ConsoleShot } from "@/lib/site/facts";
-import { KeepRich, LIST } from "./bits";
+import { CONSOLE_SHOTS } from "@/lib/site/facts";
+import { KeepRich } from "./bits";
 import c from "./console.module.css";
-import { Away, TermRecord } from "./parts";
-import p from "./parts.module.css";
-import { LandingSection } from "./SectionHead";
 import s from "./site.module.css";
 
+const NBSP = " ";
+
 /**
- * One step: its number, title and sentence, then its transaction, if it has one, under the sentence; then the
- * capture, linked to its file. The number, title and text are the page's shared step (parts.module.css).
+ * The console's one screenshot on the landing, in the use cases (Integrate.tsx): the invoice's page of the testnet
+ * demo vault, in a frame never wider than the file, so it is drawn at its own 856px at most and never larger. `sizes`
+ * asks for the 856px file wherever the frame has room for it, not the ~420px variant. Beside it from 1100px, under it
+ * below: what it shows, the record it was taken under, the file itself and the console. The section is far down the
+ * page, so the image loads lazily, as next/image does by default.
  */
-function Shot({ shot, n }: { shot: ConsoleShot; n: number }) {
+export function ConsoleShot() {
+  const L = CONSOLE_SHOTS.landing;
+  const shot = CONSOLE_SHOTS.shots.find((x) => x.id === L.shot);
+  if (shot === undefined) return null;
   return (
-    <li className={c.step}>
-      <figure className={c.row}>
-        <figcaption className={c.cap}>
-          <div className={p.stepN} aria-hidden="true">
-            {n}
-          </div>
-          <h3 className={`${p.stepTitle} ${c.capTitle}`}>
-            <span className="sr-only">Step {n}: </span>
-            {shot.title}
-          </h3>
-          <p className={p.stepBody}>
-            <KeepRich text={shot.body} />
-          </p>
-          {shot.link === undefined ? null : (
-            <p className={c.tx}>
-              <span className={p.label}>{CONSOLE_SHOTS.txLabel}</span>
-              <Away href={shot.link.url} tx={shot.link.label} />
-            </p>
-          )}
-        </figcaption>
-        <a className={c.shot} href={shot.src}>
-          <Image
-            src={shot.src}
-            width={shot.width}
-            height={shot.height}
-            alt={shot.alt}
-            sizes="(max-width: 1099px) 100vw, 856px"
-          />
-        </a>
-        <p className={c.full}>
-          <a className={s.link} href={shot.src}>
+    <figure className={c.figure}>
+      <div className={c.frame}>
+        <Image
+          src={shot.src}
+          width={shot.width}
+          height={shot.height}
+          alt={shot.alt}
+          sizes="(min-width: 900px) 856px, 100vw"
+        />
+      </div>
+      <figcaption className={c.cap}>
+        <p className={s.eyebrow}>{L.eyebrow}</p>
+        <p className={c.title}>{shot.title}</p>
+        <p className={c.body}>
+          <KeepRich text={shot.body} />
+        </p>
+        <dl className={c.record}>
+          {CONSOLE_SHOTS.record.map((r) => (
+            <div key={r.term}>
+              <dt>{r.term}</dt>
+              <dd>
+                <KeepRich text={r.value} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <p className={c.links}>
+          <a className={`${s.link} ${c.link}`} href={shot.src}>
             {CONSOLE_SHOTS.fullSize}
             <span className="sr-only">: {shot.title}</span>
           </a>
-        </p>
-      </figure>
-    </li>
-  );
-}
-
-/**
- * Real testnet screenshots of the console, after the ink band (audit P1-23): one invoice held for an approver, its
- * page, then paid, as three numbered rows. What they share is said once in the head; each capture links to its file.
- */
-export function ConsoleShots() {
-  return (
-    <LandingSection
-      id="console"
-      head={{
-        eyebrow: CONSOLE_SHOTS.eyebrow,
-        title: CONSOLE_SHOTS.title,
-        lede: CONSOLE_SHOTS.intro,
-      }}
-      headAfter={<TermRecord rows={CONSOLE_SHOTS.record} />}
-    >
-      <ol className={c.steps} {...LIST}>
-        {CONSOLE_SHOTS.shots.map((shot, i) => (
-          <Shot key={shot.id} shot={shot} n={i + 1} />
-        ))}
-      </ol>
-      <div className={c.actions}>
-        <p className={c.actionsText}>{CONSOLE_SHOTS.proof.text}</p>
-        <div className={c.buttons}>
-          <Link className={s.btn} href={CONSOLE_SHOTS.proof.href}>
-            {CONSOLE_SHOTS.proof.label} <span aria-hidden="true">→</span>
-          </Link>
-          <Link className={`${s.btn} ${s.solid}`} href={CONSOLE_SHOTS.open.href}>
+          <Link className={`${s.link} ${c.link}`} href={CONSOLE_SHOTS.open.href}>
             {CONSOLE_SHOTS.open.label}
+            {NBSP}
+            <span aria-hidden="true">→</span>
           </Link>
-        </div>
-      </div>
-    </LandingSection>
+        </p>
+      </figcaption>
+    </figure>
   );
 }
