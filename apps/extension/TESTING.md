@@ -94,7 +94,7 @@ click's `activeTab` grant lets the extension read.
       the mandate (a wallet signature). Back in the popup tab press **Send to Probarion**: "This mandate can't take
       invoices now: mandate N is revoked." (N is the mandate's number. The tab keeps the list it read before, which
       is why a revoked mandate can still be chosen.)
-- [ ] Stop `next dev`, then open the popup: "Couldn't reach Probarion. Retry". Start it again → **Retry** works.
+- [ ] Stop `next dev`, then open the popup: "Couldn't reach Probarion. Try again." Start it again → **Retry** works.
 - [ ] On `/extension` press **Revoke** on this browser's row (the newest "Chrome on ..." row). Open the popup: "Your
       connection expired", the badge shows `!`, and **Reconnect** (with `next dev` running) works.
 - [ ] In the service worker's DevTools console (`chrome://extensions` → Inspect views: service worker), set the
@@ -104,7 +104,8 @@ click's `activeTab` grant lets the extension read.
       F12, choose the Network tab, and press Ctrl+R. The page says "Your connection expired", the badge shows `!`, and
       the Network list has no request to `/api/ext/inbox`. Then reload `/extension` and write down the Connected time
       of this browser's row (the newest "Chrome on ..." row).
-- [ ] Press **Reconnect** and connect again. The old token was still live on Probarion, and the extension ends it.
+- [ ] Press **Reconnect** and connect again. Back in the popup tab, it shows "Waiting for you" without a reload.
+      The old token was still live on Probarion, and the extension ends it.
       Reload `/extension`: the row with the Connected time you wrote down is gone, and a row with a newer Connected
       time is listed. Write down that newer time.
 - [ ] Press **Disconnect**. The popup shows Connect. Reload `/extension`: the row with the Connected time you just wrote
