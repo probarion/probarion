@@ -14,6 +14,8 @@ import {
   U128_MAX,
 } from "./encoding.js";
 import { NearFormatError } from "./errors.js";
+import { type EventProblem, nep141Events, nep245Events, type TypedItem } from "./events.js";
+import type { OutcomeSource } from "./types.js";
 
 /** The memo prefix the POA token reads the destination from (contracts/vault/src/lib.rs WITHDRAW_MEMO_PREFIX). */
 export const WITHDRAW_TO_PREFIX = "WITHDRAW_TO:";
@@ -127,6 +129,182 @@ export function poaWithdrawCall(req: PoaWithdrawRequest): PoaWithdrawCall {
     gas: FT_WITHDRAW_GAS,
     deposit: 1n,
   };
+}
+
+// ---------- the burn pair ----------
+
+/** One withdrawal as the NEAR transaction shows it: the intents `mt_burn` and the POA token's `ft_burn`, paired. */
+export interface PoaBurn {
+  asset: string;
+  /** The `mt_burn` item's `owner_id`: the NEAR Intents account whose balance paid. */
+  owner: string;
+  amount: bigint;
+  /** The `ft_burn` item's memo, `WITHDRAW_TO:<address>`. */
+  memo: string;
+  /** The memo after the prefix, byte for byte: where the bridge is told to release. */
+  address: string;
+  mtBurnReceiptId: string;
+  ftBurnReceiptId: string;
+  /** True when both events were read from proven outcomes. */
+  proven: boolean;
+}
+
+export interface FindPoaBurnOptions {
+  asset: string;
+  /** The NEAR Intents contract that logs `mt_burn`. Default `intents.near`. */
+  intents?: string;
+  /** Keep only the burns of this NEAR Intents account. The pairing still reads every burn of the asset. */
+  owner?: string;
+  /** Who may log the POA ft_burn. Default [asset] (mainnet). The testnet intents-stub logs it itself: [asset, stub]. */
+  ftBurnEmitters?: readonly string[];
+}
+
+interface MtBurnEntry {
+  owner: string;
+  amount: bigint;
+  source: TypedItem<unknown>;
+}
+
+interface FtBurnEntry {
+  amount: bigint;
+  memo: string;
+  source: TypedItem<unknown>;
+}
+
+/**
+ * Pairs, in source order, the intents contract's NEP-245 `mt_burn` entries of `nep141:<asset>` with the POA token's
+ * NEP-141 `ft_burn` items whose `owner_id` is the intents contract and whose memo starts `WITHDRAW_TO:`, from
+ * successful receipts only, each event bound to the contract that logged it (the receipt-bound reader of
+ * events.ts: an `ft_burn` logged by the vault or any other account is not read). Both counts and each pair's two
+ * amounts must be equal, which the SDK's `findBurnPair` does not ask. Anything that stands in the way of a clean
+ * pairing is a problem: unequal counts or amounts, an event of either contract that breaks its standard's schema,
+ * a matching event whose receipt status is missing (a trimmed record), a malformed source. `burns` is empty
+ * whenever `problems` is not, so a caller reading only `burns` never gets a pair out of a doubtful record.
+ * Never throws: invalid options are a problem too.
+ */
+export function findPoaBurns(
+  source: OutcomeSource,
+  opts: FindPoaBurnOptions,
+): { burns: PoaBurn[]; problems: string[] } {
+  if (!isRecord(opts)) return { burns: [], problems: ["options: not an object"] };
+  const { asset, owner } = opts;
+  const intents = opts.intents ?? DEFAULT_INTENTS;
+  const emitters = opts.ftBurnEmitters ?? [asset];
+  const optionProblem = !isAccountId(asset)
+    ? "options: asset is not a NEAR account id"
+    : !isAccountId(intents)
+      ? "options: intents is not a NEAR account id"
+      : owner !== undefined && !isAccountId(owner)
+        ? "options: owner is not a NEAR account id"
+        : !Array.isArray(emitters) || emitters.length === 0 || !emitters.every(isAccountId)
+          ? "options: ftBurnEmitters is not a non-empty list of NEAR account ids"
+          : null;
+  if (optionProblem !== null) return { burns: [], problems: [optionProblem] };
+
+  const problems = new Set<string>();
+  const note = (standard: string, list: readonly EventProblem[]) => {
+    for (const p of list) {
+      const at =
+        p.receiptId === "" ? "" : ` (receipt ${p.receiptId}, ${p.emitter}, log ${p.logIndex})`;
+      problems.add(`${standard}${at}: ${p.problem}`);
+    }
+  };
+  const tokenId = `nep141:${asset}`;
+  const mts: MtBurnEntry[] = [];
+  const fts: FtBurnEntry[] = [];
+  try {
+    const mt = nep245Events(source, intents);
+    note("nep245", mt.problems);
+    for (const typed of mt.items) {
+      const { item } = typed;
+      if (item.event !== "mt_burn") continue;
+      item.tokenIds.forEach((id, i) => {
+        const amount = item.amounts[i];
+        if (id === tokenId && amount !== undefined) {
+          mts.push({ owner: item.ownerId, amount, source: typed });
+        }
+      });
+    }
+    const order = outcomeOrder(source);
+    for (const emitter of new Set(emitters)) {
+      const ft = nep141Events(source, emitter);
+      note("nep141", ft.problems);
+      for (const typed of ft.items) {
+        const { item } = typed;
+        if (
+          item.event === "ft_burn" &&
+          item.ownerId === intents &&
+          item.memo?.startsWith(WITHDRAW_TO_PREFIX)
+        ) {
+          fts.push({ amount: item.amount, memo: item.memo, source: typed });
+        }
+      }
+    }
+    // Two emitters (the testnet stub and the token): put their burns back in source order.
+    fts.sort(
+      (a, b) =>
+        (order.get(a.source.event.receiptId) ?? 0) - (order.get(b.source.event.receiptId) ?? 0) ||
+        a.source.event.logIndex - b.source.event.logIndex ||
+        a.source.itemIndex - b.source.itemIndex,
+    );
+  } catch (error) {
+    // The readers throw only for invalid arguments, checked above; this keeps the never-throws promise anyway.
+    problems.add(`reader: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (mts.length !== fts.length) {
+    problems.add(
+      `${mts.length} mt_burn of ${tokenId} by ${intents} and ${fts.length} WITHDRAW_TO ft_burn by ` +
+        `${[...new Set(emitters)].join(", ")}: they do not pair`,
+    );
+  }
+  const burns: PoaBurn[] = [];
+  mts.forEach((mt, i) => {
+    const ft = fts[i];
+    if (ft === undefined) return;
+    if (mt.amount !== ft.amount) {
+      problems.add(
+        `pair ${i}: mt_burn of ${mt.amount} (receipt ${mt.source.event.receiptId}) and ft_burn of ` +
+          `${ft.amount} (receipt ${ft.source.event.receiptId}) differ`,
+      );
+      return;
+    }
+    burns.push({
+      asset,
+      owner: mt.owner,
+      amount: mt.amount,
+      memo: ft.memo,
+      address: ft.memo.slice(WITHDRAW_TO_PREFIX.length),
+      mtBurnReceiptId: mt.source.event.receiptId,
+      ftBurnReceiptId: ft.source.event.receiptId,
+      proven: mt.source.event.proven && ft.source.event.proven,
+    });
+  });
+  if (problems.size > 0) return { burns: [], problems: [...problems] };
+  return {
+    burns: owner === undefined ? burns : burns.filter((b) => b.owner === owner),
+    problems: [],
+  };
+}
+
+/** Each outcome id's position in the source (transaction_outcome first), for sorting events read per emitter. */
+function outcomeOrder(outcomes: OutcomeSource): Map<string, number> {
+  const order = new Map<string, number>();
+  const source: unknown = outcomes;
+  const ids: unknown[] = Array.isArray(source)
+    ? source.map((o: unknown) => (isRecord(o) ? o.id : undefined))
+    : isRecord(source)
+      ? [
+          isRecord(source.transaction_outcome) ? source.transaction_outcome.id : undefined,
+          ...(Array.isArray(source.receipts_outcome)
+            ? source.receipts_outcome.map((o: unknown) => (isRecord(o) ? o.id : undefined))
+            : []),
+        ]
+      : [];
+  ids.forEach((id, i) => {
+    if (typeof id === "string" && !order.has(id)) order.set(id, i);
+  });
+  return order;
 }
 
 // ---------- the POA bridge record ----------
@@ -385,4 +563,274 @@ function topicAddress(topic: unknown): string | null {
   if (typeof topic !== "string" || !EVM_WORD_RE.test(topic)) return null;
   const lower = topic.toLowerCase();
   return lower.slice(2, 26) === TOPIC_PAD ? `0x${lower.slice(26)}` : null;
+}
+
+// ---------- the settlement verdict ----------
+
+export type PoaCheckId =
+  | "near_burn"
+  | "memo_address"
+  | "bridge_record"
+  | "destination_transfer"
+  | "amounts";
+
+export interface PoaSettlement {
+  /** Every check passed. */
+  ok: boolean;
+  /** The five checks, in this order, each with a sentence saying what it saw. */
+  checks: readonly { id: PoaCheckId; ok: boolean; detail: string }[];
+  burn: PoaBurn | null;
+  /** The bridge's record of this burn transaction when there is exactly one, even if a check on it failed. */
+  bridge: PoaBridgeWithdrawal | null;
+  transfer: Erc20Transfer | null;
+}
+
+/** What a settlement check needs before it can run. */
+const NEEDS: Readonly<Record<PoaCheckId, PoaCheckId | null>> = {
+  near_burn: null,
+  memo_address: "near_burn",
+  bridge_record: "near_burn",
+  destination_transfer: "bridge_record",
+  amounts: "bridge_record",
+};
+
+interface CheckResult {
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * One verdict on a payout from NEAR Intents to a Base (EVM) address, across three independent records:
+ *
+ * - `near_burn`: the NEAR transaction (`near`, an RPC `tx` answer or proven outcomes) holds exactly one POA burn
+ *   pair of `expect.asset` (findPoaBurns), with `expect.owner` and `expect.amount` when given. It is tied to
+ *   `nearTxHash`: an RPC answer's `transaction.hash` and `transaction_outcome.id` must equal it when present, and
+ *   proven outcomes must include the transaction's own outcome (pass those of proveTransaction or
+ *   verifyTransactionOutcomes, which check that every receipt descends from it).
+ * - `memo_address`: the burn's memo is `WITHDRAW_TO:` and `expect.address`, byte for byte.
+ * - `bridge_record`: the bridge answer (`withdrawal_status`) holds exactly one record of `nearTxHash`, COMPLETED, for
+ *   the asset and the burn's owner, with the burned amount, `fee + received` equal to it, a release transaction,
+ *   and `expect.erc20` as its token contract when it names one.
+ * - `destination_transfer`: the Base receipt is that release, and findErc20Transfer finds one Transfer of
+ *   `expect.erc20` to `expect.address` of exactly the received amount.
+ * - `amounts`: something was released, and the fee is at most `expect.maxFee` when given.
+ *
+ * The destination address is taken from the burn, never from the bridge answer (its `address` is the token
+ * contract), and the amount from the burn; the bridge's figures are only compared with it. A later check that
+ * needs an earlier one that failed says "skipped". The Base receipt is not proven here: it is what the Base RPC
+ * answered, bound by hash to the bridge's record. Never throws.
+ */
+export function verifyPoaSettlement(input: {
+  near: OutcomeSource;
+  nearTxHash: string;
+  bridgeAnswer: unknown;
+  destinationReceipt: unknown;
+  expect: {
+    asset: string;
+    address: string;
+    erc20: string;
+    amount?: bigint;
+    owner?: string;
+    intents?: string;
+    ftBurnEmitters?: readonly string[];
+    maxFee?: bigint;
+  };
+}): PoaSettlement {
+  const checks: { id: PoaCheckId; ok: boolean; detail: string }[] = [];
+  let burn: PoaBurn | null = null;
+  let bridge: PoaBridgeWithdrawal | null = null;
+  let transfer: Erc20Transfer | null = null;
+  const settlement = (): PoaSettlement => ({
+    ok: checks.length === Object.keys(NEEDS).length && checks.every((c) => c.ok),
+    checks,
+    burn,
+    bridge,
+    transfer,
+  });
+  const run = (id: PoaCheckId, check: () => CheckResult) => {
+    const need = NEEDS[id];
+    if (need !== null && !checks.some((c) => c.id === need && c.ok)) {
+      checks.push({ id, ok: false, detail: `skipped: needs ${need}` });
+      return;
+    }
+    let result: CheckResult;
+    try {
+      result = check();
+    } catch (error) {
+      result = no(error instanceof Error ? error.message : String(error));
+    }
+    checks.push({ id, ok: result.ok, detail: result.detail });
+  };
+
+  if (!isRecord(input) || !isRecord(input.expect)) {
+    run("near_burn", () => no("the input or its expect is not an object"));
+    for (const id of Object.keys(NEEDS) as PoaCheckId[])
+      if (id !== "near_burn") run(id, () => no(""));
+    return settlement();
+  }
+  const { near, nearTxHash, bridgeAnswer, destinationReceipt, expect } = input;
+
+  run("near_burn", () => {
+    if (!isBase58Hash(nearTxHash)) return no("nearTxHash is not a NEAR transaction hash");
+    const untied = untiedReason(near, nearTxHash);
+    if (untied !== null) return no(untied);
+    const found = findPoaBurns(near, {
+      asset: expect.asset,
+      ...(expect.intents === undefined ? {} : { intents: expect.intents }),
+      ...(expect.ftBurnEmitters === undefined ? {} : { ftBurnEmitters: expect.ftBurnEmitters }),
+    });
+    if (found.problems.length > 0) return no(found.problems.join("; "));
+    const [only, ...more] = found.burns;
+    if (only === undefined) {
+      return no(
+        `no POA withdrawal burn of ${expect.asset} in the successful receipts of ${nearTxHash}`,
+      );
+    }
+    if (more.length > 0) {
+      return no(
+        `${found.burns.length} POA withdrawal burns of ${expect.asset} in ${nearTxHash}; this reads one`,
+      );
+    }
+    if (expect.owner !== undefined && only.owner !== expect.owner) {
+      return no(`the burn is from ${only.owner}, not ${String(expect.owner)}`);
+    }
+    if (expect.amount !== undefined && only.amount !== expect.amount) {
+      return no(`the burn is of ${only.amount}, not ${String(expect.amount)}`);
+    }
+    burn = only;
+    return yes(
+      `${only.owner} burned ${only.amount} of nep141:${only.asset} (receipt ${only.mtBurnReceiptId}) and ` +
+        `${only.asset} logged ft_burn with memo ${only.memo} (receipt ${only.ftBurnReceiptId})` +
+        (only.proven ? ", both proven" : ", as the RPC answered"),
+    );
+  });
+
+  run("memo_address", () => {
+    const b = burn as PoaBurn;
+    if (!isEvmAddress(expect.address)) {
+      return no(
+        "expect.address is not 0x and 40 hex digits (this verdict reads Base destinations)",
+      );
+    }
+    const want = `${WITHDRAW_TO_PREFIX}${expect.address}`;
+    if (b.memo === want) return yes(`the memo names ${expect.address}`);
+    return no(
+      b.memo.toLowerCase() === want.toLowerCase()
+        ? `the memo ${b.memo} differs from ${want} by letter case alone`
+        : `the memo is ${b.memo}, not ${want}`,
+    );
+  });
+
+  run("bridge_record", () => {
+    const b = burn as PoaBurn;
+    let records: PoaBridgeWithdrawal[];
+    try {
+      records = parsePoaWithdrawalStatus(bridgeAnswer);
+    } catch (error) {
+      return no(
+        `the bridge answer is not readable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    const mine = records.filter((r) => r.burnTxHash === nearTxHash);
+    const [record, ...more] = mine;
+    if (record === undefined) {
+      const others = records.map((r) => r.burnTxHash);
+      return no(
+        `the bridge has no record of ${nearTxHash}` +
+          (others.length > 0 ? ` (its records are of ${others.join(", ")})` : ""),
+      );
+    }
+    if (more.length > 0) return no(`the bridge has ${mine.length} records of ${nearTxHash}`);
+    bridge = record;
+    if (record.status !== "COMPLETED")
+      return no(`the bridge's status is ${record.status}, not COMPLETED`);
+    if (record.nearTokenId !== b.asset) {
+      return no(`the bridge's record is of ${record.nearTokenId}, not ${b.asset}`);
+    }
+    if (record.accountId !== b.owner) {
+      return no(`the bridge's record is for ${record.accountId}, but ${b.owner} burned`);
+    }
+    if (record.amount !== b.amount) {
+      return no(`the bridge's record says ${record.amount} burned, the burn is of ${b.amount}`);
+    }
+    if (record.fee + record.received !== b.amount) {
+      return no(
+        `the bridge's fee ${record.fee} and released ${record.received} do not add up to the burned ${b.amount}`,
+      );
+    }
+    if (record.transferTxHash === null)
+      return no("the bridge's record names no release transaction");
+    if (
+      record.contractAddress !== null &&
+      isEvmAddress(expect.erc20) &&
+      record.contractAddress.toLowerCase() !== expect.erc20.toLowerCase()
+    ) {
+      return no(
+        `the bridge's record names token contract ${record.contractAddress}, not ${expect.erc20}`,
+      );
+    }
+    return yes(
+      `${record.status} on ${record.chain}: release ${record.transferTxHash}, fee ${record.fee}, ` +
+        `released ${record.received}`,
+    );
+  });
+
+  run("destination_transfer", () => {
+    const record = bridge as PoaBridgeWithdrawal;
+    const match = findErc20Transfer(destinationReceipt, {
+      txHash: record.transferTxHash as string,
+      contract: expect.erc20,
+      to: expect.address,
+      value: record.received,
+    });
+    if (!match.ok) return no(`${match.code}: ${match.detail}`);
+    transfer = match.transfer;
+    return yes(
+      `${match.transfer.contract} moved ${match.transfer.value} from ${match.transfer.from} to ` +
+        `${match.transfer.to} in ${match.transfer.txHash} (block ${match.transfer.blockNumber})`,
+    );
+  });
+
+  run("amounts", () => {
+    const b = burn as PoaBurn;
+    const record = bridge as PoaBridgeWithdrawal;
+    const { maxFee } = expect;
+    if (maxFee !== undefined && (typeof maxFee !== "bigint" || maxFee < 0n)) {
+      return no("expect.maxFee is not a non-negative bigint");
+    }
+    if (record.received <= 0n) return no(`the bridge released nothing of the burned ${b.amount}`);
+    if (maxFee !== undefined && record.fee > maxFee)
+      return no(`the fee ${record.fee} is above ${maxFee}`);
+    const bound = maxFee === undefined ? "" : ` (at most ${maxFee})`;
+    return yes(`burned ${b.amount}, released ${record.received}, fee ${record.fee}${bound}`);
+  });
+
+  return settlement();
+}
+
+function yes(detail: string): CheckResult {
+  return { ok: true, detail };
+}
+
+function no(detail: string): CheckResult {
+  return { ok: false, detail };
+}
+
+/** Null when the NEAR record is tied to `txHash`, else why it is not. */
+function untiedReason(near: unknown, txHash: string): string | null {
+  if (Array.isArray(near)) {
+    return near.some((o: unknown) => isRecord(o) && o.id === txHash)
+      ? null
+      : `the proven outcomes do not include the outcome of transaction ${txHash}`;
+  }
+  if (!isRecord(near)) return "the NEAR record is not a tx answer or a list of proven outcomes";
+  const hash = isRecord(near.transaction) ? near.transaction.hash : undefined;
+  if (hash !== undefined && hash !== txHash) {
+    return `the NEAR record is transaction ${String(hash)}, not ${txHash}`;
+  }
+  const outcomeId = isRecord(near.transaction_outcome) ? near.transaction_outcome.id : undefined;
+  if (outcomeId !== undefined && outcomeId !== txHash) {
+    return `the NEAR record's transaction outcome is ${String(outcomeId)}, not ${txHash}`;
+  }
+  return null;
 }
