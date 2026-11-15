@@ -2899,11 +2899,11 @@ export interface ShipCard {
 }
 
 /**
- * The version the official MCP Registry lists for `io.github.probarion/probarion`: 0.1.1, listed there on 2026-11-11.
- * The registry keeps each version as it was published, so listing 0.1.2 takes its own publish (step 6 of "Release
- * 0.1.2" in docs/RUNBOOK.md), which may come later than npm's. Move this to 0.1.2 once the registry's search lists it.
+ * The version the official MCP Registry lists as latest for `io.github.probarion/probarion`: 0.1.2, published there on
+ * 2026-11-15 (0.1.1 on 2026-11-11). The registry keeps each version as it was published, so listing a release takes
+ * its own publish (step 6 of "Release 0.1.2" in docs/RUNBOOK.md), which may come later than npm's.
  */
-export const MCP_REGISTRY_VERSION = "0.1.1";
+export const MCP_REGISTRY_VERSION = "0.1.2";
 
 /**
  * What Probarion is built on and where to get it. The landing draws two parts of it, both in the closing, as text with
