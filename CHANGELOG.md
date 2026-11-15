@@ -1436,6 +1436,9 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The official MCP registry lists `io.github.probarion/probarion` 0.1.2 as its latest, published on 2026-11-15 (step 6
+  of Release 0.1.2 in `docs/RUNBOOK.md`). The site's MCP Registry card reads Version 0.1.2 (`MCP_REGISTRY_VERSION`),
+  and the README's row for 0.1.2 says so and links the registry.
 - The landing page's use cases (`/#integrate`) redraw the testnet console's page for one invoice in place of its
   screenshot, so the page loads no image there. Under the caption "What Probarion did with one invoice", a board shows
   INV-2004 of 2026-11-09 as a sheet (4.00 test USDC to `probarion-payee.testnet` under PO-1001 and mandate 1, its
