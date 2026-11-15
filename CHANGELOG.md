@@ -2091,6 +2091,10 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The e2e test "the site header links to the docs" (`docs.spec.ts`) opens the bar's menu before it clicks Docs. Its
+  server serves both networks, so the bar carries the network switch and keeps its page links in the menu at every
+  width, as it has since 2026-11-07. The test still looked for Docs in the bar's row, so it timed out on a hidden link.
+  The site does not change.
 - The docs home shows its four doors above the fold again at 1440 x 900 (`docs.spec.ts`). The developer door ran
   to eight lines when it gained its install line, so all four doors ended at 982 px. It keeps both commands, the no-key
   demo first, in fewer words, and the home has a little less space above its search and its doors. The doors end at

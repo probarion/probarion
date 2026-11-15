@@ -85,13 +85,14 @@ test("the docs home shows its four doors above the fold at 1440 x 900", async ({
   for (const bottom of bottoms) expect(bottom).toBeLessThanOrEqual(900);
 });
 
+// This server serves both networks (APP_ORIGIN_MAINNET in playwright.config.ts), so the bar carries the network switch
+// and its page links stay in the menu at every width (site.module.css), Docs among them.
 test("the site header links to the docs", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Docs", exact: true })
-    .click();
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await nav.locator("summary", { hasText: "Menu" }).click();
+  await nav.getByRole("link", { name: "Docs", exact: true }).click();
   await expect(page).toHaveURL(/\/docs$/);
 });
 
